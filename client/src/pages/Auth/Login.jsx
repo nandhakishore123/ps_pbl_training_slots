@@ -15,7 +15,7 @@ const PARTICLES = Array.from({ length: 28 }, (_, i) => ({
 
 const BADGES = [
   { label: 'Top Performer', color: '#f59e0b' },
-  { label: '1500 RP Earned', color: '#3b82f6' },
+  { label: '770 AP Earned', color: '#3b82f6' },
   { label: 'Quiz Master', color: '#10b981' },
   { label: 'Level 5 Reached', color: '#8b5cf6' },
 ];
@@ -452,7 +452,6 @@ export default function PCDPLogin() {
 
           {/* Login Button */}
           <button
-            onClick={handleLogin}
             disabled={loading}
             onMouseEnter={() => setBtnHover(true)}
             onMouseLeave={() => setBtnHover(false)}
@@ -498,7 +497,7 @@ export default function PCDPLogin() {
           </div>
 
           {/* Google */}
-          <div style={styles.googleBtn}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <GoogleLogin
               onSuccess={(res) => handleGoogleCredential(res?.credential)}
               onError={() => showToast('error', 'Google login failed')}
@@ -913,19 +912,6 @@ const styles = {
     fontSize: '12px',
     color: '#94a3b8',
     fontWeight: 500,
-  },
-  googleBtn: {
-    width: '100%',
-    height: '48px',
-    border: '1.5px solid #dbeafe',
-    borderRadius: '12px',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '10px',
-    cursor: 'pointer',
-    padding: '0 16px',
-    fontFamily: 'inherit',
-    transition: 'background 0.16s, border 0.16s',
   },
   googleAvatar: {
     width: '28px',

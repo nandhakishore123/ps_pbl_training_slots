@@ -1,0 +1,220 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.content {
+  flex: 1;
+  padding: 24px;
+}
+
+.pageTitle {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--text);
+  font-family: var(--font-head);
+  margin-bottom: 4px;
+}
+
+.pageSub {
+  font-size: 13px;
+  color: var(--text2);
+  margin-bottom: 24px;
+}
+
+/* SECTION CARD */
+.sectionCard {
+  background: var(--white);
+  border: 1.5px solid var(--border);
+  border-radius: 14px;
+  padding: 20px;
+  margin-bottom: 20px;
+  transition: background 0.3s, border-color 0.3s;
+}
+
+.sectionTitle {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--text2);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 14px;
+}
+
+/* ACADEMIC YEAR */
+.yearRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.input {
+  padding: 8px 12px;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  background: var(--white);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  outline: none;
+  font-family: var(--font-body);
+  transition: border-color 0.2s;
+  width: 160px;
+}
+
+.input:focus {
+  border-color: var(--purple);
+}
+
+/* SAVE BUTTON */
+.saveBtn {
+  padding: 5px 12px;
+  border-radius: 7px;
+  border: 1.5px solid var(--green);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  background: transparent;
+  font-family: var(--font-body);
+  color: var(--green);
+  transition: all 0.18s;
+}
+
+.saveBtn:hover {
+  background: var(--green);
+  color: #fff;
+}
+
+/* TABLE */
+.tableWrap {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.table th {
+  text-align: left;
+  padding: 10px 14px;
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--text3);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1.5px solid var(--border);
+}
+
+.table td {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  vertical-align: middle;
+}
+
+.table tr:last-child td {
+  border-bottom: none;
+}
+
+.table tr:hover td {
+  background: var(--purple-dim);
+}
+
+.pointInput {
+  padding: 6px 10px;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  background: var(--white);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  outline: none;
+  font-family: var(--font-body);
+  transition: border-color 0.2s;
+  width: 80px;
+}
+
+.pointInput:focus {
+  border-color: var(--purple);
+}
+
+/* DEPARTMENTS */
+.deptChips {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.deptChip {
+  padding: 6px 16px;
+  border-radius: 20px;
+  background: var(--purple-dim);
+  color: var(--purple);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* ADD DEPT BUTTON */
+.addDeptBtn {
+  padding: 5px 12px;
+  border-radius: 7px;
+  border: 1.5px solid var(--green);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  background: transparent;
+  font-family: var(--font-body);
+  color: var(--green);
+  transition: all 0.18s;
+}
+
+.addDeptBtn:hover {
+  background: var(--green);
+  color: #fff;
+}
+
+@media (max-width: 640px) {
+  .content {
+    padding: 16px;
+  }
+
+  .pageTitle {
+    font-size: 18px;
+  }
+
+  .pageSub {
+    font-size: 12px;
+    margin-bottom: 18px;
+  }
+
+  .sectionCard {
+    padding: 16px;
+  }
+
+  .yearRow {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .input {
+    width: 100%;
+  }
+
+  .table {
+    min-width: 720px;
+  }
+
+  .table th,
+  .table td {
+    padding: 8px 10px;
+  }
+
+  .pointInput {
+    width: 70px;
+  }
+}

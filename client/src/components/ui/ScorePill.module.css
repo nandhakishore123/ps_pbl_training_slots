@@ -1,0 +1,22 @@
+.pill {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 3px 10px;
+  border-radius: 20px;
+}
+
+.high {
+  background: rgba(16, 185, 129, 0.12);
+  color: #059669;
+}
+
+.mid {
+  background: rgba(245, 158, 11, 0.12);
+  color: #d97706;
+}
+
+.low {
+  background: rgba(239, 68, 68, 0.12);
+  color: #dc2626;
+}

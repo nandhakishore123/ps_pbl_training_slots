@@ -1,0 +1,131 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.content {
+  flex: 1;
+  padding: 24px;
+}
+
+.pageTitle {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--text);
+  font-family: var(--font-head);
+  margin-bottom: 4px;
+}
+
+.pageSub {
+  font-size: 13px;
+  color: var(--text2);
+  margin-bottom: 24px;
+}
+
+/* GRID */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+}
+
+/* STAT CARD */
+.statCard {
+  background: var(--white);
+  border: 1.5px solid var(--border);
+  border-radius: 14px;
+  padding: 20px;
+  transition: background 0.3s, border-color 0.3s;
+}
+
+.statLabel {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--text2);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+
+.statVal {
+  font-size: 36px;
+  font-weight: 800;
+  font-family: var(--font-head);
+  margin-bottom: 6px;
+}
+
+.statSub {
+  font-size: 12px;
+  color: var(--text2);
+}
+
+/* FULL WIDTH CARD */
+.fullWidth {
+  grid-column: span 2;
+}
+
+/* DEPT TITLE */
+.deptTitle {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--text2);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 14px;
+}
+
+/* DEPT ROW */
+.deptRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.deptRow:last-child {
+  margin-bottom: 0;
+}
+
+.deptName {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  width: 50px;
+  flex-shrink: 0;
+}
+
+/* PROGRESS BAR */
+.progressWrap {
+  flex: 1;
+  height: 6px;
+  background: var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progressFill {
+  height: 100%;
+  background: var(--purple);
+  border-radius: 4px;
+  transition: width 0.4s ease;
+}
+
+.deptPct {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--purple);
+  width: 36px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+@media (max-width: 768px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+
+  .fullWidth {
+    grid-column: span 1;
+  }
+}

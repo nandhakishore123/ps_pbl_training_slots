@@ -1,0 +1,167 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.content {
+  flex: 1;
+  padding: 24px;
+}
+
+.pageTitle {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--text);
+  font-family: var(--font-head);
+  margin-bottom: 4px;
+}
+
+.pageSub {
+  font-size: 13px;
+  color: var(--text2);
+  margin-bottom: 24px;
+}
+
+/* FILTERS */
+.filterRow {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.select {
+  padding: 8px 28px 8px 12px;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  background: var(--white);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  outline: none;
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236B7280' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  font-family: var(--font-body);
+  transition: border-color 0.2s;
+}
+
+.select:focus {
+  border-color: var(--purple);
+}
+
+.input {
+  padding: 8px 12px;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  background: var(--white);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  outline: none;
+  font-family: var(--font-body);
+  transition: border-color 0.2s;
+  width: 180px;
+}
+
+.input:focus {
+  border-color: var(--purple);
+}
+
+/* TABLE */
+.tableWrap {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  table-layout: fixed;
+  line-height: 1.4;
+}
+
+.table th {
+  text-align: left;
+  padding: 10px 14px;
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--text3);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1.5px solid var(--border);
+}
+
+.table td {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  vertical-align: middle;
+}
+
+.table tr:last-child td {
+  border-bottom: none;
+}
+
+.table tr:hover td {
+  background: var(--purple-dim);
+}
+
+.rollCell {
+  font-size: 12px;
+  color: var(--text2);
+}
+
+.yearCell {
+  font-size: 12px;
+}
+
+.deptCell {
+  font-size: 12px;
+  color: var(--text2);
+}
+
+.empty {
+  text-align: center;
+  padding: 36px 16px;
+  color: var(--text3);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+@media (max-width: 640px) {
+  .content {
+    padding: 16px;
+  }
+
+  .pageTitle {
+    font-size: 18px;
+  }
+
+  .pageSub {
+    font-size: 12px;
+    margin-bottom: 18px;
+  }
+
+  .filterRow {
+    gap: 6px;
+  }
+
+  .select,
+  .input {
+    width: 100%;
+  }
+
+  .table {
+    min-width: 760px;
+  }
+
+  .table th,
+  .table td {
+    padding: 8px 10px;
+  }
+}

@@ -1,0 +1,250 @@
+.overlay {
+  display: flex;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 500;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.box {
+  background: var(--white);
+  border-radius: 16px;
+  padding: 24px;
+  width: 90%;
+  max-width: 440px;
+  border: 1.5px solid var(--border);
+  position: relative;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.boxHeader {
+  flex-shrink: 0;
+}
+
+.title {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--text);
+  font-family: var(--font-head);
+  margin-bottom: 4px;
+}
+
+.sub {
+  font-size: 12px;
+  color: var(--text2);
+  margin-bottom: 10px;
+}
+
+.pillRow {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.pillSwap {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 6px;
+  background: rgba(245, 158, 11, 0.12);
+  color: #d97706;
+}
+
+.pillMove {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 6px;
+  background: rgba(59, 130, 246, 0.12);
+  color: #2563eb;
+}
+
+.singleSlotPill {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 4px 12px;
+  border-radius: 6px;
+  background: var(--purple-dim);
+  color: var(--purple);
+}
+
+.boxScroll {
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 4px;
+  margin: 0 -4px;
+}
+
+.modeLabel {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text3);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+
+/* LIST */
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.optItem {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1.5px solid var(--border);
+  cursor: pointer;
+  transition: all 0.18s;
+}
+
+.optItem:hover {
+  border-color: var(--purple);
+  background: var(--purple-dim);
+}
+
+.optSelected {
+  border-color: var(--purple) !important;
+  background: var(--purple-dim) !important;
+}
+
+.optVenueSelected {
+  border-color: var(--green) !important;
+  background: rgba(16, 185, 129, 0.08) !important;
+}
+
+.optAvatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--purple-dim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--purple);
+  flex-shrink: 0;
+}
+
+.optVenueType {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  background: rgba(16, 185, 129, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 800;
+  color: #059669;
+  flex-shrink: 0;
+}
+
+.optName {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.optSub {
+  font-size: 11px;
+  color: var(--text3);
+}
+
+.freeBadge {
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: 700;
+  background: rgba(16, 185, 129, 0.12);
+  color: #059669;
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+
+.emptyMsg {
+  font-size: 13px;
+  color: var(--text3);
+  padding: 12px;
+}
+
+/* TEXTAREA */
+.textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  font-size: 13px;
+  font-family: var(--font-body);
+  background: var(--bg);
+  color: var(--text);
+  resize: none;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.textarea:focus {
+  border-color: var(--purple);
+}
+
+/* FOOTER */
+.boxFooter {
+  flex-shrink: 0;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+  margin-top: 8px;
+}
+
+.footerBtns {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.cancelBtn {
+  padding: 8px 18px;
+  border-radius: 7px;
+  border: 1.5px solid var(--border);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  background: transparent;
+  font-family: var(--font-body);
+  color: var(--text2);
+  transition: all 0.18s;
+}
+
+.cancelBtn:hover {
+  border-color: var(--purple);
+  color: var(--purple);
+}
+
+.confirmBtn {
+  padding: 8px 18px;
+  border-radius: 7px;
+  border: 1.5px solid var(--green);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  background: transparent;
+  font-family: var(--font-body);
+  color: var(--green);
+  transition: all 0.18s;
+}
+
+.confirmBtn:hover {
+  background: var(--green);
+  color: #fff;
+}

@@ -1,0 +1,87 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.content {
+  flex: 1;
+  padding: 24px;
+}
+
+.pageTitle {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--text);
+  font-family: var(--font-head);
+  margin-bottom: 4px;
+}
+
+.pageSub {
+  font-size: 13px;
+  color: var(--text2);
+  margin-bottom: 24px;
+}
+
+/* LIST */
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px;
+  background: var(--white);
+  border: 1.5px solid var(--border);
+  border-radius: 12px;
+  transition: border-color 0.2s, background 0.3s;
+}
+
+.item:hover {
+  border-color: var(--purple);
+}
+
+.icon {
+  font-size: 22px;
+  flex-shrink: 0;
+}
+
+.info {
+  flex: 1;
+}
+
+.msg {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.sub {
+  font-size: 11px;
+  color: var(--text3);
+  margin-top: 2px;
+}
+
+/* GO BUTTON */
+.goBtn {
+  padding: 5px 14px;
+  border-radius: 7px;
+  border: 1.5px solid var(--purple);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  background: transparent;
+  font-family: var(--font-body);
+  color: var(--purple);
+  transition: all 0.18s;
+  flex-shrink: 0;
+}
+
+.goBtn:hover {
+  background: var(--purple);
+  color: #fff;
+}

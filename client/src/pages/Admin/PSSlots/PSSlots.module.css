@@ -1,0 +1,143 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.content {
+  flex: 1;
+  padding: 24px;
+}
+
+.pageTitle {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--text);
+  font-family: var(--font-head);
+  margin-bottom: 4px;
+}
+
+.pageSub {
+  font-size: 13px;
+  color: var(--text2);
+  margin-bottom: 24px;
+}
+
+/* ADD ROW */
+.addRow {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 14px;
+}
+
+.addBtn {
+  padding: 8px 18px;
+  border-radius: 7px;
+  border: 1.5px solid var(--green);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  background: transparent;
+  font-family: var(--font-body);
+  color: var(--green);
+  transition: all 0.18s;
+}
+
+.addBtn:hover {
+  background: var(--green);
+  color: #fff;
+}
+
+/* TABLE */
+.tableWrap {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  table-layout: fixed;
+  line-height: 1.4;
+}
+
+.table th {
+  text-align: left;
+  padding: 10px 14px;
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--text3);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1.5px solid var(--border);
+}
+
+.table td {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  vertical-align: middle;
+}
+
+.table tr:last-child td {
+  border-bottom: none;
+}
+
+.table tr:hover td {
+  background: var(--purple-dim);
+}
+
+.timeCell {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--purple);
+}
+
+.venueCell {
+  font-size: 12px;
+  color: var(--text2);
+}
+
+.facCell {
+  font-size: 12px;
+}
+
+.empty {
+  text-align: center;
+  padding: 36px 16px;
+  color: var(--text3);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+@media (max-width: 640px) {
+  .content {
+    padding: 16px;
+  }
+
+  .pageTitle {
+    font-size: 18px;
+  }
+
+  .pageSub {
+    font-size: 12px;
+    margin-bottom: 18px;
+  }
+
+  .addRow {
+    justify-content: stretch;
+  }
+
+  .addBtn {
+    width: 100%;
+  }
+
+  .table {
+    min-width: 720px;
+  }
+
+  .table th,
+  .table td {
+    padding: 8px 10px;
+  }
+}

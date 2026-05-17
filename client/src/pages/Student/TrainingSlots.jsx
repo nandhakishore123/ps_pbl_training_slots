@@ -65,6 +65,9 @@ const CSS = `
   .pt-section-back { display:flex; align-items:center; gap:8px; background:var(--white); border:1.5px solid var(--border); color:var(--text2); padding:9px 16px; border-radius:10px; font-size:13px; font-weight:700; cursor:pointer; transition:all 0.2s; width:fit-content; margin-bottom:16px; font-family:var(--font-body); }
   .pt-section-back:hover { background:var(--purple-dim); border-color:rgba(108,71,255,0.3); color:var(--purple); }
 
+  /* MOBILE TOP BAR — back + booked slots row shown only on mobile */
+  .pt-mobile-topbar { display:none; }
+
   /* TABS */
   .pt-tabs { display:flex; gap:6px; margin-bottom:16px; background:var(--white); border-radius:12px; padding:5px; border:1px solid var(--border); }
   .pt-tab { flex:1; padding:10px 14px; border-radius:8px; border:none; background:transparent; font-size:13px; font-weight:700; color:var(--text2); cursor:pointer; transition:all 0.2s; font-family:var(--font-body); }
@@ -260,11 +263,32 @@ const CSS = `
   }
 
   @media (max-width: 640px) {
-    .pt-header { padding: 12px 14px; flex-wrap: wrap; }
+    /* ── Header: tighten, hide back+user+logout so only branding + dark toggle show ── */
+    .pt-header { padding: 12px 14px; flex-wrap: nowrap; }
     .pt-header-sub { display: none; }
+    .pt-header-back-wrap { display: none !important; }
+    .pt-header-user-wrap { display: none !important; }
+    .pt-header-booked-wrap { display: none !important; }
+    .pt-header-logout-wrap { display: none !important; }
+
+    /* ── Mobile top bar: ← Back on left, Booked Slots on right ── */
+    .pt-mobile-topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+      gap: 10px;
+    }
+    .pt-mobile-topbar .pt-header-back {
+      /* reuse same button style but make it fit */
+      padding: 7px 14px;
+      font-size: 13px;
+    }
+
     .pt-content { padding: 14px 14px 24px; }
 
-    .pt-tabs { flex-direction: column; }
+    .pt-tabs { flex-direction: row; }
+    .pt-tab { padding: 9px 8px; font-size: 12px; }
     .pt-course-grid { grid-template-columns: 1fr; }
     .pt-ccard-img { height: 140px; }
 
@@ -272,7 +296,7 @@ const CSS = `
     .pt-detail-actions { flex-direction: column; }
 
     /* Header actions wrap so buttons don't overflow off-screen */
-    .pt-header-actions { width:100%; flex-wrap:wrap; justify-content:flex-start; }
+    .pt-header-actions { flex-wrap: nowrap; gap: 8px; }
 
     /* Booked popup: fixed & centered so it's always visible on mobile */
     .pt-booked-popup {
@@ -1492,42 +1516,71 @@ export default function TrainingSlots({ onBack }) {
 
   return (
     <div style={{ minHeight:'100vh', background:'var(--bg)' }}>
-      {/* Header */}
+      {/* ── Header ──────────────────────────────────────────────
+          Desktop: [← Back] [icon + title]  ···  [UserIdentity] [BookedSlots] [Dark] [Logout]
+          Mobile:  [icon + title]            ···  [Dark]
+          (Back + BookedSlots move to .pt-mobile-topbar in content)
+      */}
       <div className="pt-header">
+        {/* Left: back button (hidden on mobile) + branding */}
         <div style={{ display:'flex', alignItems:'center', gap:10, minWidth:0 }}>
-          <button type="button" className="pt-header-back" onClick={handleBack} aria-label="Back">
-            ← Back
-          </button>
+          {/* back btn — hidden on mobile via CSS */}
+          <div className="pt-header-back-wrap">
+            <button type="button" className="pt-header-back" onClick={handleBack} aria-label="Back">
+              ← Back
+            </button>
+          </div>
           <div className="pt-header-icon">🏅</div>
           <div>
             <div className="pt-header-title">Training Slots</div>
             <div className="pt-header-sub">PS &amp; PBL Lab Booking</div>
           </div>
         </div>
+
+        {/* Right: actions */}
         <div className="pt-header-actions" style={{ display:'flex', alignItems:'center', gap:10 }}>
-          <UserIdentity user={user} />
-          <BookedSlotsPopup bookedSlots={bookedSlots} />
+          {/* UserIdentity — hidden on mobile */}
+          <div className="pt-header-user-wrap">
+            <UserIdentity user={user} />
+          </div>
+          {/* BookedSlotsPopup — hidden on mobile (shown in mobile topbar instead) */}
+          <div className="pt-header-booked-wrap">
+            <BookedSlotsPopup bookedSlots={bookedSlots} />
+          </div>
+          {/* Dark toggle — always visible */}
           <button className="pt-dark-toggle" onClick={()=>setDarkMode(d=>!d)}>
             {darkMode?'☀ Light':'🌙 Dark'}
           </button>
-          <button
-            type="button"
-            className="pt-icon-btn"
-            onClick={handleLogout}
-            aria-label="Logout"
-            title="Logout"
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-              <path d="M10 7V6a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-7a2 2 0 0 1-2-2v-1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              <path d="M15 12H3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              <path d="M6 9l-3 3 3 3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          </button>
+          {/* Logout — hidden on mobile */}
+          <div className="pt-header-logout-wrap">
+            <button
+              type="button"
+              className="pt-icon-btn"
+              onClick={handleLogout}
+              aria-label="Logout"
+              title="Logout"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <path d="M10 7V6a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-7a2 2 0 0 1-2-2v-1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M15 12H3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M6 9l-3 3 3 3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+          </div>
         </div>
       </div>
 
       {/* Content */}
       <div className="pt-content">
+
+        {/* ── Mobile-only top bar: ← Back on left, Booked Slots on right ── */}
+        <div className="pt-mobile-topbar">
+          <button type="button" className="pt-header-back" onClick={handleBack} aria-label="Back">
+            ← Back
+          </button>
+          <BookedSlotsPopup bookedSlots={bookedSlots} />
+        </div>
+
         {/* Booking Confirm page */}
         {showConfirm && lastBooking ? (
           <>
