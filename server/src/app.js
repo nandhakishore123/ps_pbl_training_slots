@@ -20,7 +20,7 @@ app.use(cors({
     origin: function(origin, callback) {
         if (!origin) return callback(null, true);
         const allowedOrigins = [
-            process.env.FRONTEND_URL || 'http://localhost:5173',
+            'http://localhost:5173',
             // 'https://5dnv4qb3-5173.inc1.devtunnels.ms',
             // 'https://h0bfbxwv-5000.inc1.devtunnels.ms',
             // 'https://h0bfbxwv-5173.inc1.devtunnels.ms',

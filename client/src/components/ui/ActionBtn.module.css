@@ -1,0 +1,87 @@
+.btn {
+  padding: 5px 12px;
+  border-radius: 7px;
+  border: 1.5px solid var(--border);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  background: transparent;
+  font-family: var(--font-body);
+  color: var(--text2);
+  transition: all 0.18s;
+  margin-right: 4px;
+}
+
+.btn:last-child {
+  margin-right: 0;
+}
+
+/* APPROVE */
+.approve {
+  border-color: var(--green);
+  color: var(--green);
+}
+.approve:hover {
+  background: var(--green);
+  color: #fff;
+}
+
+/* REJECT */
+.reject {
+  border-color: var(--red);
+  color: var(--red);
+}
+.reject:hover {
+  background: var(--red);
+  color: #fff;
+}
+
+/* VIEW */
+.view {
+  border-color: var(--purple);
+  color: var(--purple);
+}
+.view:hover {
+  background: var(--purple);
+  color: #fff;
+}
+
+/* SAVE */
+.save {
+  border-color: var(--green);
+  color: var(--green);
+}
+.save:hover {
+  background: var(--green);
+  color: #fff;
+}
+
+/* TRANSFER */
+.transfer {
+  border-color: var(--gold);
+  color: #d97706;
+}
+.transfer:hover {
+  background: var(--gold);
+  color: #fff;
+}
+
+/* EDIT */
+.edit {
+  border-color: var(--blue);
+  color: var(--blue);
+}
+.edit:hover {
+  background: var(--blue);
+  color: #fff;
+}
+
+/* DEFAULT */
+.default {
+  border-color: var(--border);
+  color: var(--text2);
+}
+.default:hover {
+  border-color: var(--purple);
+  color: var(--purple);
+}

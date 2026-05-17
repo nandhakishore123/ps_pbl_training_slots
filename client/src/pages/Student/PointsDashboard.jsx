@@ -26,7 +26,22 @@ function UserIdentity({ user }) {
   )
 }
 
-// ── CSS — extracted from index_working.html ───────────────────
+// Compact pill for mobile: avatar initial + truncated name
+function UserIdentityMobile({ user }) {
+  if (!user) return null
+  const name = user?.name || 'User'
+  const initials = String(name).trim()?.charAt(0)?.toUpperCase() || 'U'
+  return (
+    <div style={{ display:'flex', alignItems:'center', gap:7, padding:'3px 10px 3px 3px', background:'var(--white)', border:'1.5px solid var(--border)', borderRadius:50, maxWidth:130 }}>
+      <div style={{ width:28, height:28, borderRadius:'50%', background:'var(--purple-dim)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:13, fontWeight:800, color:'var(--purple)', flexShrink:0 }}>
+        {initials}
+      </div>
+      <div style={{ fontSize:12, fontWeight:700, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{name}</div>
+    </div>
+  )
+}
+
+// ── CSS ───────────────────────────────────────────────────────
 const CSS = `
   @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Outfit:wght@600;700;800;900&display=swap');
 
@@ -58,10 +73,10 @@ const CSS = `
 
   /* HEADER */
   .pt-header { background:var(--white); border-bottom:1px solid var(--border); padding:16px 24px; display:flex; align-items:center; justify-content:space-between; gap:12px; position:sticky; top:0; z-index:100; box-shadow:0 1px 8px rgba(0,0,0,0.05); }
-  .pt-header-icon { width:36px; height:36px; border-radius:10px; background:var(--purple-dim); display:flex; align-items:center; justify-content:center; font-size:18px; }
+  .pt-header-icon { width:36px; height:36px; border-radius:10px; background:var(--purple-dim); display:flex; align-items:center; justify-content:center; font-size:18px; flex-shrink:0; }
   .pt-header-title { font-size:18px; font-weight:800; color:var(--text); font-family:var(--font-head); }
   .pt-header-sub { font-size:12px; color:var(--text3); margin-top:1px; }
-  .pt-dark-toggle { background:none; border:1.5px solid var(--border); border-radius:20px; padding:5px 11px; cursor:pointer; font-size:13px; color:var(--text2); display:flex; align-items:center; gap:5px; transition:all 0.2s; font-family:var(--font-body); font-weight:600; }
+  .pt-dark-toggle { background:none; border:1.5px solid var(--border); border-radius:20px; padding:5px 11px; cursor:pointer; font-size:13px; color:var(--text2); display:flex; align-items:center; gap:5px; transition:all 0.2s; font-family:var(--font-body); font-weight:600; white-space:nowrap; }
   .pt-dark-toggle:hover { border-color:var(--purple); color:var(--purple); }
   .pt-header-back { background:none; border:1.5px solid var(--border); border-radius:20px; padding:5px 11px; cursor:pointer; font-size:13px; color:var(--text2); display:flex; align-items:center; gap:6px; transition:all 0.2s; font-family:var(--font-body); font-weight:700; white-space:nowrap; }
   .pt-header-back:hover { border-color:var(--purple); color:var(--purple); background:var(--purple-dim); }
@@ -165,7 +180,7 @@ const CSS = `
   .pt-spinner-text { font-size:13px; color:var(--text2); font-weight:600; }
   .pt-empty { text-align:center; padding:40px 20px; color:var(--text3); font-size:14px; }
 
-  /* ── DETAILS MODAL — extracted from index_working.html ── */
+  /* DETAILS MODAL */
   .pt-details-overlay {
     position:fixed; inset:0; background:rgba(0,0,0,0.5);
     z-index:10001; display:flex; align-items:center; justify-content:center;
@@ -225,36 +240,109 @@ const CSS = `
   @keyframes spin   { to{transform:rotate(360deg)} }
   @keyframes modalIn { from{opacity:0;transform:translateY(24px) scale(0.96)} to{opacity:1;transform:translateY(0) scale(1)} }
 
+  /* ── MOBILE/DESKTOP VISIBILITY HELPERS ── */
+  /* Desktop-only cells in reward points table (hide on mobile) */
+  .pt-col-desktop-only { /* visible by default */ }
+  /* Mobile-only year cell in reward points table (hidden on desktop) */
+  .pt-col-mobile-year { display: none; font-size:11px; color:var(--text2); font-weight:600; }
+  /* Inline details button inside student cell (hidden on desktop) */
+  .pt-details-mobile-inline { display: none !important; }
+  /* Header right sections */
+  .pt-hdr-right-mobile { display: none; }
+  .pt-hdr-right-desktop { display: flex; }
+  /* Section back: hidden on desktop (back is in header); shown on mobile */
+  .pt-section-back-mobile-only { display: none; }
+
   /* ── RESPONSIVE ── */
   @media (max-width: 640px) {
-    .pt-header { padding: 12px 14px; flex-wrap: wrap; }
-    .pt-header-sub { display: none; }
+    /* Header */
+    .pt-header { padding: 12px 16px; gap: 8px; }
+    .pt-header-sub { font-size: 11px; white-space: normal; line-height: 1.3; }
+    .pt-hdr-right-desktop { display: none !important; }
+    .pt-hdr-right-mobile {
+      display: flex !important;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
+    /* Content */
     .pt-content { padding: 14px 14px 24px; }
 
-    .pt-tabs { flex-direction: column; }
-    .pt-subtabs { flex-wrap: wrap; }
+    /* Back button */
+    .pt-section-back-mobile-only { display: flex !important; }
+    .pt-section-back { margin-bottom: 14px; padding: 8px 14px; font-size: 13px; }
 
+    /* Tabs — stay horizontal, no column direction */
+    .pt-tabs { flex-direction: row; gap: 4px; padding: 4px; }
+    .pt-tab { padding: 9px 8px; font-size: 12px; }
+
+    /* Subtabs */
+    .pt-subtabs { flex-wrap: wrap; gap: 6px; }
+    .pt-subtab { padding: 6px 12px; font-size: 11px; }
+
+    /* Filters */
+    .pt-filters { gap: 8px; }
+    .pt-select { font-size: 12px; padding: 7px 24px 7px 10px; }
+    .pt-search { font-size: 12px; min-width: 100%; }
+
+    /* ── Reward Points table: 3-column mobile layout ── */
+    /* RANK | STUDENT (name+roll+details inline) | YEAR */
+    .pt-table-head-with-btn {
+      grid-template-columns: 44px 1fr 68px;
+      padding-left: 12px;
+      padding-right: 12px;
+      font-size: 9px;
+      letter-spacing: 1px;
+    }
+    .pt-table-row-with-btn {
+      grid-template-columns: 44px 1fr 68px;
+      padding-left: 12px;
+      padding-right: 12px;
+    }
+    /* Hide desktop-only cells (details btn, dept, pts) */
+    .pt-col-desktop-only { display: none !important; }
+    /* Show mobile year cell */
+    .pt-col-mobile-year { display: block !important; font-size: 11px; color: var(--text2); font-weight: 600; white-space: nowrap; }
+    /* Show inline details button inside student cell */
+    .pt-details-mobile-inline { display: inline-flex !important; margin-top: 5px; }
+
+    /* Standard table (non-with-btn variant) */
     .pt-table-head, .pt-table-row {
       grid-template-columns: 44px 1fr 80px 70px;
       padding-left: 12px;
       padding-right: 12px;
     }
-    .pt-table-head-with-btn, .pt-table-row-with-btn {
-      grid-template-columns: 44px 1fr 70px 80px 70px;
-      padding-left: 12px;
-      padding-right: 12px;
-    }
+
+    /* ── Activity Individual table ── */
+    /* RANK | STUDENT | DEPT/YEAR | ACT. PTS */
     .pt-act-table-head, .pt-act-table-row {
-      grid-template-columns: 56px 1fr 110px 74px;
-      padding-left: 12px;
-      padding-right: 12px;
+      grid-template-columns: 44px 1fr 56px 70px;
+      padding-left: 10px;
+      padding-right: 10px;
     }
+    .pt-act-table-head { font-size: 9px; letter-spacing: 1px; }
+    .pt-act-name { font-size: 12px; }
+    .pt-act-roll { font-size: 10px; }
+    .pt-act-dept-year { font-size: 11px; }
+    .pt-act-pts { font-size: 14px; }
 
-    .pt-grp-card { grid-template-columns: 40px 1fr; gap: 12px; padding: 14px 14px; }
-    .pt-grp-pts-wrap { grid-column: 1 / -1; text-align: left; }
+    /* ── Group cards: keep 3-col (rank | info | pts) ── */
+    .pt-grp-card {
+      grid-template-columns: 40px 1fr auto;
+      gap: 10px;
+      padding: 14px 12px;
+    }
+    .pt-grp-pts-wrap { text-align: right; }
+    .pt-grp-id { font-size: 14px; }
+    .pt-grp-meta { font-size: 11px; }
+    .pt-grp-pts { font-size: 16px; }
 
-    .pt-details-modal { max-width: 92vw; }
+    /* Modal */
+    .pt-details-modal { max-width: 96vw; }
     .pt-details-body { padding: 16px; }
+    .pt-details-header { padding: 16px 18px; }
+    .pt-details-name { font-size: 15px; }
   }
 `
 
@@ -272,7 +360,7 @@ const DEPT_NAMES = {
   IT:'Information Technology', MECH:'Mechanical Engg', MTRS:'Mechatronics',
 }
 
-// ── getCatGroupStyle — extracted from original ────────────────
+// ── getCatGroupStyle ──────────────────────────────────────────
 function getCatGroupStyle(cat) {
   const c = (cat||'').toUpperCase()
   if (c.includes('P SKILL') || c.includes('SKILL'))
@@ -286,7 +374,7 @@ function getCatGroupStyle(cat) {
   return { bg:'#f8fafc', border:'rgba(148,163,184,0.3)', hdr:'#475569' }
 }
 
-// ── parseCourseDetails — extracted from original ──────────────
+// ── parseCourseDetails ────────────────────────────────────────
 function parseCourseDetails(raw) {
   const lines = raw.split('\n').map(l=>l.trim()).filter(Boolean)
   const courses = []
@@ -311,8 +399,7 @@ function parseCourseDetails(raw) {
   return { courses, totalPoints }
 }
 
-// ── DetailsModal — Reward Points student details ──────────────
-// Extracted from openDetailsModal() + fetchDetailsData() in original
+// ── DetailsModal ──────────────────────────────────────────────
 function DetailsModal({ isOpen, onClose, roll, name }) {
   const [status, setStatus] = useState('loading')
   const [raw,    setRaw]    = useState('')
@@ -364,7 +451,6 @@ function DetailsModal({ isOpen, onClose, roll, name }) {
   return (
     <div className="pt-details-overlay" onClick={e=>{if(e.target===e.currentTarget) onClose()}}>
       <div className="pt-details-modal">
-        {/* Header — dark purple same as image */}
         <div className="pt-details-header">
           <div>
             <div className="pt-details-name">{name}</div>
@@ -372,7 +458,6 @@ function DetailsModal({ isOpen, onClose, roll, name }) {
           </div>
           <button className="pt-details-close" onClick={onClose}>✕</button>
         </div>
-        {/* Body */}
         <div className="pt-details-body">
           {status==='loading' && (
             <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:14,padding:'50px 20px',color:'var(--text2)',fontSize:14}}>
@@ -388,14 +473,12 @@ function DetailsModal({ isOpen, onClose, roll, name }) {
               {!courses.length
                 ? <div style={{textAlign:'center',padding:'50px 20px',color:'var(--text3)',fontSize:14}}>No course activity found.</div>
                 : <>
-                  {/* Total points — same as image */}
                   {totalPoints>0 && (
                     <div className="pt-details-total">
                       <span className="pt-details-total-label">Total Points from Activities</span>
                       <span className="pt-details-total-val">{totalPoints.toLocaleString()} pts</span>
                     </div>
                   )}
-                  {/* Category groups — same as image */}
                   {Object.entries(grouped).map(([cat, items]) => {
                     const s = getCatGroupStyle(cat)
                     const grpTotal = items.reduce((a,c)=>a+c.points,0)
@@ -427,8 +510,7 @@ function DetailsModal({ isOpen, onClose, roll, name }) {
   )
 }
 
-// ── GroupDetailsModal — extracted from openGroupDetails() ─────
-// Shows group members exactly like image 2
+// ── GroupDetailsModal ─────────────────────────────────────────
 function GroupDetailsModal({ isOpen, onClose, group }) {
   const [members, setMembers] = useState([])
   const [loading, setLoading] = useState(false)
@@ -462,7 +544,6 @@ function GroupDetailsModal({ isOpen, onClose, group }) {
   return (
     <div className="pt-details-overlay" onClick={e=>{if(e.target===e.currentTarget) onClose()}}>
       <div className="pt-details-modal">
-        {/* Header */}
         <div className="pt-details-header">
           <div>
             <div className="pt-details-name">{group.group_id || group.id}</div>
@@ -472,7 +553,6 @@ function GroupDetailsModal({ isOpen, onClose, group }) {
           </div>
           <button className="pt-details-close" onClick={onClose}>✕</button>
         </div>
-        {/* Body */}
         <div className="pt-details-body">
           {loading ? (
             <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:14,padding:'50px 20px',color:'var(--text2)',fontSize:14}}>
@@ -483,7 +563,6 @@ function GroupDetailsModal({ isOpen, onClose, group }) {
             <div style={{textAlign:'center',padding:'50px 20px',color:'var(--text3)',fontSize:14}}>{error}</div>
           ) : (
             <>
-              {/* Group average — same as image */}
               <div className="pt-details-total">
                 <span className="pt-details-total-label" style={{fontSize:11,fontWeight:800,letterSpacing:1,textTransform:'uppercase'}}>Group Average</span>
                 <span style={{fontSize:22,fontWeight:900,color:'var(--purple)',fontFamily:'var(--font-head)'}}>
@@ -491,8 +570,6 @@ function GroupDetailsModal({ isOpen, onClose, group }) {
                   <span style={{fontSize:12,fontWeight:600,marginLeft:4}}>avg pts</span>
                 </span>
               </div>
-
-              {/* Leadership section — same as image */}
               {leaders.length > 0 && (
                 <>
                   <div style={{fontSize:11,fontWeight:800,letterSpacing:1,color:'var(--text2)',textTransform:'uppercase',marginBottom:4}}>
@@ -514,8 +591,6 @@ function GroupDetailsModal({ isOpen, onClose, group }) {
                   ))}
                 </>
               )}
-
-              {/* Team Members section — same as image */}
               {teamMembers.length > 0 && (
                 <>
                   <div style={{fontSize:11,fontWeight:800,letterSpacing:1,color:'var(--text2)',textTransform:'uppercase',margin:'10px 0 4px'}}>
@@ -548,7 +623,6 @@ function GroupDetailsModal({ isOpen, onClose, group }) {
 }
 
 // ── Helpers ───────────────────────────────────────────────────
-
 function RankCell({rank}) {
   return <span className="pt-rank">#{rank+1}</span>
 }
@@ -608,9 +682,17 @@ function RewardPoints({ onOpenDetails }) {
       {error   && <div className="pt-empty" style={{color:'var(--red)'}}>{error}</div>}
       {!loading && !error && (
         <div className="pt-table-card">
+          {/* ── Table header:
+                Desktop → RANK | STUDENT | DETAILS | DEPARTMENT | POINTS
+                Mobile  → RANK | STUDENT | YEAR
+          ── */}
           <div className="pt-table-head-with-btn">
-            <div>Rank</div><div>Student</div><div>Details</div><div>Department</div>
-            <div className="pt-table-head-pts">Points</div>
+            <div>Rank</div>
+            <div>Student</div>
+            <div className="pt-col-desktop-only">Details</div>
+            <div className="pt-col-desktop-only">Department</div>
+            <div className="pt-col-desktop-only pt-table-head-pts">Points</div>
+            <div className="pt-col-mobile-year">Year</div>
           </div>
           {showRows.length===0
             ? <div className="pt-empty">No students found.</div>
@@ -618,12 +700,35 @@ function RewardPoints({ onOpenDetails }) {
               const y=Number(s.year_of_study)
               const yrTxt=y===1?'1st Year':y===2?'2nd Year':y===3?'3rd Year':''
               return (
+                /* ── Row:
+                     Desktop → rank | student | details-btn | dept | pts
+                     Mobile  → rank | student+details-inline | year
+                ── */
                 <div className="pt-table-row-with-btn" key={s.reg_num||i} style={{animationDelay:`${Math.min(i,20)*0.03}s`}}>
+                  {/* Col 1: Rank */}
                   <div><RankCell rank={i}/></div>
-                  <div><div className="pt-name">{s.name}</div><div className="pt-roll">{s.reg_num} · {yrTxt}</div></div>
-                  <div><button className="details-btn" onClick={()=>onOpenDetails?.(s.reg_num,s.name)}>Details</button></div>
-                  <div className="pt-dept">{s.course||dept}</div>
-                  <div className="pt-pts">{Number(s.points_available||0).toLocaleString()}</div>
+                  {/* Col 2: Student — always visible */}
+                  <div>
+                    <div className="pt-name">{s.name}</div>
+                    <div className="pt-roll">{s.reg_num}</div>
+                    {/* Details button — shown inline ONLY on mobile */}
+                    <button
+                      className="details-btn pt-details-mobile-inline"
+                      onClick={()=>onOpenDetails?.(s.reg_num,s.name)}
+                    >
+                      Details
+                    </button>
+                  </div>
+                  {/* Col 3: Details button — desktop only */}
+                  <div className="pt-col-desktop-only">
+                    <button className="details-btn" onClick={()=>onOpenDetails?.(s.reg_num,s.name)}>Details</button>
+                  </div>
+                  {/* Col 4: Department — desktop only */}
+                  <div className="pt-col-desktop-only pt-dept">{s.course||dept}</div>
+                  {/* Col 5: Points — desktop only */}
+                  <div className="pt-col-desktop-only pt-pts">{Number(s.points_available||0).toLocaleString()}</div>
+                  {/* Col 3 (mobile): Year — mobile only */}
+                  <div className="pt-col-mobile-year">{yrTxt}</div>
                 </div>
               )
             })
@@ -638,7 +743,7 @@ function RewardPoints({ onOpenDetails }) {
 function ActivityPoints({ onOpenGroup }) {
   const [apTab,    setApTab]    = useState('individual')
   const [apYear,   setApYear]   = useState('ALL')
-  const [apDept,   setApDept]   = useState('BT')
+  const [apDept,   setApDept]   = useState('ALL')
   const [apSearch, setApSearch] = useState('')
   const [grpSearch,setGrpSearch]= useState('')
   const [indData,   setIndData]   = useState([])
@@ -766,7 +871,6 @@ function ActivityPoints({ onOpenGroup }) {
                       {g.captain_name?`Captain: ${g.captain_name} · `:''}
                       {Number(g.member_count||0)} members
                     </div>
-                    {/* Details button — opens GroupDetailsModal */}
                     <button className="details-btn" style={{marginTop:6}} onClick={()=>onOpenGroup?.(g)}>
                       Details
                     </button>
@@ -791,11 +895,9 @@ export default function PointsDashboard({ onBack, onOpenDetails }) {
   const [tab,          setTab]          = useState('rp')
   const [darkMode,     setDarkMode]     = useState(()=>localStorage.getItem('pt-dark')==='1')
   const { user } = useAuthStore()
-  // Details modal state
   const [detailsOpen,  setDetailsOpen]  = useState(false)
   const [detailsRoll,  setDetailsRoll]  = useState('')
   const [detailsName,  setDetailsName]  = useState('')
-  // Group details modal state
   const [groupOpen,    setGroupOpen]    = useState(false)
   const [selectedGroup,setSelectedGroup]= useState(null)
 
@@ -814,7 +916,6 @@ export default function PointsDashboard({ onBack, onOpenDetails }) {
     setDetailsRoll(roll)
     setDetailsName(name)
     setDetailsOpen(true)
-    // Also call external handler if provided
     onOpenDetails?.(roll, name)
   }
 
@@ -833,20 +934,25 @@ export default function PointsDashboard({ onBack, onOpenDetails }) {
 
   return (
     <div style={{minHeight:'100vh', background:'var(--bg)'}}>
-      {/* Header */}
+
+      {/* ── Header ── */}
       <div className="pt-header">
-        <div style={{display:'flex',alignItems:'center',gap:10,minWidth:0}}>
-          <button type="button" className="pt-header-back" onClick={handleBack}>Back</button>
+
+        {/* Left: icon + title (always) */}
+        <div style={{display:'flex', alignItems:'center', gap:10, minWidth:0, flex:1}}>
           <div className="pt-header-icon">🏅</div>
-          <div>
+          <div style={{minWidth:0}}>
             <div className="pt-header-title">Points Dashboard</div>
             <div className="pt-header-sub">Reward Points &amp; Activity Points Rankings</div>
           </div>
         </div>
-        <div style={{display:'flex',alignItems:'center',gap:10}}>
+
+        {/* Right: desktop — UserIdentity + back + dark + logout */}
+        <div className="pt-hdr-right-desktop" style={{alignItems:'center', gap:10}}>
+          <button type="button" className="pt-header-back" onClick={handleBack}>← Back</button>
           <UserIdentity user={user} />
           <button className="pt-dark-toggle" onClick={()=>setDarkMode(d=>!d)}>
-            {darkMode?'Light':'Dark'}
+            {darkMode?'☀ Light':'🌙 Dark'}
           </button>
           <button type="button" className="pt-icon-btn" onClick={handleLogout} title="Logout">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
@@ -856,10 +962,25 @@ export default function PointsDashboard({ onBack, onOpenDetails }) {
             </svg>
           </button>
         </div>
+
+        {/* Right: mobile — compact user pill + dark toggle only */}
+        <div className="pt-hdr-right-mobile">
+          <UserIdentityMobile user={user} />
+          <button className="pt-dark-toggle" onClick={()=>setDarkMode(d=>!d)}>
+            {darkMode?'☀ Light':'Dark'}
+          </button>
+        </div>
+
       </div>
 
-      {/* Content */}
+      {/* ── Content ── */}
       <div className="pt-content">
+
+        {/* Back button — shown in content area (mobile: below header; desktop: hidden since it's in header) */}
+        <button type="button" className="pt-section-back pt-section-back-mobile-only" onClick={handleBack}>
+          ← Back
+        </button>
+
         <div className="pt-tabs">
           <button className={`pt-tab${tab==='rp'?' active':''}`} onClick={()=>setTab('rp')}>Reward Points</button>
           <button className={`pt-tab${tab==='ap'?' active':''}`} onClick={()=>setTab('ap')}>Activity Points</button>
@@ -868,7 +989,7 @@ export default function PointsDashboard({ onBack, onOpenDetails }) {
         {tab==='ap' && <ActivityPoints onOpenGroup={(g)=>{setSelectedGroup(g);setGroupOpen(true)}}/>}
       </div>
 
-      {/* ── Reward Points Details Modal ── */}
+      {/* ── Modals (unchanged) ── */}
       {detailsOpen && (
         <DetailsModal
           isOpen={detailsOpen}
@@ -877,8 +998,6 @@ export default function PointsDashboard({ onBack, onOpenDetails }) {
           name={detailsName}
         />
       )}
-
-      {/* ── Group Details Modal ── */}
       {groupOpen && (
         <GroupDetailsModal
           isOpen={groupOpen}

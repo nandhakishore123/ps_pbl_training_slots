@@ -25,6 +25,23 @@ function UserIdentity({ user }) {
   )
 }
 
+// Compact pill for mobile: avatar initial + truncated name
+function UserIdentityMobile({ user }) {
+  if (!user) return null
+
+  const name = user?.name || 'User'
+  const initials = String(name).trim()?.charAt(0)?.toUpperCase() || 'U'
+
+  return (
+    <div style={{ display:'flex', alignItems:'center', gap:7, padding:'3px 10px 3px 3px', background:'var(--white)', border:'1.5px solid var(--border)', borderRadius:50, maxWidth:130 }}>
+      <div style={{ width:28, height:28, borderRadius:'50%', background:'var(--purple-dim)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:13, fontWeight:800, color:'var(--purple)', flexShrink:0 }}>
+        {initials}
+      </div>
+      <div style={{ fontSize:12, fontWeight:700, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{name}</div>
+    </div>
+  )
+}
+
 // ── CSS — extracted from index_working.html ───────────────────
 const CSS = `
   @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Outfit:wght@600;700;800;900&display=swap');
@@ -79,6 +96,7 @@ const CSS = `
     background: var(--purple-dim);
     display: flex; align-items: center; justify-content: center;
     font-size: 18px;
+    flex-shrink: 0;
   }
   .pt-header-title {
     font-size: 18px; font-weight: 800;
@@ -109,22 +127,6 @@ const CSS = `
   .pt-dark-toggle:hover { border-color: var(--purple); color: var(--purple); }
   body.dark-mode .pt-dark-toggle { background: #1f1f3a; border-color: #2d2d4e; color: #a89ec9; }
   body.dark-mode .pt-dark-toggle:hover { border-color: var(--purple); color: var(--purple); }
-
-  .pt-header-back {
-    background: none;
-    border: 1.5px solid var(--border);
-    border-radius: 20px;
-    padding: 5px 11px;
-    cursor: pointer;
-    font-size: 13px;
-    color: var(--text2);
-    display: flex; align-items: center; gap: 6px;
-    transition: all 0.2s;
-    font-family: var(--font-body);
-    font-weight: 700;
-    white-space: nowrap;
-  }
-  .pt-header-back:hover { border-color: var(--purple); color: var(--purple); background: var(--purple-dim); }
 
   .pt-icon-btn {
     width: 36px; height: 36px;
@@ -182,16 +184,69 @@ const CSS = `
   /* ── DARK MODE ── */
   body.dark-mode .pt-header { background: #151525; border-bottom: 1px solid #2d2d4e; }
   body.dark-mode .pt-box    { background: #1a1a2e; border-color: #2d2d4e; }
-  body.dark-mode .pt-header-back { background: #1f1f3a; border-color: #2d2d4e; color: #a89ec9; }
   body.dark-mode .pt-icon-btn { background: #1f1f3a; border-color: #2d2d4e; color: #a89ec9; }
 
   /* ── RESPONSIVE ── */
   @media (max-width: 640px) {
-    .pt-header { padding: 12px 14px; flex-wrap: wrap; }
-    .pt-header-sub { display: none; }
-    .pt-boxes-col { padding: 16px 14px 0; }
-    .pt-box { padding: 14px 14px; }
+    .pt-header {
+      padding: 12px 16px;
+      flex-wrap: nowrap;
+    }
+    .pt-header-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+      flex: 1 1 auto;
+    }
+    .pt-header-title {
+      font-size: 15px;
+    }
+    .pt-header-sub {
+      display: none;
+      margin-top: 0px;
+    }
+    .pt-header-right-desktop {
+      display: none !important;
+    }
+    .pt-header-right-mobile {
+      display: flex !important;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+      width: auto;
+      justify-content: flex-end;
+      margin-top: 0;
+    }
+
+    .pt-dark-toggle {
+      padding: 4px 9px;
+      font-size: 12px;
+    }
+
+    .pt-icon-btn {
+      width: 34px;
+      height: 34px;
+    }
+    .pt-boxes-col {
+      padding: 16px 16px 0;
+      gap: 10px;
+    }
+    .pt-box {
+      padding: 16px 14px;
+      border-radius: 12px;
+    }
     .pt-box-label { font-size: 14px; }
+    .pt-box-desc  { font-size: 11px; }
+  }
+
+  @media (min-width: 641px) {
+    .pt-header-right-mobile {
+      display: none !important;
+    }
+    .pt-header-right-desktop {
+      display: flex !important;
+    }
   }
 `
 
@@ -202,11 +257,6 @@ export default function FrontPage({ onSelectPoints, onSelectTraining }) {
   const { user } = useAuthStore()
 
   const navigate = useNavigate();
-
-  const handleBack = () => {
-    if (window.history.length > 1) return navigate(-1)
-    return navigate('/', { replace: true })
-  }
 
   const handleLogout = async () => {
     try {
@@ -241,19 +291,20 @@ export default function FrontPage({ onSelectPoints, onSelectTraining }) {
   return (
     <div style={{ minHeight:'100vh', background:'var(--bg)' }}>
 
-      {/* ── Header — extracted from pt-header in original ── */}
+      {/* ── Header ── */}
       <div className="pt-header">
-        <div style={{ display:'flex', alignItems:'center', gap:10, minWidth:0 }}>
-          <button type="button" className="pt-header-back" onClick={handleBack} aria-label="Back">
-            ← Back
-          </button>
+
+        {/* Left: icon + title */}
+        <div className="pt-header-left" style={{ display:'flex', alignItems:'center', gap:10, minWidth:0, flex:1 }}>
           <div className="pt-header-icon">🏅</div>
-          <div>
+          <div style={{ minWidth:0 }}>
             <div className="pt-header-title">Points &amp; Training</div>
             <div className="pt-header-sub">Reward Points, Activity Points &amp; Training Slots</div>
           </div>
         </div>
-        <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+
+        {/* Right: desktop (UserIdentity + dark toggle + logout) */}
+        <div className="pt-header-right-desktop" style={{ alignItems:'center', gap:10 }}>
           <UserIdentity user={user} />
           <button className="pt-dark-toggle" onClick={() => setDarkMode(d => !d)}>
             {darkMode ? '☀ Light' : '🌙 Dark'}
@@ -272,9 +323,31 @@ export default function FrontPage({ onSelectPoints, onSelectTraining }) {
             </svg>
           </button>
         </div>
+
+        {/* Right: mobile (user pill + dark toggle) */}
+        <div className="pt-header-right-mobile">
+          <UserIdentityMobile user={user} />
+          <button className="pt-dark-toggle" onClick={() => setDarkMode(d => !d)}>
+            {darkMode ? '☀ Light' : 'Dark'}
+          </button>
+          <button
+            type="button"
+            className="pt-icon-btn"
+            onClick={handleLogout}
+            aria-label="Logout"
+            title="Logout"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <path d="M10 7V6a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-7a2 2 0 0 1-2-2v-1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M15 12H3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M6 9l-3 3 3 3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </button>
+        </div>
+
       </div>
 
-      {/* ── Two Boxes — extracted from pt-boxes-col in original ── */}
+      {/* ── Two Boxes ── */}
       <div className="pt-boxes-col">
 
         {/* Points Dashboard box */}

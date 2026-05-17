@@ -1,0 +1,27 @@
+.chip {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 6px;
+}
+
+.green {
+  background: rgba(16, 185, 129, 0.12);
+  color: #059669;
+}
+
+.red {
+  background: rgba(239, 68, 68, 0.12);
+  color: #dc2626;
+}
+
+.gray {
+  background: var(--bg);
+  color: var(--text2);
+  border: 1px solid var(--border);
+}
+
+.purple {
+  background: var(--purple-dim);
+  color: var(--purple);
+}

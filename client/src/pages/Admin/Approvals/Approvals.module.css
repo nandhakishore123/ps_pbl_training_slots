@@ -1,0 +1,165 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.content {
+  flex: 1;
+  padding: 24px;
+}
+
+.pageTitle {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--text);
+  font-family: var(--font-head);
+  margin-bottom: 4px;
+}
+
+.pageSub {
+  font-size: 13px;
+  color: var(--text2);
+  margin-bottom: 24px;
+}
+
+/* TABS */
+.tabs {
+  display: flex;
+  gap: 6px;
+  background: var(--bg);
+  border-radius: 12px;
+  padding: 5px;
+  border: 1px solid var(--border);
+  margin-bottom: 16px;
+}
+
+.tab {
+  flex: 1;
+  padding: 9px 12px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text2);
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: var(--font-body);
+}
+
+.tabActive {
+  background: var(--purple);
+  color: #fff;
+  box-shadow: 0 2px 8px var(--purple-glow);
+}
+
+/* SECTION CARD */
+.sectionCard {
+  background: var(--white);
+  border: 1.5px solid var(--border);
+  border-radius: 14px;
+  padding: 0;
+  overflow: hidden;
+  margin-bottom: 20px;
+  transition: background 0.3s, border-color 0.3s;
+}
+
+/* TABLE */
+.tableWrap {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  table-layout: fixed;
+  line-height: 1.4;
+}
+
+.table th {
+  text-align: left;
+  padding: 10px 14px;
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--text3);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1.5px solid var(--border);
+}
+
+.table td {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  vertical-align: middle;
+}
+
+.table tr:last-child td {
+  border-bottom: none;
+}
+
+.table tr:hover td {
+  background: var(--purple-dim);
+}
+
+.subCell {
+  font-size: 11px;
+  color: var(--text2);
+}
+
+/* POINTS BADGE */
+.ptsBadge {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--purple);
+}
+
+/* ACTION BTNS */
+.actionBtns {
+  display: flex;
+  gap: 2px;
+}
+
+.doneText {
+  font-size: 11px;
+  color: var(--text3);
+}
+
+@media (max-width: 640px) {
+  .content {
+    padding: 16px;
+  }
+
+  .pageTitle {
+    font-size: 18px;
+  }
+
+  .pageSub {
+    font-size: 12px;
+    margin-bottom: 18px;
+  }
+
+  .tabs {
+    overflow-x: auto;
+  }
+
+  .tab {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+
+  .table {
+    min-width: 720px;
+  }
+
+  .table th,
+  .table td {
+    padding: 8px 10px;
+  }
+
+  .actionBtns {
+    flex-wrap: wrap;
+  }
+}

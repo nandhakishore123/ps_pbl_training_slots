@@ -1,53 +1,50 @@
-@import "tailwindcss";
-
-:root {
-	/* Strict palette (user provided) */
-	--color-primary: #7D53F6;
-	--color-primary-light: rgba(125, 83, 246, 0.75);
-	--color-secondary: #ECE8FE;
-	--color-secondary-dark: #ddd7fc;
-	--color-bg: #f6f5fc;
-
-	/* Common sizing tokens */
-	--space-1: 0.25rem;
-	--space-2: 0.5rem;
-	--space-3: 0.75rem;
-	--space-4: 1rem;
-	--space-5: 1.25rem;
-	--space-6: 1.5rem;
-
-	--space-page-x: clamp(1rem, 3vw, 1.5rem);
-	--space-card-x: 1.25rem;
-	--space-card-y: 1rem;
-
-	--fs-2xs: 0.7rem;
-	--fs-xs: 0.8rem;
-	--fs-sm: 0.9rem;
-	--fs-md: 1rem;
-	--fs-lg: 1.15rem;
-	--fs-xl: 1.6rem;
-
-	--radius-md: 0.75rem;
-	--radius-lg: 1rem;
-	--radius-xl: 1.25rem;
-	--radius-card: 1.1rem;
-
-	/* Common widths */
-	--w-container: 1100px;
-	--w-modal-sm: 520px;
-	--w-modal-md: 640px;
-	--w-modal-lg: 700px;
-
-	/* Keep headings consistent without introducing new fonts */
-	--font-heading: inherit;
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
 }
 
-@layer base {
-	html {
-		background: var(--color-bg);
-	}
+:root {
+  --purple: #6c47ff;
+  --purple-dim: rgba(108, 71, 255, 0.1);
+  --purple-glow: rgba(108, 71, 255, 0.3);
+  --bg: #f0f2f8;
+  --white: #fff;
+  --border: #e5e4eb;
+  --text: #1a1a2e;
+  --text2: #6b7280;
+  --text3: #9ca3af;
+  --green: #10b981;
+  --red: #ef4444;
+  --gold: #f59e0b;
+  --blue: #3b82f6;
+  --font-head: 'Outfit', sans-serif;
+  --font-body: 'Plus Jakarta Sans', sans-serif;
+}
 
-	body {
-		background: var(--color-bg);
-	}
+body.dark-mode {
+  --bg: #13111e;
+  --white: #1e1b2e;
+  --border: #2d2a40;
+  --text: #f1f0ff;
+  --text2: #a09ab8;
+  --text3: #5c576e;
+}
+
+html,
+body {
+  min-height: 100vh;
+  font-family: var(--font-body);
+  background: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  transition: background 0.3s, color 0.3s;
+}
+
+#root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
 }

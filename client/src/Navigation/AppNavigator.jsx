@@ -16,13 +16,19 @@ import StudentFeedback from '../pages/Student/StudentFeedback .jsx';
 import TrainingSlots from '../pages/Student/TrainingSlots.jsx';
 
 //admin
-import AdminDashboard from "../pages/Admin/AdminDashboard.jsx";
-import Approvals from '../pages/Admin/Approvals.jsx';
-import FacultyAllocation from '../pages/Admin/FacultyAllocation.jsx';
-import {Reports ,Settings ,Notifications} from "../pages/Admin/OtherPages.jsx";
-import {PBLSlots , PSSlots} from "../pages/Admin/Slots.jsx";
-import Students from "../pages/Admin/Students.jsx"
-import VenueAllocation from '../pages/Admin/VenueAllocation.jsx';
+import AdminDashboard from '../pages/Admin/Dashboard/Dashboard.jsx'
+import Approvals from '../pages/Admin/Approvals/Approvals.jsx'
+import FacultyAllocation from '../pages/Admin/FacultyAllocation/FacultyAllocation.jsx'
+import Reports from '../pages/Admin/Reports/Reports.jsx'
+import Settings from '../pages/Admin/Settings/Settings.jsx'
+import Notifications from '../pages/Admin/Notifications/Notifications.jsx'
+import PBLSlots from '../pages/Admin/PBLSlots/PBLSlots.jsx'
+import PSSlots from '../pages/Admin/PSSlots/PSSlots.jsx'
+import Students from '../pages/Admin/StudentManagement/StudentManagement.jsx'
+import VenueAllocation from '../pages/Admin/VenueAllocation/VenueAllocation.jsx'
+
+import { AppProvider } from '../pages/Admin/context/AppContext.jsx'
+import { DataProvider } from '../pages/Admin/context/DataContext.jsx'
 
 function useBootstrapAuth() {
     const accessToken = useAuthStore((s) => s.accessToken);
@@ -76,6 +82,16 @@ function RequireAuth({ children }) {
     return children;
 }
 
+function AdminProviders({ children }) {
+    return (
+        <AppProvider>
+            <DataProvider>
+                {children}
+            </DataProvider>
+        </AppProvider>
+    );
+}
+
 function AppNavigator() {
     const { ready } = useBootstrapAuth();
     const user = useAuthStore((s) => s.user);
@@ -84,7 +100,7 @@ function AppNavigator() {
     if (!ready) return null;
 
     return (
-        <Router basename="/slot-matrix">
+        <Router>
             <Routes>
                 <Route path="/" element={<HomeRedirect />} />
                 <Route path="/auth/login" element={<Login/>}/>
@@ -104,16 +120,16 @@ function AppNavigator() {
 
                 {(Number(user?.role_id) === 3 || Number(user?.role_id) === 2) && (
                     <>
-                        <Route path="/admin-dashboard" element={<RequireAuth><AdminDashboard/></RequireAuth>} />
-                        <Route path="/approvals" element={<RequireAuth><Approvals/></RequireAuth>} />
-                        <Route path="/faculty-allocation" element={<RequireAuth><FacultyAllocation/></RequireAuth>} />
-                        <Route path="/reports" element={<RequireAuth><Reports/></RequireAuth>} />
-                        <Route path="/settings" element={<RequireAuth><Settings/></RequireAuth>} />
-                        <Route path="/notification" element={<RequireAuth><Notifications/></RequireAuth>} />
-                        <Route path="/ps-slot-management" element={<RequireAuth><PSSlots/></RequireAuth>} />
-                        <Route path="/pbl-slot-management" element={<RequireAuth><PBLSlots/></RequireAuth>} />
-                        <Route path="/view-students" element={<RequireAuth><Students/></RequireAuth>} />
-                        <Route path="/venue-allocation" element={<RequireAuth><VenueAllocation/></RequireAuth>} />
+                        <Route path="/admin-dashboard" element={<RequireAuth><AdminProviders><AdminDashboard/></AdminProviders></RequireAuth>} />
+                        <Route path="/approvals" element={<RequireAuth><AdminProviders><Approvals/></AdminProviders></RequireAuth>} />
+                        <Route path="/faculty-allocation" element={<RequireAuth><AdminProviders><FacultyAllocation/></AdminProviders></RequireAuth>} />
+                        <Route path="/reports" element={<RequireAuth><AdminProviders><Reports/></AdminProviders></RequireAuth>} />
+                        <Route path="/settings" element={<RequireAuth><AdminProviders><Settings/></AdminProviders></RequireAuth>} />
+                        <Route path="/notification" element={<RequireAuth><AdminProviders><Notifications/></AdminProviders></RequireAuth>} />
+                        <Route path="/ps-slot-management" element={<RequireAuth><AdminProviders><PSSlots/></AdminProviders></RequireAuth>} />
+                        <Route path="/pbl-slot-management" element={<RequireAuth><AdminProviders><PBLSlots/></AdminProviders></RequireAuth>} />
+                        <Route path="/view-students" element={<RequireAuth><AdminProviders><Students/></AdminProviders></RequireAuth>} />
+                        <Route path="/venue-allocation" element={<RequireAuth><AdminProviders><VenueAllocation/></AdminProviders></RequireAuth>} />
                     </>
                 )}
 
