@@ -33,13 +33,17 @@ import { DataProvider } from '../pages/Admin/context/DataContext.jsx'
 function useBootstrapAuth() {
     const accessToken = useAuthStore((s) => s.accessToken);
     const [ready, setReady] = useState(false);
+    const [authFailed, setAuthFailed] = useState(false);
 
     useEffect(() => {
         let alive = true;
         (async () => {
             try {
                 if (!accessToken) {
-                    await silentRefresh();
+                    const refreshed = await silentRefresh();
+                    if (!refreshed) {
+                        setAuthFailed(true);
+                    }
                 }
             } finally {
                 if (alive) setReady(true);
@@ -51,7 +55,7 @@ function useBootstrapAuth() {
         };
     }, []);
 
-    return { ready };
+    return { ready, authFailed };
 }
 
 function HomeRedirect() {
@@ -93,7 +97,7 @@ function AdminProviders({ children }) {
 }
 
 function AppNavigator() {
-    const { ready } = useBootstrapAuth();
+    const { ready, authFailed } = useBootstrapAuth();
     const user = useAuthStore((s) => s.user);
     const accessToken = useAuthStore((s) => s.accessToken);
 
@@ -102,6 +106,9 @@ function AppNavigator() {
     return (
         <Router>
             <Routes>
+                {authFailed && (
+                    <Route path="*" element={<Navigate to="/auth/login" replace />} />
+                )}
                 <Route path="/" element={<HomeRedirect />} />
                 <Route path="/auth/login" element={<Login/>}/>
 
