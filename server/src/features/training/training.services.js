@@ -1,3 +1,4 @@
+import db from '../../config/db.js';
 import * as trainingModel from './training.model.js';
 
 const normalizeStr = (v) => {
@@ -74,4 +75,111 @@ export const getSkillDetails = async (trainingSkillId) => {
 
 export const getSkillSlots = async (trainingSkillId) => {
   return trainingModel.listSkillSlots(trainingSkillId);
+};
+
+export const createBooking = async ({ userId, slotId, trainingSkillId }) => {
+  if (!userId) {
+    const err = new Error('Unauthorized');
+    err.status = 401;
+    throw err;
+  }
+  if (!slotId) {
+    const err = new Error('Slot id is required');
+    err.status = 400;
+    throw err;
+  }
+  if (!trainingSkillId) {
+    const err = new Error('Training skill id is required');
+    err.status = 400;
+    throw err;
+  }
+
+  const studentId = await trainingModel.getStudentIdByUserId(userId);
+  if (!studentId) {
+    const err = new Error('Student not found');
+    err.status = 404;
+    throw err;
+  }
+
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    const slot = await trainingModel.getSlotTimingById(slotId, conn);
+    if (!slot) {
+      const err = new Error('Slot timing not found');
+      err.status = 404;
+      throw err;
+    }
+    if (!slot.is_active) {
+      const err = new Error('Slot timing is inactive');
+      err.status = 400;
+      throw err;
+    }
+
+    const existing = await trainingModel.getExistingBookingForSlotDate(studentId, slot.slot_id, conn);
+    if (existing) {
+      const err = new Error('Slot already booked for today');
+      err.status = 409;
+      throw err;
+    }
+
+    const candidates = await trainingModel.listAvailableMappingsForSlot({
+      startTime: slot.start_time,
+      endTime: slot.end_time,
+      preferredMappingId: 0,
+    }, conn);
+
+    if (!candidates.length) {
+      const err = new Error('No seats available for this slot');
+      err.status = 409;
+      throw err;
+    }
+
+    let selectedMappingId = null;
+    for (const candidate of candidates) {
+      const updated = await trainingModel.incrementMappingBooking(candidate.mapping_id, conn);
+      if (updated > 0) {
+        selectedMappingId = candidate.mapping_id;
+        break;
+      }
+    }
+
+    if (!selectedMappingId) {
+      const err = new Error('No seats available for this slot');
+      err.status = 409;
+      throw err;
+    }
+
+    const bookingId = await trainingModel.insertStudentBooking({
+      studentId,
+      trainingSkillId: Number(trainingSkillId),
+      mappingId: selectedMappingId,
+      slotId: slot.slot_id,
+    }, conn);
+
+    const booking = await trainingModel.getBookingById(bookingId, conn);
+    await conn.commit();
+
+    return {
+      ...booking,
+      requested_slot_id: Number(slot.slot_id),
+    };
+  } catch (error) {
+    await conn.rollback();
+    throw error;
+  } finally {
+    conn.release();
+  }
+};
+
+export const getStudentBookings = async ({ userId }) => {
+  const studentId = await trainingModel.getStudentIdByUserId(userId);
+  if (!studentId) {
+    const err = new Error('Student not found');
+    err.status = 404;
+    throw err;
+  }
+
+  return trainingModel.listStudentBookings(studentId);
 };

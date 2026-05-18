@@ -355,6 +355,37 @@ function getDeptStyle(dept) {
   return map[dept] || { bg:'rgba(108,71,255,0.1)', color:'#6c47ff', border:'rgba(108,71,255,0.2)' }
 }
 
+function getBookingDisplay(booking) {
+  const info = booking?.info || {}
+  const date = info.booking_date || info.day || booking?.day || '—'
+  const time = info.time || booking?.time || (info.start_time ? `${String(info.start_time)} to ${String(info.end_time || '')}` : '—')
+  const venue = info.venue || booking?.venue || info.venue_name || '—'
+  return { date, time, venue }
+}
+
+function normalizeBookingRow(row, fallback = {}) {
+  if (!row) return null
+  const typeRaw = String(row.skill_type || fallback.skill_type || '').toUpperCase()
+  const typeKey = typeRaw === 'PBL' ? 'pbl' : 'ps'
+  const typeLabel = typeKey === 'pbl' ? 'PBL Training Slot' : 'PS Training Slot'
+  const skillId = row.training_skill_id || fallback.training_skill_id
+  if (!skillId) return null
+  return {
+    key: `${typeKey}_${skillId}`,
+    booking: {
+      slot: String(row.mapping_id || fallback.mapping_id || ''),
+      info: {
+        start_time: row.start_time || fallback.start_time,
+        end_time: row.end_time || fallback.end_time,
+        venue_name: row.venue_name || fallback.venue_name,
+        booking_date: row.booking_date || fallback.booking_date,
+      },
+      courseName: row.skill_name || fallback.courseName || fallback.skill_name,
+      type: typeLabel,
+    },
+  }
+}
+
 const API_ORIGIN = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api').replace(/\/?api\/?$/, '')
 
 function resolveSkillImageUrl(imageUrl, type) {
@@ -443,6 +474,16 @@ function useTrainingPagedSkills(type) {
     }
   }, [catId, search, type])
 
+  const refreshPage = useCallback(() => {
+    if (inFlightRef.current) return
+    queryKeyRef.current = ''
+    fetchedOffsetsRef.current = new Set()
+    setItems([])
+    setOffset(0)
+    setHasMore(true)
+    fetchPage({ nextOffset: 0, replace: true })
+  }, [fetchPage])
+
   useEffect(() => {
     let ignore = false
     ;(async () => {
@@ -496,6 +537,8 @@ function useTrainingPagedSkills(type) {
     error,
     hasMore,
     sentinelRef,
+    pageSize: PAGE_SIZE,
+    refreshPage,
   }
 }
 
@@ -718,6 +761,7 @@ function PSLevelSelect({ course, onBack, onSelectLevel }) {
 function PSDetail({ course, onBack, onBookSlot, bookedSlot }) {
   const cs = getCatStyle(course.category)
   const isBooked = !!bookedSlot
+  const display = getBookingDisplay(bookedSlot)
   const img = resolveSkillImageUrl(course.image_url, 'PS')
   const fallbackTopics = Array.isArray(course.topics) ? course.topics : []
   const topics = Array.isArray(course.selectedLevel?.syllabus) && course.selectedLevel.syllabus.length
@@ -753,7 +797,7 @@ function PSDetail({ course, onBack, onBookSlot, bookedSlot }) {
           {isBooked ? (
             <div style={{ background:'rgba(16,185,129,0.08)', border:'1px solid rgba(16,185,129,0.25)', borderRadius:10, padding:'14px 16px' }}>
               <div style={{ fontSize:13, fontWeight:700, color:'#059669', marginBottom:10 }}>✅ Slot Booked</div>
-              {[['Date',bookedSlot.day],['Timings',bookedSlot.time],['Venue',bookedSlot.venue]].map(([l,v])=>(
+              {[['Date',display.date],['Timings',display.time],['Venue',display.venue]].map(([l,v])=>(
                 <div key={l} style={{ marginBottom:8 }}>
                   <div style={{ fontSize:10, fontWeight:700, color:'var(--text3)', letterSpacing:1, textTransform:'uppercase', marginBottom:2 }}>{l}</div>
                   <div style={{ fontSize:13, fontWeight:700, color:'var(--text)' }}>{v}</div>
@@ -787,6 +831,7 @@ function PSDetail({ course, onBack, onBookSlot, bookedSlot }) {
 function PBLDetail({ lab, onBack, onBookSlot, bookedSlot }) {
   const dc = getDeptStyle(lab.dept)
   const isBooked = !!bookedSlot
+  const display = getBookingDisplay(bookedSlot)
   const img = resolveSkillImageUrl(lab.image_url, 'PBL')
   const activities = Array.isArray(lab.activities) ? lab.activities : []
   return (
@@ -819,7 +864,7 @@ function PBLDetail({ lab, onBack, onBookSlot, bookedSlot }) {
           {isBooked ? (
             <div style={{ background:'rgba(16,185,129,0.08)', border:'1px solid rgba(16,185,129,0.25)', borderRadius:10, padding:'14px 16px' }}>
               <div style={{ fontSize:13, fontWeight:700, color:'#059669', marginBottom:10 }}>✅ Slot Booked</div>
-              {[['Date',bookedSlot.day],['Timings',bookedSlot.time],['Venue',bookedSlot.venue]].map(([l,v])=>(
+              {[['Date',display.date],['Timings',display.time],['Venue',display.venue]].map(([l,v])=>(
                 <div key={l} style={{ marginBottom:8 }}>
                   <div style={{ fontSize:10, fontWeight:700, color:'var(--text3)', letterSpacing:1, textTransform:'uppercase', marginBottom:2 }}>{l}</div>
                   <div style={{ fontSize:13, fontWeight:700, color:'var(--text)' }}>{v}</div>
@@ -860,7 +905,7 @@ function PBLDetail({ lab, onBack, onBookSlot, bookedSlot }) {
 }
 
 // ── BookingModal component ───────────────────────────────────
-function BookingModal({ isOpen, onClose, onConfirm, courseName, type, trainingSkillId }) {
+function BookingModal({ isOpen, onClose, onConfirm, courseName, type, trainingSkillId, confirming, confirmError }) {
   const [selectedSlot, setSelectedSlot] = useState('')
   const [slots, setSlots] = useState([])
   const [loading, setLoading] = useState(false)
@@ -888,7 +933,7 @@ function BookingModal({ isOpen, onClose, onConfirm, courseName, type, trainingSk
   if (!isOpen) return null
   const hasSlots = Array.isArray(slots) && slots.length > 0
   const info = hasSlots
-    ? (slots.find((s) => String(s.mapping_id) === String(selectedSlot)) || null)
+    ? (slots.find((s) => String(s.slot_id) === String(selectedSlot)) || null)
     : null
   const sub  = type==='ps' ? 'Practical Skill Training Session' : 'PBL Lab Session'
   const seatsAvailable = Number(info?.seats_available ?? 0)
@@ -921,8 +966,8 @@ function BookingModal({ isOpen, onClose, onConfirm, courseName, type, trainingSk
             <option value="">Select a slot...</option>
             {hasSlots &&
               slots.map((s) => (
-                <option key={s.mapping_id} value={String(s.mapping_id)}>
-                  {s.venue_name || 'Venue'} — {String(s.start_time || '')} to {String(s.end_time || '')}
+                <option key={s.slot_id} value={String(s.slot_id)}>
+                  {String(s.start_time || '')} to {String(s.end_time || '')}
                 </option>
               ))}
           </select>
@@ -938,17 +983,22 @@ function BookingModal({ isOpen, onClose, onConfirm, courseName, type, trainingSk
           {info && (
             <div className="pt-slot-info">
               <div className="pt-slot-row">🕐 <strong>{`${String(info.start_time || '')} to ${String(info.end_time || '')}`}</strong></div>
-              <div className="pt-slot-row">📍 <strong>{info.venue || info.venue_name || '—'}</strong></div>
+              <div className="pt-slot-row">📍 <strong>{info.venue || info.venue_name || 'Assigned after booking'}</strong></div>
               <div className="pt-slot-row">👥 <span style={{fontWeight:700}}>{seatsAvailable} seats available</span></div>
             </div>
           )}
           <button
             className="pt-confirm-btn"
-            disabled={loading || !selectedSlot || !info || seatsAvailable <= 0}
+            disabled={loading || confirming || !selectedSlot || !info || seatsAvailable <= 0}
             onClick={handleConfirm}
           >
-            Book Now
+            {confirming ? 'Booking...' : 'Book Now'}
           </button>
+          {confirmError && (
+            <div style={{ marginTop:10, color:'var(--red)', fontSize:12, fontWeight:600 }}>
+              {confirmError}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -971,7 +1021,7 @@ function BookingConfirm({ booking, onDone }) {
 
   if (!booking) return null
   const { courseName, type, info } = booking
-  const dateTxt = info?.day || (info?.start_time ? String(info.start_time) : '—')
+  const dateTxt = info?.booking_date || info?.day || (info?.start_time ? String(info.start_time) : '—')
   const timeTxt = info?.time || (info?.start_time ? `${String(info.start_time)} to ${String(info.end_time || '')}` : '—')
   const venueTxt = info?.venue || info?.venue_name || '—'
 
@@ -1051,18 +1101,20 @@ function BookedSlotsPopup({ bookedSlots }) {
           <div className="pt-booked-popup-body">
             {count===0
               ? <div style={{textAlign:'center',padding:'20px',color:'var(--text3)',fontSize:13}}>No slots booked yet</div>
-              : slots.map(([key,b])=>(
+              : slots.map(([key,b])=>{
+                const display = getBookingDisplay(b)
+                return (
                 <div className="pt-booked-item" key={key}>
                   <div className="pt-booked-item-name">{b.courseName}</div>
                   <div className="pt-booked-item-type">{b.type}</div>
-                  {[['Date',b.info?.day],['Time',b.info?.time],['Venue',b.info?.venue]].map(([lbl,val])=>(
+                  {[['Date',display.date],['Time',display.time],['Venue',display.venue]].map(([lbl,val])=>(
                     <div className="pt-booked-item-row" key={lbl}>
                       <span className="pt-booked-item-label">{lbl}</span>
                       <span>{val||'—'}</span>
                     </div>
                   ))}
                 </div>
-              ))
+              )})
             }
           </div>
         </div>
@@ -1085,12 +1137,25 @@ function PSSection({ bookedSlots, onBookSlot }) {
     error,
     hasMore,
     sentinelRef,
+    pageSize,
+    refreshPage,
   } = useTrainingPagedSkills('PS')
 
   const [selected, setSelected] = useState(null) // summary
   const [details, setDetails] = useState(null) // normalized details
   const [detailsLoading, setDetailsLoading] = useState(false)
   const [levelIdx, setLevelIdx] = useState(null)
+  const didMountRef = useRef(false)
+
+  useEffect(() => {
+    if (!didMountRef.current) {
+      didMountRef.current = true
+      return
+    }
+    if (!selected && items.length < pageSize && !loading) {
+      refreshPage()
+    }
+  }, [selected, items.length, pageSize, loading, refreshPage])
 
   const openCourse = useCallback(async (course) => {
     setSelected(course)
@@ -1336,12 +1401,25 @@ function PBLSection({ bookedSlots, onBookSlot }) {
     error,
     hasMore,
     sentinelRef,
+    pageSize,
+    refreshPage,
   } = useTrainingPagedSkills('PBL')
 
   const [selected, setSelected] = useState(null)
   const [details, setDetails] = useState(null)
   const [detailsLoading, setDetailsLoading] = useState(false)
   const [activityIdx, setActivityIdx] = useState(null)
+  const didMountRef = useRef(false)
+
+  useEffect(() => {
+    if (!didMountRef.current) {
+      didMountRef.current = true
+      return
+    }
+    if (!selected && items.length < pageSize && !loading) {
+      refreshPage()
+    }
+  }, [selected, items.length, pageSize, loading, refreshPage])
 
   const openLab = useCallback(async (lab) => {
     setSelected(lab)
@@ -1468,6 +1546,8 @@ export default function TrainingSlots({ onBack }) {
   const [modalType,    setModalType]   = useState('ps')
   const [showConfirm,  setShowConfirm] = useState(false)
   const [lastBooking,  setLastBooking] = useState(null)
+  const [bookingLoading, setBookingLoading] = useState(false)
+  const [bookingError, setBookingError] = useState('')
 
   const handleBack = () => {
     if (showConfirm) return setShowConfirm(false)
@@ -1497,21 +1577,64 @@ export default function TrainingSlots({ onBack }) {
     localStorage.setItem('pt-dark', darkMode?'1':'0')
   }, [darkMode])
 
+  useEffect(() => {
+    let ignore = false
+    ;(async () => {
+      try {
+        const payload = await trainingService.getBookings()
+        if (ignore) return
+        const rows = payload?.data || []
+        const next = {}
+        rows.forEach((row) => {
+          const normalized = normalizeBookingRow(row)
+          if (normalized) next[normalized.key] = normalized.booking
+        })
+        setBookedSlots(next)
+      } catch {
+        if (!ignore) setBookedSlots({})
+      }
+    })()
+    return () => { ignore = true }
+  }, [])
+
   // Open booking modal
   function openBooking(course, type) {
     setModalCourse(course)
     setModalType(type)
+    setBookingError('')
     setShowModal(true)
   }
 
   // Handle booking confirm
-  function handleConfirm({ slot, info, courseName, type }) {
-    const key = `${type}_${modalCourse?.id}`
-    const booking = { slot, info, courseName, type: type==='ps'?'PS Training Slot':'PBL Training Slot' }
-    setBookedSlots(prev => ({ ...prev, [key]: booking }))
-    setLastBooking(booking)
-    setShowModal(false)
-    setShowConfirm(true)
+  async function handleConfirm({ slot, info, courseName, type }) {
+    if (!modalCourse?.id || !slot) return
+    setBookingError('')
+    setBookingLoading(true)
+    try {
+      const payload = await trainingService.bookSlot({
+        trainingSkillId: modalCourse.id,
+        slotId: slot,
+      })
+      const row = payload?.data
+      const normalized = normalizeBookingRow(row, {
+        training_skill_id: modalCourse.id,
+        slot_id: slot,
+        start_time: info?.start_time,
+        end_time: info?.end_time,
+        courseName,
+        skill_type: type === 'pbl' ? 'PBL' : 'PS',
+      })
+      if (!normalized) throw new Error('Booking failed')
+      setBookedSlots(prev => ({ ...prev, [normalized.key]: normalized.booking }))
+      setLastBooking(normalized.booking)
+      setShowModal(false)
+      setShowConfirm(true)
+    } catch (err) {
+      const msg = err?.response?.data?.message || err?.message || 'Booking failed'
+      setBookingError(msg)
+    } finally {
+      setBookingLoading(false)
+    }
   }
 
   return (
@@ -1606,6 +1729,8 @@ export default function TrainingSlots({ onBack }) {
         courseName={modalCourse?.name + (modalType==='ps'?' — PS Training':' — PBL Session')}
         type={modalType}
         trainingSkillId={modalCourse?.id}
+        confirming={bookingLoading}
+        confirmError={bookingError}
       />
     </div>
   )
