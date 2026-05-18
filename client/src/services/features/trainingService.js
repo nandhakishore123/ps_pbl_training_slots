@@ -18,4 +18,12 @@ export const trainingService = {
   getSkillSlots(trainingSkillId) {
     return api.get(`/training/skills/${trainingSkillId}/slots`);
   },
+
+  getBookings() {
+    return api.get('/training/bookings');
+  },
+
+  bookSlot({ trainingSkillId, slotId }) {
+    return api.post('/training/bookings', { trainingSkillId, slotId });
+  },
 };

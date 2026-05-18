@@ -29,6 +29,8 @@ import VenueAllocation from '../pages/Admin/VenueAllocation/VenueAllocation.jsx'
 
 import { AppProvider } from '../pages/Admin/context/AppContext.jsx'
 import { DataProvider } from '../pages/Admin/context/DataContext.jsx'
+import FileNotFound from '../pages/404/FileNotFound.jsx';
+
 
 function useBootstrapAuth() {
     const accessToken = useAuthStore((s) => s.accessToken);
@@ -103,12 +105,20 @@ function AppNavigator() {
 
     if (!ready) return null;
 
+    if (authFailed) {
+        return (
+            <Router>
+                <Routes>
+                    <Route path="/auth/login" element={<Login />} />
+                    <Route path="*" element={<Navigate to="/auth/login" replace />} />
+                </Routes>
+            </Router>
+        );
+    }
+
     return (
         <Router>
             <Routes>
-                {authFailed && (
-                    <Route path="*" element={<Navigate to="/auth/login" replace />} />
-                )}
                 <Route path="/" element={<HomeRedirect />} />
                 <Route path="/auth/login" element={<Login/>}/>
 
@@ -140,14 +150,14 @@ function AppNavigator() {
                     </>
                 )}
 
-                <Route path="/not-found" element={<h1>404 file not found</h1>}/>
+                <Route path="/not-found" element={<FileNotFound/>}/>
                 <Route
                     path="*"
                     element={
                         accessToken && user ? (
-                            <Navigate to="/" replace />
+                            <FileNotFound />
                         ) : (
-                            <Navigate to="/not-found" replace />
+                            <Navigate to="/auth/login" replace />
                         )
                     }
                 />

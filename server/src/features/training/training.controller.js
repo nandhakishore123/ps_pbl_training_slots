@@ -1,5 +1,5 @@
 import * as trainingServices from './training.services.js';
-import { successResponse, internalServerErrorResponse } from '../../utils/response.js';
+import { successResponse, createdResponse, errorResponse, internalServerErrorResponse } from '../../utils/response.js';
 
 export const getCategories = async (req, res) => {
   try {
@@ -41,5 +41,36 @@ export const getSkillSlots = async (req, res) => {
   } catch (error) {
     console.error('Error in getSkillSlots:', error);
     return internalServerErrorResponse(res, error.message || 'Failed to fetch training slots');
+  }
+};
+
+export const createBooking = async (req, res) => {
+  try {
+    const { slotId, trainingSkillId } = req.body || {};
+    const data = await trainingServices.createBooking({
+      userId: req.user?.user_id,
+      slotId,
+      trainingSkillId,
+    });
+    return createdResponse(res, 'Training slot booked', data);
+  } catch (error) {
+    console.error('Error in createBooking:', error);
+    if (error?.status) {
+      return errorResponse(res, error.message || 'Failed to book slot', error.status);
+    }
+    return internalServerErrorResponse(res, error.message || 'Failed to book slot');
+  }
+};
+
+export const getStudentBookings = async (req, res) => {
+  try {
+    const data = await trainingServices.getStudentBookings({ userId: req.user?.user_id });
+    return successResponse(res, 'Student bookings fetched', data);
+  } catch (error) {
+    console.error('Error in getStudentBookings:', error);
+    if (error?.status) {
+      return errorResponse(res, error.message || 'Failed to fetch bookings', error.status);
+    }
+    return internalServerErrorResponse(res, error.message || 'Failed to fetch bookings');
   }
 };

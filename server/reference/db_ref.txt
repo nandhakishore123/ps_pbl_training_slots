@@ -101,7 +101,6 @@ TABLE: venue_mapping
 - mapping_id        BIGINT         PK
 - faculty_id        BIGINT         FK -> faculties(faculty_id)
 - venue_id          BIGINT         FK -> venues(venue_id)
-- training_skill_id BIGINT         FK -> training_skills(training_skill_id)
 - start_time        TIME
 - end_time          TIME
 - current_bookings  INT
