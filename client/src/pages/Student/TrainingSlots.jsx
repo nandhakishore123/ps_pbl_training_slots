@@ -1138,24 +1138,12 @@ function PSSection({ bookedSlots, onBookSlot }) {
     hasMore,
     sentinelRef,
     pageSize,
-    refreshPage,
   } = useTrainingPagedSkills('PS')
 
   const [selected, setSelected] = useState(null) // summary
   const [details, setDetails] = useState(null) // normalized details
   const [detailsLoading, setDetailsLoading] = useState(false)
   const [levelIdx, setLevelIdx] = useState(null)
-  const didMountRef = useRef(false)
-
-  useEffect(() => {
-    if (!didMountRef.current) {
-      didMountRef.current = true
-      return
-    }
-    if (!selected && items.length < pageSize && !loading) {
-      refreshPage()
-    }
-  }, [selected, items.length, pageSize, loading, refreshPage])
 
   const openCourse = useCallback(async (course) => {
     setSelected(course)
@@ -1402,24 +1390,12 @@ function PBLSection({ bookedSlots, onBookSlot }) {
     hasMore,
     sentinelRef,
     pageSize,
-    refreshPage,
   } = useTrainingPagedSkills('PBL')
 
   const [selected, setSelected] = useState(null)
   const [details, setDetails] = useState(null)
   const [detailsLoading, setDetailsLoading] = useState(false)
   const [activityIdx, setActivityIdx] = useState(null)
-  const didMountRef = useRef(false)
-
-  useEffect(() => {
-    if (!didMountRef.current) {
-      didMountRef.current = true
-      return
-    }
-    if (!selected && items.length < pageSize && !loading) {
-      refreshPage()
-    }
-  }, [selected, items.length, pageSize, loading, refreshPage])
 
   const openLab = useCallback(async (lab) => {
     setSelected(lab)
