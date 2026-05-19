@@ -50,8 +50,7 @@ app.get('/health', (req, res) => {
 });
 
 // Static course assets
-app.use('/courses/ps_courses', express.static(path.join(__dirname, 'courses', 'ps_courses')));
-app.use('/courses/pbl_courses', express.static(path.join(__dirname, 'courses', 'pbl_courses')));
+app.use('/courses', express.static(path.join(__dirname, '../public/courses')))
 
 app.use('/api/auth', authRoutes);
 app.use('/api/points', pointsRoutes);
