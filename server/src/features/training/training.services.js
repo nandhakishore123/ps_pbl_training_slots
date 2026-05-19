@@ -6,6 +6,38 @@ const normalizeStr = (v) => {
   return String(v).trim();
 };
 
+const shouldRetryStatusError = (error) => {
+  if (!error) return false;
+  if (error.code === 'WARN_DATA_TRUNCATED' || error.errno === 1265) return true;
+  const msg = String(error.sqlMessage || error.message || '');
+  return msg.toLowerCase().includes("status");
+};
+
+const resolveStudentId = async (user, conn = null) => {
+  const userId = user?.user_id ?? user;
+  if (!userId) {
+    const err = new Error('Unauthorized');
+    err.status = 401;
+    throw err;
+  }
+
+  const name = normalizeStr(user?.name) || null;
+  const regNum = normalizeStr(user?.reg_num) || null;
+  const studentId = await trainingModel.getOrCreateStudentIdByUser({
+    userId,
+    name,
+    regNum,
+  }, conn);
+
+  if (!studentId) {
+    const err = new Error('Student not found');
+    err.status = 404;
+    throw err;
+  }
+
+  return studentId;
+};
+
 export const getCategories = async () => {
   return trainingModel.listCategories();
 };
@@ -77,8 +109,9 @@ export const getSkillSlots = async (trainingSkillId) => {
   return trainingModel.listSkillSlots(trainingSkillId);
 };
 
-export const createBooking = async ({ userId, slotId, trainingSkillId }) => {
-  if (!userId) {
+export const createBooking = async ({ user, userId, slotId, trainingSkillId }) => {
+  const resolvedUser = user || (userId ? { user_id: userId } : null);
+  if (!resolvedUser) {
     const err = new Error('Unauthorized');
     err.status = 401;
     throw err;
@@ -94,16 +127,11 @@ export const createBooking = async ({ userId, slotId, trainingSkillId }) => {
     throw err;
   }
 
-  const studentId = await trainingModel.getStudentIdByUserId(userId);
-  if (!studentId) {
-    const err = new Error('Student not found');
-    err.status = 404;
-    throw err;
-  }
-
   const conn = await db.getConnection();
   try {
     await conn.beginTransaction();
+
+    const studentId = await resolveStudentId(resolvedUser, conn);
 
     const slot = await trainingModel.getSlotTimingById(slotId, conn);
     if (!slot) {
@@ -151,12 +179,28 @@ export const createBooking = async ({ userId, slotId, trainingSkillId }) => {
       throw err;
     }
 
-    const bookingId = await trainingModel.insertStudentBooking({
-      studentId,
-      trainingSkillId: Number(trainingSkillId),
-      mappingId: selectedMappingId,
-      slotId: slot.slot_id,
-    }, conn);
+    let bookingId;
+    try {
+      bookingId = await trainingModel.insertStudentBooking({
+        studentId,
+        trainingSkillId: Number(trainingSkillId),
+        mappingId: selectedMappingId,
+        slotId: slot.slot_id,
+        status: 'ONGOING',
+      }, conn);
+    } catch (error) {
+      if (shouldRetryStatusError(error)) {
+        bookingId = await trainingModel.insertStudentBooking({
+          studentId,
+          trainingSkillId: Number(trainingSkillId),
+          mappingId: selectedMappingId,
+          slotId: slot.slot_id,
+          status: 1,
+        }, conn);
+      } else {
+        throw error;
+      }
+    }
 
     const booking = await trainingModel.getBookingById(bookingId, conn);
     await conn.commit();
@@ -173,13 +217,14 @@ export const createBooking = async ({ userId, slotId, trainingSkillId }) => {
   }
 };
 
-export const getStudentBookings = async ({ userId }) => {
-  const studentId = await trainingModel.getStudentIdByUserId(userId);
-  if (!studentId) {
-    const err = new Error('Student not found');
-    err.status = 404;
+export const getStudentBookings = async ({ user, userId }) => {
+  const resolvedUser = user || (userId ? { user_id: userId } : null);
+  if (!resolvedUser) {
+    const err = new Error('Unauthorized');
+    err.status = 401;
     throw err;
   }
 
+  const studentId = await resolveStudentId(resolvedUser);
   return trainingModel.listStudentBookings(studentId);
 };

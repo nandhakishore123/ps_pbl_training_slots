@@ -187,6 +187,31 @@ export const getStudentIdByUserId = async (userId, conn = null) => {
   return rows?.[0]?.student_id ?? null;
 };
 
+export const createStudentForUser = async ({ userId, name, regNum }, conn = null) => {
+  const exec = getExec(conn);
+  const [result] = await exec.execute(
+    `INSERT INTO students (user_id, reg_num, name, is_active)
+     VALUES (?, ?, ?, 1)`,
+    [Number(userId), regNum || null, name || null]
+  );
+  return result?.insertId ?? null;
+};
+
+export const getOrCreateStudentIdByUser = async ({ userId, name, regNum }, conn = null) => {
+  if (!userId) return null;
+  const existing = await getStudentIdByUserId(userId, conn);
+  if (existing) return existing;
+
+  try {
+    return await createStudentForUser({ userId, name, regNum }, conn);
+  } catch (error) {
+    if (error?.code === 'ER_DUP_ENTRY') {
+      return getStudentIdByUserId(userId, conn);
+    }
+    throw error;
+  }
+};
+
 export const getSlotTimingById = async (slotId, conn = null) => {
   const exec = getExec(conn);
   const [rows] = await exec.execute(
@@ -280,13 +305,13 @@ export const incrementMappingBooking = async (mappingId, conn = null) => {
   return result?.affectedRows ?? 0;
 };
 
-export const insertStudentBooking = async ({ studentId, trainingSkillId, mappingId, slotId }, conn = null) => {
+export const insertStudentBooking = async ({ studentId, trainingSkillId, mappingId, slotId, status = 'ONGOING' }, conn = null) => {
   const exec = getExec(conn);
   const [result] = await exec.execute(
     `INSERT INTO student_booking
       (student_id, training_skill_id, mapping_id, slot_id, booking_date, status)
-     VALUES (?, ?, ?, ?, CURDATE(), 'ONGOING')`,
-    [Number(studentId), Number(trainingSkillId), Number(mappingId), Number(slotId)]
+     VALUES (?, ?, ?, ?, CURDATE(), ?)`,
+    [Number(studentId), Number(trainingSkillId), Number(mappingId), Number(slotId), status]
   );
   return result?.insertId ?? null;
 };

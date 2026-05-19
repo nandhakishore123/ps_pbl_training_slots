@@ -41,11 +41,14 @@ function useBootstrapAuth() {
         let alive = true;
         (async () => {
             try {
-                if (!accessToken) {
-                    const refreshed = await silentRefresh();
-                    if (!refreshed) {
-                        setAuthFailed(true);
-                    }
+                if (accessToken) {
+                    if (alive) setAuthFailed(false);
+                    return;
+                }
+
+                const refreshed = await silentRefresh();
+                if (alive && !refreshed) {
+                    setAuthFailed(true);
                 }
             } finally {
                 if (alive) setReady(true);
@@ -55,7 +58,7 @@ function useBootstrapAuth() {
         return () => {
             alive = false;
         };
-    }, []);
+    }, [accessToken]);
 
     return { ready, authFailed };
 }
@@ -106,7 +109,7 @@ function AppNavigator() {
 
     if (!ready) return null;
 
-    if (authFailed) {
+    if (authFailed && !accessToken) {
         return (
             <Router basename={baseName}>
                 <Routes>

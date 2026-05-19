@@ -386,7 +386,18 @@ function normalizeBookingRow(row, fallback = {}) {
   }
 }
 
-const API_ORIGIN = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api').replace(/\/?api\/?$/, '')
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api'
+const API_ORIGIN = API_BASE_URL.replace(/\/?api\/?$/, '')
+const ASSET_BASE_URL = (import.meta.env.VITE_ASSET_BASE_URL || '').trim()
+const ASSET_ORIGIN = ASSET_BASE_URL
+  ? ASSET_BASE_URL.replace(/\/$/, '')
+  : (() => {
+      try {
+        return new URL(API_ORIGIN, window.location.href).origin
+      } catch {
+        return window.location.origin
+      }
+    })()
 
 function resolveSkillImageUrl(imageUrl, type) {
   if (!imageUrl) return heroImg
@@ -394,13 +405,13 @@ function resolveSkillImageUrl(imageUrl, type) {
   if (!raw) return heroImg
   if (/^https?:\/\//i.test(raw)) return raw
 
-  if (raw.startsWith('/')) return `${API_ORIGIN}${raw}`
-  if (raw.startsWith('courses/')) return `${API_ORIGIN}/${raw}`
-  if (raw.startsWith('ps_courses/')) return `${API_ORIGIN}/courses/${raw}`
-  if (raw.startsWith('pbl_courses/')) return `${API_ORIGIN}/courses/${raw}`
+  if (raw.startsWith('/')) return `${ASSET_ORIGIN}${raw}`
+  if (raw.startsWith('courses/')) return `${ASSET_ORIGIN}/${raw}`
+  if (raw.startsWith('ps_courses/')) return `${ASSET_ORIGIN}/courses/${raw}`
+  if (raw.startsWith('pbl_courses/')) return `${ASSET_ORIGIN}/courses/${raw}`
 
   const folder = String(type).toUpperCase() === 'PBL' ? 'pbl_courses' : 'ps_courses'
-  return `${API_ORIGIN}/courses/${folder}/${raw}`
+  return `${ASSET_ORIGIN}/courses/${folder}/${raw}`
 }
 
 function useTrainingPagedSkills(type) {
@@ -513,6 +524,8 @@ function useTrainingPagedSkills(type) {
     const el = sentinelRef.current
     if (!el) return
     if (!hasMore) return
+    if (!items.length) return
+    if (loading) return
 
     const obs = new IntersectionObserver(
       (entries) => {
@@ -524,7 +537,7 @@ function useTrainingPagedSkills(type) {
     )
     obs.observe(el)
     return () => obs.disconnect()
-  }, [fetchPage, hasMore, offset])
+  }, [fetchPage, hasMore, items.length, loading, offset])
 
   return {
     categories,
