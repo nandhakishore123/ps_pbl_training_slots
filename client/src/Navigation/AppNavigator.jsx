@@ -102,12 +102,13 @@ function AppNavigator() {
     const { ready, authFailed } = useBootstrapAuth();
     const user = useAuthStore((s) => s.user);
     const accessToken = useAuthStore((s) => s.accessToken);
+    const baseName = import.meta.env.BASE_URL;
 
     if (!ready) return null;
 
     if (authFailed) {
         return (
-            <Router>
+            <Router basename={baseName}>
                 <Routes>
                     <Route path="/auth/login" element={<Login />} />
                     <Route path="*" element={<Navigate to="/auth/login" replace />} />
@@ -117,7 +118,7 @@ function AppNavigator() {
     }
 
     return (
-        <Router>
+        <Router basename={baseName}>
             <Routes>
                 <Route path="/" element={<HomeRedirect />} />
                 <Route path="/auth/login" element={<Login/>}/>
