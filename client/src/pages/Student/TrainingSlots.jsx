@@ -11,6 +11,7 @@ import { authService } from '../../services/features/authService'
 import { trainingService } from '../../services/features/trainingService'
 import { useAuthStore } from '../../store/authStore'
 import heroImg from '../../assets/hero.png'
+import { resolveImageUrl } from '../../utils/resolveImageUrl'
 
 function UserIdentity({ user }) {
   if (!user) return null
@@ -386,32 +387,8 @@ function normalizeBookingRow(row, fallback = {}) {
   }
 }
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api'
-const API_ORIGIN = API_BASE_URL.replace(/\/?api\/?$/, '')
-const ASSET_BASE_URL = (import.meta.env.VITE_ASSET_BASE_URL || '').trim()
-const ASSET_ORIGIN = ASSET_BASE_URL
-  ? ASSET_BASE_URL.replace(/\/$/, '')
-  : (() => {
-      try {
-        return new URL(API_ORIGIN, window.location.href).origin
-      } catch {
-        return window.location.origin
-      }
-    })()
-
 function resolveSkillImageUrl(imageUrl, type) {
-  if (!imageUrl) return heroImg
-  const raw = String(imageUrl).trim()
-  if (!raw) return heroImg
-  if (/^https?:\/\//i.test(raw)) return raw
-
-  if (raw.startsWith('/')) return `${ASSET_ORIGIN}${raw}`
-  if (raw.startsWith('courses/')) return `${ASSET_ORIGIN}/${raw}`
-  if (raw.startsWith('ps_courses/')) return `${ASSET_ORIGIN}/courses/${raw}`
-  if (raw.startsWith('pbl_courses/')) return `${ASSET_ORIGIN}/courses/${raw}`
-
-  const folder = String(type).toUpperCase() === 'PBL' ? 'pbl_courses' : 'ps_courses'
-  return `${ASSET_ORIGIN}/courses/${folder}/${raw}`
+  return resolveImageUrl(imageUrl, type) || heroImg
 }
 
 function useTrainingPagedSkills(type) {

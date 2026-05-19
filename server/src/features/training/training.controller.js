@@ -1,26 +1,23 @@
 import * as trainingServices from './training.services.js';
 import { successResponse, createdResponse, errorResponse, internalServerErrorResponse } from '../../utils/response.js';
 
-const getAssetBaseUrl = (req) => {
-  const envBase = (process.env.ASSET_BASE_URL || process.env.PUBLIC_BASE_URL || '').trim();
-  const base = envBase || req.get('host');
-  return base.replace(/^https?:\/\//i, '').replace(/\/$/, '');
-};
-
-const resolveSkillImageUrl = (req, imageUrl, skillType) => {
+const normalizeSkillImagePath = (imageUrl, skillType) => {
   if (!imageUrl) return imageUrl;
-  const raw = String(imageUrl).trim();
+  let raw = String(imageUrl).trim();
   if (!raw) return imageUrl;
-  if (/^https?:\/\//i.test(raw)) return raw;
 
-  const base = getAssetBaseUrl(req);
-  if (raw.startsWith('/')) return `${base}${raw}`;
-  if (raw.startsWith('courses/')) return `${base}/${raw}`;
-  if (raw.startsWith('ps_courses/')) return `${base}/courses/${raw}`;
-  if (raw.startsWith('pbl_courses/')) return `${base}/courses/${raw}`;
+  // Strip protocol and domain if present
+  raw = raw.replace(/^https?:\/\//i, '');
+  raw = raw.replace(/^\/\//, '');
+  raw = raw.replace(/^pcdp\.bitsathy\.ac\.in\//i, '');
+
+  if (raw.startsWith('/')) raw = raw.slice(1);
+  if (raw.startsWith('courses/')) return `/${raw}`;
+  if (raw.startsWith('ps_courses/')) return `/courses/${raw}`;
+  if (raw.startsWith('pbl_courses/')) return `/courses/${raw}`;
 
   const folder = String(skillType || '').toUpperCase() === 'PBL' ? 'pbl_courses' : 'ps_courses';
-  return `${base}/courses/${folder}/${raw}`;
+  return `/courses/${folder}/${raw}`;
 };
 
 export const getCategories = async (req, res) => {
@@ -40,7 +37,7 @@ export const getSkills = async (req, res) => {
     const rows = Array.isArray(data) ? data : [];
     const mapped = rows.map((row) => ({
       ...row,
-      image_url: resolveSkillImageUrl(req, row.image_url, row.skill_type),
+      image_url: normalizeSkillImagePath(row.image_url, row.skill_type),
     }));
     return successResponse(res, 'Training skills fetched', mapped);
   } catch (error) {
@@ -56,7 +53,7 @@ export const getSkillDetails = async (req, res) => {
     const mapped = data
       ? {
           ...data,
-          image_url: resolveSkillImageUrl(req, data.image_url, data.skill_type),
+          image_url: normalizeSkillImagePath(data.image_url, data.skill_type),
         }
       : data;
     return successResponse(res, 'Training skill details fetched', mapped);
