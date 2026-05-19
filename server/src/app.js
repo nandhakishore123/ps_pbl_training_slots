@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
+import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -50,7 +51,14 @@ app.get('/health', (req, res) => {
 });
 
 // Static course assets
-app.use('/courses', express.static(path.join(__dirname, '../public/courses')))
+const coursesCandidates = [
+    path.resolve(process.cwd(), 'server/public/courses'),
+    path.resolve(process.cwd(), 'public/courses'),
+];
+const coursesPath = coursesCandidates.find((p) => fs.existsSync(p)) || coursesCandidates[0];
+console.log('COURSES PATH:', coursesPath);
+console.log('EXISTS:', fs.existsSync(coursesPath));
+app.use('/courses', express.static(coursesPath));
 
 app.use('/api/auth', authRoutes);
 app.use('/api/points', pointsRoutes);
