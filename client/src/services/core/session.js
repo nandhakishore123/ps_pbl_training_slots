@@ -4,6 +4,24 @@ import axios from 'axios';
 // Shared promise to prevent multiple simultaneous refresh calls
 let refreshPromise = null;
 
+const API_BASE_URL =
+    import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
+
+// Single shared refresh request. IMPORTANT: Always resolves to `accessToken | null`.
+// This prevents a race where one caller expects a boolean while another expects a token.
+const getRefreshPromise = () => {
+    if (refreshPromise) return refreshPromise;
+
+    refreshPromise = axios
+        .post(`${API_BASE_URL}/auth/refresh`, {}, { withCredentials: true })
+        .then((response) => response?.data?.data?.accessToken ?? null)
+        .finally(() => {
+            refreshPromise = null;
+        });
+
+    return refreshPromise;
+};
+
 // Decode JWT token (simple base64 decode)
 export const decodeToken = (token) => {
     try {
@@ -43,7 +61,7 @@ export const clearSession = () => {
 export const logoutSession = async () => {
     try {
         await axios.post(
-            `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api'}/auth/logout`,
+            `${API_BASE_URL}/auth/logout`,
             {},
             { withCredentials: true }
         );
@@ -57,68 +75,34 @@ export const logoutSession = async () => {
 
 // Silent refresh: called on app load to restore session from HttpOnly refresh token
 export const silentRefresh = async () => {
-    // If refresh is already in progress, return existing promise
-    if (refreshPromise) {
-        return refreshPromise;
-    }
-
-    refreshPromise = (async () => {
-        try {
-            const response = await axios.post(
-                `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api'}/auth/refresh`,
-                {},
-                { withCredentials: true } // Send HttpOnly cookie
-            );
-
-            const { accessToken } = response.data.data;
-            if (accessToken) {
-                saveAccessToken(accessToken);
-                return true;
-            }
-            return false;
-        } catch (error) {
-            console.error('Silent refresh failed:', error);
-            clearSession();
-            return false;
-        } finally {
-            // Clear the promise after completion
-            refreshPromise = null;
+    try {
+        const accessToken = await getRefreshPromise();
+        if (accessToken) {
+            saveAccessToken(accessToken);
+            return true;
         }
-    })();
-
-    return refreshPromise;
+        clearSession();
+        return false;
+    } catch (error) {
+        console.error('Silent refresh failed:', error);
+        clearSession();
+        return false;
+    }
 };
 
 // Refresh access token using refresh token cookie (used by apiClient interceptor)
 export const refreshAccessToken = async () => {
-    // If refresh is already in progress, return existing promise
-    if (refreshPromise) {
-        return refreshPromise;
-    }
-
-    refreshPromise = (async () => {
-        try {
-            const response = await axios.post(
-                `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api'}/auth/refresh`,
-                {},
-                { withCredentials: true }
-            );
-
-            const { accessToken } = response.data.data;
-            if (accessToken) {
-                saveAccessToken(accessToken);
-                return accessToken;
-            }
-            throw new Error('No access token received');
-        } catch (error) {
-            console.error('Token refresh failed:', error);
-            clearSession();
-            throw error;
-        } finally {
-            // Clear the promise after completion
-            refreshPromise = null;
+    try {
+        const accessToken = await getRefreshPromise();
+        if (accessToken) {
+            saveAccessToken(accessToken);
+            return accessToken;
         }
-    })();
-
-    return refreshPromise;
+        clearSession();
+        throw new Error('No access token received');
+    } catch (error) {
+        console.error('Token refresh failed:', error);
+        clearSession();
+        throw error;
+    }
 };

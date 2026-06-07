@@ -1,6 +1,7 @@
 // PointsDashboard.jsx — Complete Standalone File
-// Extracted 100% from index_working.html
-// CSS included inside — no external imports needed
+// Reward Points listing → BASE_API (Google Apps Script)
+// Reward Points details modal → PRANESH_BASE (Gradio API)
+// Activity Points → pointsService (unchanged)
 // Usage: import PointsDashboard from './PointsDashboard.jsx'
 //        <PointsDashboard onBack={() => {}} />
 
@@ -12,10 +13,8 @@ import { useAuthStore } from '../../store/authStore'
 
 function UserIdentity({ user }) {
   if (!user) return null
-
   const name = user?.name || 'User'
   const initials = String(name).trim()?.charAt(0)?.toUpperCase() || 'U'
-
   return (
     <div style={{ display:'flex', alignItems:'center', gap:10, padding:'4px 14px 4px 4px', background:'var(--white)', border:'1.5px solid var(--border)', borderRadius:50 }}>
       <div style={{ width:36, height:36, borderRadius:'50%', background:'var(--purple-dim)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:15, fontWeight:800, color:'var(--purple)', overflow:'hidden' }}>
@@ -26,7 +25,6 @@ function UserIdentity({ user }) {
   )
 }
 
-// Compact pill for mobile: avatar initial + truncated name
 function UserIdentityMobile({ user }) {
   if (!user) return null
   const name = user?.name || 'User'
@@ -205,11 +203,16 @@ const CSS = `
     border:1px solid rgba(255,255,255,0.2); background:transparent;
     color:rgba(255,255,255,0.7); display:flex; align-items:center;
     justify-content:center; cursor:pointer; font-size:16px; transition:all 0.2s;
+    flex-shrink:0;
   }
   .pt-details-close:hover { background:rgba(255,255,255,0.1); color:#fff; }
   .pt-details-body {
-    overflow-y:auto; padding:20px;
-    display:flex; flex-direction:column; gap:14px; flex:1;
+    overflow-y:auto;
+    -webkit-overflow-scrolling:touch;
+    padding:20px;
+    display:flex; flex-direction:column; gap:14px;
+    flex:1;
+    min-height:0;
   }
   .pt-details-total {
     display:flex; align-items:center; justify-content:space-between;
@@ -241,21 +244,15 @@ const CSS = `
   @keyframes modalIn { from{opacity:0;transform:translateY(24px) scale(0.96)} to{opacity:1;transform:translateY(0) scale(1)} }
 
   /* ── MOBILE/DESKTOP VISIBILITY HELPERS ── */
-  /* Desktop-only cells in reward points table (hide on mobile) */
   .pt-col-desktop-only { /* visible by default */ }
-  /* Mobile-only year cell in reward points table (hidden on desktop) */
   .pt-col-mobile-year { display: none; font-size:11px; color:var(--text2); font-weight:600; }
-  /* Inline details button inside student cell (hidden on desktop) */
   .pt-details-mobile-inline { display: none !important; }
-  /* Header right sections */
   .pt-hdr-right-mobile { display: none; }
   .pt-hdr-right-desktop { display: flex; }
-  /* Section back: hidden on desktop (back is in header); shown on mobile */
   .pt-section-back-mobile-only { display: none; }
 
   /* ── RESPONSIVE ── */
   @media (max-width: 640px) {
-    /* Header */
     .pt-header { padding: 12px 16px; gap: 8px; }
     .pt-header-sub { font-size: 11px; white-space: normal; line-height: 1.3; }
     .pt-hdr-right-desktop { display: none !important; }
@@ -265,29 +262,16 @@ const CSS = `
       gap: 8px;
       flex-shrink: 0;
     }
-
-    /* Content */
     .pt-content { padding: 14px 14px 24px; }
-
-    /* Back button */
     .pt-section-back-mobile-only { display: flex !important; }
     .pt-section-back { margin-bottom: 14px; padding: 8px 14px; font-size: 13px; }
-
-    /* Tabs — stay horizontal, no column direction */
     .pt-tabs { flex-direction: row; gap: 4px; padding: 4px; }
     .pt-tab { padding: 9px 8px; font-size: 12px; }
-
-    /* Subtabs */
     .pt-subtabs { flex-wrap: wrap; gap: 6px; }
     .pt-subtab { padding: 6px 12px; font-size: 11px; }
-
-    /* Filters */
     .pt-filters { gap: 8px; }
     .pt-select { font-size: 12px; padding: 7px 24px 7px 10px; }
     .pt-search { font-size: 12px; min-width: 100%; }
-
-    /* ── Reward Points table: 3-column mobile layout ── */
-    /* RANK | STUDENT (name+roll+details inline) | YEAR */
     .pt-table-head-with-btn {
       grid-template-columns: 44px 1fr 68px;
       padding-left: 12px;
@@ -300,22 +284,14 @@ const CSS = `
       padding-left: 12px;
       padding-right: 12px;
     }
-    /* Hide desktop-only cells (details btn, dept, pts) */
     .pt-col-desktop-only { display: none !important; }
-    /* Show mobile year cell */
     .pt-col-mobile-year { display: block !important; font-size: 11px; color: var(--text2); font-weight: 600; white-space: nowrap; }
-    /* Show inline details button inside student cell */
     .pt-details-mobile-inline { display: inline-flex !important; margin-top: 5px; }
-
-    /* Standard table (non-with-btn variant) */
     .pt-table-head, .pt-table-row {
       grid-template-columns: 44px 1fr 80px 70px;
       padding-left: 12px;
       padding-right: 12px;
     }
-
-    /* ── Activity Individual table ── */
-    /* RANK | STUDENT | DEPT/YEAR | ACT. PTS */
     .pt-act-table-head, .pt-act-table-row {
       grid-template-columns: 44px 1fr 56px 70px;
       padding-left: 10px;
@@ -326,8 +302,6 @@ const CSS = `
     .pt-act-roll { font-size: 10px; }
     .pt-act-dept-year { font-size: 11px; }
     .pt-act-pts { font-size: 14px; }
-
-    /* ── Group cards: keep 3-col (rank | info | pts) ── */
     .pt-grp-card {
       grid-template-columns: 40px 1fr auto;
       gap: 10px;
@@ -337,16 +311,18 @@ const CSS = `
     .pt-grp-id { font-size: 14px; }
     .pt-grp-meta { font-size: 11px; }
     .pt-grp-pts { font-size: 16px; }
-
-    /* Modal */
-    .pt-details-modal { max-width: 96vw; }
-    .pt-details-body { padding: 16px; }
+    .pt-details-modal { max-width: 96vw; max-height: 90vh; }
+    .pt-details-body { padding: 14px; gap: 10px; }
     .pt-details-header { padding: 16px 18px; }
     .pt-details-name { font-size: 15px; }
   }
 `
 
 // ── Constants ─────────────────────────────────────────────────
+// BASE_API: Google Apps Script — used for Reward Points student listing
+const BASE_API = 'https://script.google.com/macros/s/AKfycbwUdK6oQZwo6SC-1eNUtQlyrNYp-RcKHSy-wBy-5RDonSuQaNDs_hdNfeXxpFnxsAx5/exec'
+
+// PRANESH_BASE: Gradio API — used for Reward Points details modal
 const PRANESH_BASE = 'https://praneshjs-rewardpointssite.hf.space'
 
 const DEPTS = ['AGRI','AIDS','AIML','BIOMEDICAL','BT','CIVIL','CSBS','CSD','CSE','CT','EEE','ECE','EIE','FT','ISE','IT','MECH','MTRS']
@@ -399,7 +375,7 @@ function parseCourseDetails(raw) {
   return { courses, totalPoints }
 }
 
-// ── DetailsModal ──────────────────────────────────────────────
+// ── DetailsModal (uses PRANESH_BASE Gradio API) ───────────────
 function DetailsModal({ isOpen, onClose, roll, name }) {
   const [status, setStatus] = useState('loading')
   const [raw,    setRaw]    = useState('')
@@ -413,12 +389,35 @@ function DetailsModal({ isOpen, onClose, roll, name }) {
 
   async function fetchData(r) {
     try {
-      const payload = await pointsService.getStudentTransactions(r)
-      const data = payload?.data?.items || []
-      if (!data.length) {
+      const submitRes = await fetch(`${PRANESH_BASE}/gradio_api/call/search_student`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ data:[r] }),
+      })
+      if (!submitRes.ok) throw new Error(`HTTP ${submitRes.status}`)
+      const { event_id } = await submitRes.json()
+      if (!event_id) throw new Error('No event_id')
+      const rawText = await new Promise((resolve, reject) => {
+        const src   = new EventSource(`${PRANESH_BASE}/gradio_api/call/search_student/${event_id}`)
+        const timer = setTimeout(() => { src.close(); reject(new Error('Timeout')) }, 30000)
+        src.addEventListener('complete', (e) => {
+          clearTimeout(timer); src.close()
+          try { resolve(String(JSON.parse(e.data)[0]||'')) }
+          catch { reject(new Error('Parse error')) }
+        })
+        src.onmessage = (e) => {
+          if (e.data && e.data !== '[DONE]') {
+            try {
+              const d = JSON.parse(e.data)
+              if (Array.isArray(d) && d[0]) { clearTimeout(timer); src.close(); resolve(String(d[0])) }
+            } catch {}
+          }
+        }
+        src.onerror = () => { clearTimeout(timer); src.close(); reject(new Error('Stream error')) }
+      })
+      if (!rawText || rawText.trim().length < 10) {
         setErrMsg(`No data found for ${r}.`); setStatus('error')
       } else {
-        setRaw(data); setStatus('done')
+        setRaw(rawText); setStatus('done')
       }
     } catch(err) {
       setErrMsg(err.message||'Failed to fetch.'); setStatus('error')
@@ -427,21 +426,7 @@ function DetailsModal({ isOpen, onClose, roll, name }) {
 
   if (!isOpen) return null
 
-  const { courses, totalPoints } = status==='done' ? (() => {
-    const txRaw = Array.isArray(raw) ? raw : []
-    const tx = txRaw.filter(t => t.point_type === 'REWARD_POINTS')
-    const total = tx.reduce((a, t) => a + Number(t.points_earned||0), 0)
-    const mapped = tx.map(t => {
-      let cat = 'Other', name = t.point_source
-      if (typeof name === 'string' && name.includes(':')) {
-        const parts = name.split(':')
-        cat = parts[0].trim()
-        name = parts.slice(1).join(':').trim()
-      }
-      return { category: cat, name, dateRange: new Date(t.created_at).toLocaleDateString(), points: Number(t.points_earned||0) }
-    })
-    return { courses: mapped, totalPoints: total }
-  })() : { courses:[], totalPoints:0 }
+  const { courses, totalPoints } = status==='done' ? parseCourseDetails(raw) : { courses:[], totalPoints:0 }
   const grouped = {}
   for (const c of courses) {
     if (!grouped[c.category]) grouped[c.category] = []
@@ -458,6 +443,7 @@ function DetailsModal({ isOpen, onClose, roll, name }) {
           </div>
           <button className="pt-details-close" onClick={onClose}>✕</button>
         </div>
+        {/* pt-details-body has overflow-y:auto + flex:1 + min-height:0 → scrollable */}
         <div className="pt-details-body">
           {status==='loading' && (
             <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:14,padding:'50px 20px',color:'var(--text2)',fontSize:14}}>
@@ -510,7 +496,7 @@ function DetailsModal({ isOpen, onClose, roll, name }) {
   )
 }
 
-// ── GroupDetailsModal ─────────────────────────────────────────
+// ── GroupDetailsModal (unchanged — uses pointsService) ─────────
 function GroupDetailsModal({ isOpen, onClose, group }) {
   const [members, setMembers] = useState([])
   const [loading, setLoading] = useState(false)
@@ -630,7 +616,31 @@ function Spinner({text}) {
   return <div className="pt-spinner-wrap"><div className="pt-spinner"/><div className="pt-spinner-text">{text}</div></div>
 }
 
-// ── Reward Points ─────────────────────────────────────────────
+// ── fetchRewardRanking: hits BASE_API (Google Apps Script) ─────
+// Expected GAS response shape (adjust field names to match your sheet):
+//   { status:"success", data:[ { name, reg_num, course, year_of_study, points_available }, … ] }
+// or a flat array.
+async function fetchRewardRanking({ dept, year, search }) {
+  const params = new URLSearchParams({ action: 'getRewardRanking' })
+  if (dept && dept !== 'ALL') params.set('dept', dept)
+  if (year && year !== 'ALL') params.set('year', year)
+  if (search) params.set('search', search)
+
+  const url = `${BASE_API}?${params.toString()}`
+  const res = await fetch(url)
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  const json = await res.json()
+
+  // Handle both { data: [...] } and flat array responses
+  const items = Array.isArray(json) ? json
+    : Array.isArray(json?.data) ? json.data
+    : Array.isArray(json?.data?.items) ? json.data.items
+    : []
+
+  return items
+}
+
+// ── RewardPoints: listing via BASE_API ────────────────────────
 function RewardPoints({ onOpenDetails }) {
   const [dept,   setDept]   = useState('ALL')
   const [year,   setYear]   = useState('ALL')
@@ -642,25 +652,22 @@ function RewardPoints({ onOpenDetails }) {
   const loadRP = useCallback(async () => {
     setLoading(true); setError('')
     try {
-      const payload = await pointsService.getRewardRanking({
-        course: dept === 'ALL' ? undefined : dept,
-        year, search,
-        limit: search ? 200 : 20, offset: 0,
-      })
-      setData(payload?.data?.items || [])
-    } catch {
+      const items = await fetchRewardRanking({ dept, year, search })
+      setData(items)
+    } catch (e) {
       setError('Failed to load. Check connection.')
       setData([])
     } finally { setLoading(false) }
   }, [dept, year, search])
 
   useEffect(() => {
-    const t = setTimeout(() => { loadRP() }, 250)
+    const t = setTimeout(() => { loadRP() }, 300)
     return () => clearTimeout(t)
   }, [loadRP])
 
-  const sorted   = [...data].sort((a,b)=>Number(b.points_available||0)-Number(a.points_available||0))
-  const showRows = search ? sorted : sorted.slice(0,20)
+  // Sort by points descending; slice to 20 unless searching
+  const sorted   = [...data].sort((a,b)=>Number(b.points_available||b.points||0)-Number(a.points_available||a.points||0))
+  const showRows = search ? sorted : sorted.slice(0, 20)
 
   return (
     <div>
@@ -675,17 +682,20 @@ function RewardPoints({ onOpenDetails }) {
           <option value="2nd">2nd Year</option>
           <option value="1st">1st Year</option>
         </select>
-        <input className="pt-search" placeholder="eg Gowtham J / 7376242AL126..." value={search} onChange={e=>setSearch(e.target.value)}/>
+        <input
+          className="pt-search"
+          placeholder="eg Gowtham J / 7376242AL126..."
+          value={search}
+          onChange={e=>setSearch(e.target.value)}
+        />
       </div>
       <div className="pt-count">Showing {showRows.length} students</div>
       {loading && <Spinner text={`Loading ${dept==='ALL'?'all departments':(DEPT_NAMES[dept]||dept)} rankings...`}/>}
       {error   && <div className="pt-empty" style={{color:'var(--red)'}}>{error}</div>}
       {!loading && !error && (
         <div className="pt-table-card">
-          {/* ── Table header:
-                Desktop → RANK | STUDENT | DETAILS | DEPARTMENT | POINTS
-                Mobile  → RANK | STUDENT | YEAR
-          ── */}
+          {/* Desktop: RANK | STUDENT | DETAILS | DEPARTMENT | POINTS
+              Mobile:  RANK | STUDENT | YEAR */}
           <div className="pt-table-head-with-btn">
             <div>Rank</div>
             <div>Student</div>
@@ -697,36 +707,44 @@ function RewardPoints({ onOpenDetails }) {
           {showRows.length===0
             ? <div className="pt-empty">No students found.</div>
             : showRows.map((s,i)=>{
-              const y=Number(s.year_of_study)
-              const yrTxt=y===1?'1st Year':y===2?'2nd Year':y===3?'3rd Year':''
+              const rawYear = s.year_of_study || s.year || ''
+              const y = Number(rawYear)
+              const yrTxt = y===1?'1st Year':y===2?'2nd Year':y===3?'3rd Year': String(rawYear)
+              const pts   = Number(s.points_available ?? s.points ?? 0)
+              const deptVal = s.course || s.dept || s.department || dept
               return (
-                /* ── Row:
-                     Desktop → rank | student | details-btn | dept | pts
-                     Mobile  → rank | student+details-inline | year
-                ── */
-                <div className="pt-table-row-with-btn" key={s.reg_num||i} style={{animationDelay:`${Math.min(i,20)*0.03}s`}}>
+                <div
+                  className="pt-table-row-with-btn"
+                  key={s.reg_num||s.roll||i}
+                  style={{animationDelay:`${Math.min(i,20)*0.03}s`}}
+                >
                   {/* Col 1: Rank */}
                   <div><RankCell rank={i}/></div>
                   {/* Col 2: Student — always visible */}
                   <div>
                     <div className="pt-name">{s.name}</div>
-                    <div className="pt-roll">{s.reg_num}</div>
+                    <div className="pt-roll">{s.reg_num||s.roll}</div>
                     {/* Details button — shown inline ONLY on mobile */}
                     <button
                       className="details-btn pt-details-mobile-inline"
-                      onClick={()=>onOpenDetails?.(s.reg_num,s.name)}
+                      onClick={()=>onOpenDetails?.(s.reg_num||s.roll, s.name)}
                     >
                       Details
                     </button>
                   </div>
                   {/* Col 3: Details button — desktop only */}
                   <div className="pt-col-desktop-only">
-                    <button className="details-btn" onClick={()=>onOpenDetails?.(s.reg_num,s.name)}>Details</button>
+                    <button
+                      className="details-btn"
+                      onClick={()=>onOpenDetails?.(s.reg_num||s.roll, s.name)}
+                    >
+                      Details
+                    </button>
                   </div>
                   {/* Col 4: Department — desktop only */}
-                  <div className="pt-col-desktop-only pt-dept">{s.course||dept}</div>
+                  <div className="pt-col-desktop-only pt-dept">{deptVal}</div>
                   {/* Col 5: Points — desktop only */}
-                  <div className="pt-col-desktop-only pt-pts">{Number(s.points_available||0).toLocaleString()}</div>
+                  <div className="pt-col-desktop-only pt-pts">{pts.toLocaleString()}</div>
                   {/* Col 3 (mobile): Year — mobile only */}
                   <div className="pt-col-mobile-year">{yrTxt}</div>
                 </div>
@@ -739,7 +757,7 @@ function RewardPoints({ onOpenDetails }) {
   )
 }
 
-// ── Activity Points ───────────────────────────────────────────
+// ── ActivityPoints (unchanged — uses pointsService) ───────────
 function ActivityPoints({ onOpenGroup }) {
   const [apTab,    setApTab]    = useState('individual')
   const [apYear,   setApYear]   = useState('ALL')
@@ -937,8 +955,6 @@ export default function PointsDashboard({ onBack, onOpenDetails }) {
 
       {/* ── Header ── */}
       <div className="pt-header">
-
-        {/* Left: icon + title (always) */}
         <div style={{display:'flex', alignItems:'center', gap:10, minWidth:0, flex:1}}>
           <div className="pt-header-icon">🏅</div>
           <div style={{minWidth:0}}>
@@ -947,7 +963,7 @@ export default function PointsDashboard({ onBack, onOpenDetails }) {
           </div>
         </div>
 
-        {/* Right: desktop — UserIdentity + back + dark + logout */}
+        {/* Desktop right */}
         <div className="pt-hdr-right-desktop" style={{alignItems:'center', gap:10}}>
           <button type="button" className="pt-header-back" onClick={handleBack}>← Back</button>
           <UserIdentity user={user} />
@@ -963,20 +979,17 @@ export default function PointsDashboard({ onBack, onOpenDetails }) {
           </button>
         </div>
 
-        {/* Right: mobile — compact user pill + dark toggle only */}
+        {/* Mobile right */}
         <div className="pt-hdr-right-mobile">
           <UserIdentityMobile user={user} />
           <button className="pt-dark-toggle" onClick={()=>setDarkMode(d=>!d)}>
             {darkMode?'☀ Light':'Dark'}
           </button>
         </div>
-
       </div>
 
       {/* ── Content ── */}
       <div className="pt-content">
-
-        {/* Back button — shown in content area (mobile: below header; desktop: hidden since it's in header) */}
         <button type="button" className="pt-section-back pt-section-back-mobile-only" onClick={handleBack}>
           ← Back
         </button>
@@ -989,7 +1002,7 @@ export default function PointsDashboard({ onBack, onOpenDetails }) {
         {tab==='ap' && <ActivityPoints onOpenGroup={(g)=>{setSelectedGroup(g);setGroupOpen(true)}}/>}
       </div>
 
-      {/* ── Modals (unchanged) ── */}
+      {/* ── Modals ── */}
       {detailsOpen && (
         <DetailsModal
           isOpen={detailsOpen}

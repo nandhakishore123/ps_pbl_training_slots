@@ -65,7 +65,7 @@ CREATE TABLE `assessment_coding_questions` (
   `marks` int DEFAULT '1',
   `created_at` timestamp DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`coding_question_id`) /*T![clustered_index] CLUSTERED */,
-  KEY `idx_acq_assessment` (`assessment_id`),
+  KEY `idx_coding_assessment` (`assessment_id`),
   CONSTRAINT `fk_acq_assessment` FOREIGN KEY (`assessment_id`) REFERENCES `assessments` (`assessment_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -95,11 +95,15 @@ CREATE TABLE `assessment_mcq_questions` (
   `option_c` varchar(255) COLLATE utf8mb4_0900_ai_ci NOT NULL,
   `option_d` varchar(255) COLLATE utf8mb4_0900_ai_ci NOT NULL,
   `correct_option` enum('A','B','C','D') COLLATE utf8mb4_0900_ai_ci NOT NULL,
+  `mcq_type_id` bigint DEFAULT NULL,
+  `difficulty` enum('EASY','MEDIUM','HARD') DEFAULT NULL,
   `marks` int DEFAULT '1',
   `created_at` timestamp DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`mcq_question_id`) /*T![clustered_index] CLUSTERED */,
-  KEY `idx_amq_assessment` (`assessment_id`),
-  CONSTRAINT `fk_amq_assessment` FOREIGN KEY (`assessment_id`) REFERENCES `assessments` (`assessment_id`)
+  KEY `idx_mcq_assessment` (`assessment_id`),
+  KEY `idx_mcq_type` (`mcq_type_id`),
+  CONSTRAINT `fk_amq_assessment` FOREIGN KEY (`assessment_id`) REFERENCES `assessments` (`assessment_id`),
+  CONSTRAINT `fk_amq_mcq_type` FOREIGN KEY (`mcq_type_id`) REFERENCES `mcq_types` (`mcq_type_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -110,6 +114,37 @@ CREATE TABLE `assessment_mcq_questions` (
 LOCK TABLES `assessment_mcq_questions` WRITE;
 /*!40000 ALTER TABLE `assessment_mcq_questions` DISABLE KEYS */;
 /*!40000 ALTER TABLE `assessment_mcq_questions` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
+-- Table structure for table `assessment_mcq_type_config`
+--
+
+DROP TABLE IF EXISTS `assessment_mcq_type_config`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `assessment_mcq_type_config` (
+  `config_id` bigint NOT NULL AUTO_INCREMENT,
+  `assessment_id` bigint NOT NULL,
+  `mcq_type_id` bigint NOT NULL,
+  `question_count` int NOT NULL,
+  `created_at` timestamp DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`config_id`) /*T![clustered_index] CLUSTERED */,
+  UNIQUE KEY `uq_assessment_mcq_type` (`assessment_id`,`mcq_type_id`),
+  KEY `idx_amtc_assessment` (`assessment_id`),
+  KEY `idx_amtc_mcq_type` (`mcq_type_id`),
+  CONSTRAINT `fk_amtc_assessment` FOREIGN KEY (`assessment_id`) REFERENCES `assessments` (`assessment_id`),
+  CONSTRAINT `fk_amtc_mcq_type` FOREIGN KEY (`mcq_type_id`) REFERENCES `mcq_types` (`mcq_type_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `assessment_mcq_type_config`
+--
+
+LOCK TABLES `assessment_mcq_type_config` WRITE;
+/*!40000 ALTER TABLE `assessment_mcq_type_config` DISABLE KEYS */;
+/*!40000 ALTER TABLE `assessment_mcq_type_config` ENABLE KEYS */;
 UNLOCK TABLES;
 
 --
@@ -196,7 +231,7 @@ CREATE TABLE `coding_test_cases` (
   `is_hidden_test_case` tinyint(1) DEFAULT '1',
   `created_at` timestamp DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`test_case_id`) /*T![clustered_index] CLUSTERED */,
-  KEY `idx_ctc_question` (`coding_question_id`),
+  KEY `idx_testcase_question` (`coding_question_id`),
   CONSTRAINT `fk_ctc_question` FOREIGN KEY (`coding_question_id`) REFERENCES `assessment_coding_questions` (`coding_question_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -219,10 +254,11 @@ DROP TABLE IF EXISTS `end_survey`;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `end_survey` (
   `survey_id` bigint NOT NULL AUTO_INCREMENT,
-  `faculty_id` bigint NOT NULL,
+  `faculty_id` bigint DEFAULT NULL,
   `student_id` bigint NOT NULL,
   `survey_question_id` bigint NOT NULL,
   `student_response` text COLLATE utf8mb4_0900_ai_ci NOT NULL,
+  `booking_id` bigint DEFAULT NULL,
   `is_caption_verified` tinyint DEFAULT '0',
   `is_incharge_verified` tinyint DEFAULT '0',
   `created_at` timestamp DEFAULT CURRENT_TIMESTAMP,
@@ -230,7 +266,7 @@ CREATE TABLE `end_survey` (
   KEY `idx_es_faculty` (`faculty_id`),
   KEY `idx_es_student` (`student_id`),
   KEY `idx_es_question` (`survey_question_id`),
-  CONSTRAINT `fk_es_faculty` FOREIGN KEY (`faculty_id`) REFERENCES `faculties` (`faculty_id`),
+  KEY `idx_es_booking` (`booking_id`),
   CONSTRAINT `fk_es_question` FOREIGN KEY (`survey_question_id`) REFERENCES `end_survey_questions` (`survey_question_id`),
   CONSTRAINT `fk_es_student` FOREIGN KEY (`student_id`) REFERENCES `students` (`student_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
@@ -254,13 +290,10 @@ DROP TABLE IF EXISTS `end_survey_questions`;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `end_survey_questions` (
   `survey_question_id` bigint NOT NULL AUTO_INCREMENT,
-  `group_role_id` bigint NOT NULL,
   `question` text COLLATE utf8mb4_0900_ai_ci NOT NULL,
   `created_at` timestamp DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`survey_question_id`) /*T![clustered_index] CLUSTERED */,
-  KEY `idx_esq_role` (`group_role_id`),
-  KEY `idx_question_id` (`survey_question_id`),
-  CONSTRAINT `fk_esq_role` FOREIGN KEY (`group_role_id`) REFERENCES `group_roles` (`group_role_id`)
+  KEY `idx_question_id` (`survey_question_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -270,6 +303,16 @@ CREATE TABLE `end_survey_questions` (
 
 LOCK TABLES `end_survey_questions` WRITE;
 /*!40000 ALTER TABLE `end_survey_questions` DISABLE KEYS */;
+INSERT INTO `end_survey_questions` (`survey_question_id`, `question`) VALUES
+(1,  'What was the main objective of today\'s lab session?'),
+(2,  'What tools / equipment / software were used?'),
+(3,  'How was the session structured? (Briefly describe the flow)'),
+(4,  'What specific task or activity did you personally carry out?'),
+(5,  'What tools, equipment, or software did you use personally?'),
+(6,  'What was the output or result of your activity?'),
+(7,  'What new concept or skill did you learn or practise today?'),
+(8,  'What challenges did you face and how did you overcome them?'),
+(9,  'What will you do differently in the next session?');
 /*!40000 ALTER TABLE `end_survey_questions` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -292,8 +335,8 @@ CREATE TABLE `faculties` (
   PRIMARY KEY (`faculty_id`) /*T![clustered_index] CLUSTERED */,
   UNIQUE KEY `user_id` (`user_id`),
   UNIQUE KEY `reg_num` (`reg_num`),
-  KEY `idx_faculty_user` (`user_id`),
-  KEY `idx_faculty_reg_num` (`reg_num`),
+  KEY `idx_faculties_user` (`user_id`),
+  KEY `idx_faculties_reg` (`reg_num`),
   CONSTRAINT `fk_faculty_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`user_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -325,7 +368,7 @@ CREATE TABLE `group_members` (
   UNIQUE KEY `group_id` (`group_id`,`student_id`),
   KEY `idx_group_members_group` (`group_id`),
   KEY `idx_group_members_student` (`student_id`),
-  KEY `fk_gm_role` (`group_role_id`),
+  KEY `idx_group_members_role` (`group_role_id`),
   CONSTRAINT `fk_gm_group` FOREIGN KEY (`group_id`) REFERENCES `all_groups` (`group_id`),
   CONSTRAINT `fk_gm_role` FOREIGN KEY (`group_role_id`) REFERENCES `group_roles` (`group_role_id`),
   CONSTRAINT `fk_gm_student` FOREIGN KEY (`student_id`) REFERENCES `students` (`student_id`)
@@ -365,6 +408,31 @@ LOCK TABLES `group_roles` WRITE;
 /*!40000 ALTER TABLE `group_roles` DISABLE KEYS */;
 INSERT INTO `group_roles` VALUES (1,'CAPTION','2026-05-11 01:33:32'),(2,'VICE CAPTION','2026-05-11 01:33:34'),(3,'TEAM MANAGER','2026-05-11 01:33:34'),(4,'TEAM STRATEGIST','2026-05-11 01:33:35');
 /*!40000 ALTER TABLE `group_roles` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
+-- Table structure for table `mcq_types`
+--
+
+DROP TABLE IF EXISTS `mcq_types`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `mcq_types` (
+  `mcq_type_id` bigint NOT NULL AUTO_INCREMENT,
+  `mcq_type_name` varchar(100) NOT NULL,
+  `is_active` tinyint(1) DEFAULT '1',
+  `created_at` timestamp DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`mcq_type_id`) /*T![clustered_index] CLUSTERED */
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `mcq_types`
+--
+
+LOCK TABLES `mcq_types` WRITE;
+/*!40000 ALTER TABLE `mcq_types` DISABLE KEYS */;
+/*!40000 ALTER TABLE `mcq_types` ENABLE KEYS */;
 UNLOCK TABLES;
 
 --
@@ -488,11 +556,11 @@ DROP TABLE IF EXISTS `skill_levels`;
 CREATE TABLE `skill_levels` (
   `level_id` bigint NOT NULL AUTO_INCREMENT,
   `training_skill_id` bigint NOT NULL,
-  `level_number` int NOT NULL,
+  `level_name` varchar(255) NOT NULL,
   `core_concept` varchar(255) COLLATE utf8mb4_0900_ai_ci DEFAULT NULL,
   `max_attempts` int DEFAULT NULL,
   PRIMARY KEY (`level_id`) /*T![clustered_index] CLUSTERED */,
-  KEY `idx_sl_skill` (`training_skill_id`),
+  KEY `idx_skill_levels_training_skill` (`training_skill_id`),
   CONSTRAINT `fk_sl_skill` FOREIGN KEY (`training_skill_id`) REFERENCES `training_skills` (`training_skill_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci AUTO_INCREMENT=90002;
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -503,7 +571,7 @@ CREATE TABLE `skill_levels` (
 
 LOCK TABLES `skill_levels` WRITE;
 /*!40000 ALTER TABLE `skill_levels` DISABLE KEYS */;
-INSERT INTO `skill_levels` VALUES (1,1,1,'C - if else conditions',5),(2,2,1,'Rotics and automations',5),(23,23,1,'C++ Fundamentals',3),(24,24,1,'Java Programming Basics',3),(25,25,1,'Python Programming Basics',3),(26,26,1,'JavaScript Fundamentals',3),(27,27,1,'Basic Data Structures Concepts',3),(28,28,1,'Database Management Fundamentals',3),(29,29,1,'Operating System Basics',3),(30,30,1,'Computer Networking Fundamentals',3),(31,31,1,'Basic Quantitative Aptitude',3),(32,32,1,'SQL Query Fundamentals',3),(33,33,1,'Artificial Intelligence Fundamentals',3),(34,34,1,'Cybersecurity Fundamentals',3),(35,35,1,'Internet of Things Basics',3),(36,36,1,'Cloud Computing Basics',3),(37,37,1,'AR and VR Fundamentals',3),(38,38,1,'Drone Technology Fundamentals',3),(39,39,1,'Embedded Systems Basics',3),(40,40,1,'Blockchain Technology Fundamentals',3),(41,41,1,'Web Development Fundamentals',3),(42,42,1,'Game Development Fundamentals',3),(43,1,2,'for loop',3);
+INSERT INTO `skill_levels` VALUES (1,1,'1','C - if else conditions',5),(2,2,'1','Rotics and automations',5),(23,23,'1','C++ Fundamentals',3),(24,24,'1','Java Programming Basics',3),(25,25,'1','Python Programming Basics',3),(26,26,'1','JavaScript Fundamentals',3),(27,27,'1','Basic Data Structures Concepts',3),(28,28,'1','Database Management Fundamentals',3),(29,29,'1','Operating System Basics',3),(30,30,'1','Computer Networking Fundamentals',3),(31,31,'1','Basic Quantitative Aptitude',3),(32,32,'1','SQL Query Fundamentals',3),(33,33,'1','Artificial Intelligence Fundamentals',3),(34,34,'1','Cybersecurity Fundamentals',3),(35,35,'1','Internet of Things Basics',3),(36,36,'1','Cloud Computing Basics',3),(37,37,'1','AR and VR Fundamentals',3),(38,38,'1','Drone Technology Fundamentals',3),(39,39,'1','Embedded Systems Basics',3),(40,40,'1','Blockchain Technology Fundamentals',3),(41,41,'1','Web Development Fundamentals',3),(42,42,'1','Game Development Fundamentals',3),(43,1,'2','for loop',3);
 /*!40000 ALTER TABLE `skill_levels` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -555,7 +623,7 @@ CREATE TABLE `skill_syllabus` (
   `topic_title` varchar(255) COLLATE utf8mb4_0900_ai_ci NOT NULL,
   `topic_description` text COLLATE utf8mb4_0900_ai_ci DEFAULT NULL,
   PRIMARY KEY (`syllabus_id`) /*T![clustered_index] CLUSTERED */,
-  KEY `idx_ss_level` (`level_id`),
+  KEY `idx_skill_syllabus_level` (`level_id`),
   CONSTRAINT `fk_ss_level` FOREIGN KEY (`level_id`) REFERENCES `skill_levels` (`level_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci AUTO_INCREMENT=60001;
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -610,12 +678,12 @@ CREATE TABLE `student_assessments` (
   `assessment_id` bigint NOT NULL,
   `score_obtained` int DEFAULT '0',
   `total_marks` int NOT NULL,
-  `status` enum('ONGOING','PASSED','FAILED') COLLATE utf8mb4_0900_ai_ci NOT NULL,
+  `status` enum('ONGOING','PASSED','FAILED','COMPLETED') COLLATE utf8mb4_0900_ai_ci NOT NULL,
   `submitted_at` timestamp NULL DEFAULT NULL,
   PRIMARY KEY (`student_assessment_id`) /*T![clustered_index] CLUSTERED */,
-  KEY `idx_sa_student` (`student_id`),
-  KEY `idx_sa_assessment` (`assessment_id`),
-  KEY `idx_sa_status` (`status`),
+  KEY `idx_student_assessment_student` (`student_id`),
+  KEY `idx_student_assessment_assessment` (`assessment_id`),
+  KEY `idx_student_assessment_status` (`status`),
   CONSTRAINT `fk_sa_assessment` FOREIGN KEY (`assessment_id`) REFERENCES `assessments` (`assessment_id`),
   CONSTRAINT `fk_sa_student` FOREIGN KEY (`student_id`) REFERENCES `students` (`student_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
@@ -641,18 +709,25 @@ CREATE TABLE `student_booking` (
   `booking_id` bigint NOT NULL AUTO_INCREMENT,
   `student_id` bigint NOT NULL,
   `training_skill_id` bigint NOT NULL,
+  `level_id` bigint DEFAULT NULL,
   `mapping_id` bigint NOT NULL,
   `slot_id` bigint NOT NULL,
   `booking_date` date NOT NULL,
-  `status` enum('ONGOING','PASS','FAIL','COMPLETED') COLLATE utf8mb4_0900_ai_ci NOT NULL,
+  `status` enum('ONGOING','PASS','FAIL','COMPLETED','MALPRACTICE') COLLATE utf8mb4_0900_ai_ci NOT NULL,
+  `is_present` tinyint(1) DEFAULT NULL,
+  `created_at` timestamp DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `remarks` text DEFAULT NULL,
   PRIMARY KEY (`booking_id`) /*T![clustered_index] CLUSTERED */,
-  UNIQUE KEY `student_id` (`student_id`,`slot_id`,`booking_date`),
+  UNIQUE KEY `uq_student_slot_date` (`student_id`,`slot_id`,`booking_date`),
   KEY `idx_booking_student` (`student_id`),
   KEY `idx_booking_slot_date` (`slot_id`,`booking_date`),
   KEY `idx_booking_mapping` (`mapping_id`),
+  KEY `idx_booking_level` (`level_id`),
   CONSTRAINT `fk_sb_mapping` FOREIGN KEY (`mapping_id`) REFERENCES `venue_mapping` (`mapping_id`),
   CONSTRAINT `fk_sb_slot` FOREIGN KEY (`slot_id`) REFERENCES `slot_timings` (`slot_id`),
-  CONSTRAINT `fk_sb_student` FOREIGN KEY (`student_id`) REFERENCES `students` (`student_id`)
+  CONSTRAINT `fk_sb_student` FOREIGN KEY (`student_id`) REFERENCES `students` (`student_id`),
+  CONSTRAINT `fk_sb_level` FOREIGN KEY (`level_id`) REFERENCES `skill_levels` (`level_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -686,9 +761,9 @@ CREATE TABLE `student_coding_submissions` (
   `marks_awarded` int DEFAULT '0',
   `submitted_at` timestamp DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`submission_id`) /*T![clustered_index] CLUSTERED */,
-  KEY `idx_scs_assessment` (`student_assessment_id`),
-  KEY `idx_scs_question` (`coding_question_id`),
-  KEY `idx_scs_status` (`submission_status`),
+  KEY `idx_submission_assessment` (`student_assessment_id`),
+  KEY `idx_submission_question` (`coding_question_id`),
+  KEY `idx_submission_status` (`submission_status`),
   CONSTRAINT `fk_scs_assessment` FOREIGN KEY (`student_assessment_id`) REFERENCES `student_assessments` (`student_assessment_id`),
   CONSTRAINT `fk_scs_question` FOREIGN KEY (`coding_question_id`) REFERENCES `assessment_coding_questions` (`coding_question_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
@@ -714,12 +789,12 @@ CREATE TABLE `student_mcq_answers` (
   `student_answer_id` bigint NOT NULL AUTO_INCREMENT,
   `student_assessment_id` bigint NOT NULL,
   `mcq_question_id` bigint NOT NULL,
-  `selected_option` enum('A','B','C','D') COLLATE utf8mb4_0900_ai_ci NOT NULL,
+  `selected_option` enum('A','B','C','D') COLLATE utf8mb4_0900_ai_ci DEFAULT NULL,
   `is_correct` tinyint(1) DEFAULT '0',
   `marks_awarded` int DEFAULT '0',
   PRIMARY KEY (`student_answer_id`) /*T![clustered_index] CLUSTERED */,
-  KEY `idx_sma_assessment` (`student_assessment_id`),
-  KEY `idx_sma_question` (`mcq_question_id`),
+  KEY `idx_mcq_answer_assessment` (`student_assessment_id`),
+  KEY `idx_mcq_answer_question` (`mcq_question_id`),
   CONSTRAINT `fk_sma_assessment` FOREIGN KEY (`student_assessment_id`) REFERENCES `student_assessments` (`student_assessment_id`),
   CONSTRAINT `fk_sma_question` FOREIGN KEY (`mcq_question_id`) REFERENCES `assessment_mcq_questions` (`mcq_question_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
@@ -734,40 +809,6 @@ LOCK TABLES `student_mcq_answers` WRITE;
 /*!40000 ALTER TABLE `student_mcq_answers` ENABLE KEYS */;
 UNLOCK TABLES;
 
---
--- Table structure for table `student_skill_progress`
---
-
-DROP TABLE IF EXISTS `student_skill_progress`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!50503 SET character_set_client = utf8mb4 */;
-CREATE TABLE `student_skill_progress` (
-  `student_progress_id` bigint NOT NULL AUTO_INCREMENT,
-  `student_id` bigint NOT NULL,
-  `training_skill_id` bigint NOT NULL,
-  `level_id` bigint NOT NULL,
-  `is_completed` tinyint(1) DEFAULT '0',
-  `total_attempts` int DEFAULT '0',
-  `created_at` timestamp DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (`student_progress_id`) /*T![clustered_index] CLUSTERED */,
-  KEY `idx_ssp_student` (`student_id`),
-  KEY `fk_ssp_skill` (`training_skill_id`),
-  KEY `fk_ssp_level` (`level_id`),
-  CONSTRAINT `fk_ssp_level` FOREIGN KEY (`level_id`) REFERENCES `skill_levels` (`level_id`),
-  CONSTRAINT `fk_ssp_skill` FOREIGN KEY (`training_skill_id`) REFERENCES `training_skills` (`training_skill_id`),
-  CONSTRAINT `fk_ssp_student` FOREIGN KEY (`student_id`) REFERENCES `students` (`student_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Dumping data for table `student_skill_progress`
---
-
-LOCK TABLES `student_skill_progress` WRITE;
-/*!40000 ALTER TABLE `student_skill_progress` DISABLE KEYS */;
-/*!40000 ALTER TABLE `student_skill_progress` ENABLE KEYS */;
-UNLOCK TABLES;
 
 --
 -- Table structure for table `student_skills`
@@ -785,8 +826,8 @@ CREATE TABLE `student_skills` (
   `updated_at` timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`student_skill_id`) /*T![clustered_index] CLUSTERED */,
   UNIQUE KEY `student_id` (`student_id`,`skill_id`),
-  KEY `idx_ss_student` (`student_id`),
-  KEY `idx_ss_skill` (`skill_id`),
+  KEY `idx_student_skills_student` (`student_id`),
+  KEY `idx_student_skills_skill` (`skill_id`),
   CONSTRAINT `fk_ss_skill` FOREIGN KEY (`skill_id`) REFERENCES `professional_skills` (`skill_id`),
   CONSTRAINT `fk_ss_student` FOREIGN KEY (`student_id`) REFERENCES `students` (`student_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
@@ -907,6 +948,7 @@ CREATE TABLE `training_skills` (
   `created_at` timestamp DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`training_skill_id`) /*T![clustered_index] CLUSTERED */,
   KEY `idx_skill_type` (`skill_type`),
+  KEY `idx_training_skills_type_category` (`skill_type`,`category_id`),
   KEY `fk_training_skills_category` (`category_id`),
   KEY `idx_training_skills_category` (`category_id`),
   CONSTRAINT `fk_training_skills_category` FOREIGN KEY (`category_id`) REFERENCES `training_skill_category` (`category_id`)
@@ -957,6 +999,38 @@ INSERT INTO `users` VALUES (1,1,'gowthamj.al24@bitsathy.ac.in','d5d3c2123d33e6e6
 UNLOCK TABLES;
 
 --
+-- Table structure for table `venue_alloted_skills`
+--
+
+DROP TABLE IF EXISTS `venue_alloted_skills`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `venue_alloted_skills` (
+  `venue_alloted_skill_id` bigint NOT NULL AUTO_INCREMENT,
+  `venue_id` bigint NOT NULL,
+  `training_skill_id` bigint NOT NULL,
+  `is_active` tinyint(1) DEFAULT '1',
+  `created_at` timestamp DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`venue_alloted_skill_id`) /*T![clustered_index] CLUSTERED */,
+  UNIQUE KEY `uq_venue_skill` (`venue_id`,`training_skill_id`),
+  KEY `idx_vts_venue` (`venue_id`),
+  KEY `idx_vts_skill` (`training_skill_id`),
+  CONSTRAINT `fk_vts_skill` FOREIGN KEY (`training_skill_id`) REFERENCES `training_skills` (`training_skill_id`),
+  CONSTRAINT `fk_vts_venue` FOREIGN KEY (`venue_id`) REFERENCES `venues` (`venue_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `venue_alloted_skills`
+--
+
+LOCK TABLES `venue_alloted_skills` WRITE;
+/*!40000 ALTER TABLE `venue_alloted_skills` DISABLE KEYS */;
+/*!40000 ALTER TABLE `venue_alloted_skills` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
 -- Table structure for table `venue_mapping`
 --
 
@@ -967,15 +1041,18 @@ CREATE TABLE `venue_mapping` (
   `mapping_id` bigint NOT NULL AUTO_INCREMENT,
   `faculty_id` bigint NOT NULL,
   `venue_id` bigint NOT NULL,
-  `start_time` time NOT NULL,
-  `end_time` time NOT NULL,
+  `skill_type` enum('PS','PBL') COLLATE utf8mb4_0900_ai_ci NOT NULL,
+  `slot_id` bigint NOT NULL,
   `created_at` timestamp DEFAULT CURRENT_TIMESTAMP,
   `updated_at` timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `current_bookings` int DEFAULT '0',
   PRIMARY KEY (`mapping_id`) /*T![clustered_index] CLUSTERED */,
   KEY `idx_vm_faculty` (`faculty_id`),
   KEY `idx_vm_venue` (`venue_id`),
+  KEY `idx_vm_skill_type` (`skill_type`),
+  KEY `idx_vm_slot` (`slot_id`),
   CONSTRAINT `fk_vm_faculty` FOREIGN KEY (`faculty_id`) REFERENCES `faculties` (`faculty_id`),
+  CONSTRAINT `fk_vm_slot` FOREIGN KEY (`slot_id`) REFERENCES `slot_timings` (`slot_id`),
   CONSTRAINT `fk_vm_venue` FOREIGN KEY (`venue_id`) REFERENCES `venues` (`venue_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -1000,10 +1077,10 @@ CREATE TABLE `venue_mapping_transfer_log` (
   `transfer_id` bigint NOT NULL AUTO_INCREMENT,
   `from_faculty_id` bigint NOT NULL,
   `to_faculty_id` bigint NOT NULL,
+  `reason` text,
   `venue_id` bigint NOT NULL,
-  `start_time` time NOT NULL,
-  `end_time` time NOT NULL,
-  `current_status` enum('PENDING','REJECTED','ACCEPTED') COLLATE utf8mb4_0900_ai_ci DEFAULT NULL,
+  `slot_id` bigint NOT NULL,
+  `current_status` enum('PENDING','REJECTED','ACCEPTED') COLLATE utf8mb4_0900_ai_ci DEFAULT 'PENDING',
   `created_at` timestamp DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`transfer_id`) /*T![clustered_index] CLUSTERED */,
   KEY `idx_vmt_from` (`from_faculty_id`),
@@ -1011,7 +1088,8 @@ CREATE TABLE `venue_mapping_transfer_log` (
   KEY `idx_vmt_venue` (`venue_id`),
   CONSTRAINT `fk_vmt_from` FOREIGN KEY (`from_faculty_id`) REFERENCES `faculties` (`faculty_id`),
   CONSTRAINT `fk_vmt_to` FOREIGN KEY (`to_faculty_id`) REFERENCES `faculties` (`faculty_id`),
-  CONSTRAINT `fk_vmt_venue` FOREIGN KEY (`venue_id`) REFERENCES `venues` (`venue_id`)
+  CONSTRAINT `fk_vmt_venue` FOREIGN KEY (`venue_id`) REFERENCES `venues` (`venue_id`),
+  CONSTRAINT `fk_vmt_slot` FOREIGN KEY (`slot_id`) REFERENCES `slot_timings` (`slot_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -1061,4 +1139,4 @@ UNLOCK TABLES;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2026-05-18 13:28:57
+-- Dump completed on 2026-06-07 (synced with db_ref.txt)

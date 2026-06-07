@@ -25,3 +25,8 @@
   background: var(--purple-dim);
   color: var(--purple);
 }
+
+.orange {
+  background: rgba(249, 115, 22, 0.12);
+  color: #c2410c;
+}

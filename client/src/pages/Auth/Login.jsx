@@ -1,8 +1,9 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { GoogleLogin } from '@react-oauth/google';
 import { authService } from '../../services/features/authService';
 import { useStore } from '../../store/useStore';
-import { useNavigate } from 'react-router-dom';
+import { useAuthStore } from '../../store/authStore.jsx';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 const PARTICLES = Array.from({ length: 28 }, (_, i) => ({
   id: i,
@@ -52,7 +53,24 @@ const LayersIcon = ({ size = 28, color = 'white' }) => (
 
 export default function PCDPLogin() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { showToast: pushToast } = useStore();
+  const accessToken = useAuthStore((state) => state.accessToken);
+  const user = useAuthStore((state) => state.user);
+
+  const getHomeRoute = (roleId) => {
+    const numericRoleId = Number(roleId);
+
+    if (numericRoleId === 1) {
+      return '/student-dashboard';
+    }
+
+    if (numericRoleId === 2 || numericRoleId === 3) {
+      return '/admin-dashboard';
+    }
+
+    return '/auth/login';
+  };
 
   const useWindowWidth = () => {
     const [width, setWidth] = useState(() =>
@@ -88,22 +106,26 @@ export default function PCDPLogin() {
   };
 
   useEffect(() => {
-    const handler = (e) => {
-      if (e.key === 'Enter') handleLogin();
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [username, password]);
+    if (accessToken && user) {
+      const targetRoute = getHomeRoute(user.role_id);
+      if (location.pathname !== targetRoute) {
+        navigate(targetRoute, { replace: true });
+      }
+    }
+  }, [accessToken, user, location.pathname, navigate]);
 
-  const showToast = (type, msg) => pushToast(msg, type !== 'success');
+  const showToast = useCallback(
+    (type, msg) => pushToast(msg, type !== 'success'),
+    [pushToast]
+  );
 
-  const validate = () => {
+  const validate = useCallback(() => {
     const errs = {};
     if (!username.trim()) errs.username = 'Username is required';
     if (!password.trim()) errs.password = 'Password is required';
     else if (password.length < 4) errs.password = 'Password too short';
     return errs;
-  };
+  }, [username, password]);
 
   const handleGoogleCredential = async (credential) => {
     try {
@@ -116,7 +138,9 @@ export default function PCDPLogin() {
         return;
       }
       showToast('success', `Welcome ${user?.email || ''}`.trim());
-      navigate('/', { replace: true });
+      // Navigate directly to the correct home route to avoid bouncing via '/'
+      const targetRoute = getHomeRoute(user?.role_id);
+      navigate(targetRoute, { replace: true });
     } catch (err) {
       const status = err?.response?.status;
       const message =
@@ -136,7 +160,15 @@ export default function PCDPLogin() {
     }
   };
 
-  const handleLogin = () => {
+  const handleLogin = useCallback(async () => {
+    if (accessToken && user) {
+      const targetRoute = getHomeRoute(user.role_id);
+      if (location.pathname !== targetRoute) {
+        navigate(targetRoute, { replace: true });
+      }
+      return;
+    }
+
     const errs = validate();
     setErrors(errs);
     if (Object.keys(errs).length > 0) {
@@ -146,11 +178,32 @@ export default function PCDPLogin() {
       return;
     }
     setLoading(true);
-    setTimeout(() => {
+    try {
+      const payload = await authService.googleLogin(username);
+      const { accessToken: token, user: u } = payload?.data || {};
+
+      if (!payload?.success || !token) {
+        showToast('error', payload?.message || 'Login failed');
+        return;
+      }
+      showToast('success', `Welcome back, ${u?.name || username}! Redirecting...`);
+      const targetRoute = getHomeRoute(u?.role_id);
+      navigate(targetRoute, { replace: true });
+    } catch (err) {
+      const message = err?.response?.data?.message || err?.message || 'Login failed';
+      showToast('error', message);
+    } finally {
       setLoading(false);
-      showToast('success', `Welcome back, ${username}! Redirecting...`);
-    }, 2000);
-  };
+    }
+  }, [accessToken, user, location.pathname, navigate, username, password, showToast, validate]);
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.key === 'Enter') handleLogin();
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [handleLogin]);
 
   return (
     <div style={styles.page} className="pcdp-page">
@@ -452,7 +505,7 @@ export default function PCDPLogin() {
 
           {/* Login Button */}
           <button
-            disabled={loading}
+            type="button"
             onMouseEnter={() => setBtnHover(true)}
             onMouseLeave={() => setBtnHover(false)}
             style={{

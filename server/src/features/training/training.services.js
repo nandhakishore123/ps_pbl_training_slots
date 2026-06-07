@@ -10,7 +10,7 @@ export const getCategories = async () => {
   return trainingModel.listCategories();
 };
 
-export const getSkills = async ({ type, categoryId, search, limit, offset }) => {
+export const getSkills = async ({ type, categoryId, search, limit, offset, all }) => {
   const t = normalizeStr(type).toUpperCase();
   if (t !== 'PS' && t !== 'PBL') {
     const err = new Error('Invalid skill type');
@@ -20,6 +20,8 @@ export const getSkills = async ({ type, categoryId, search, limit, offset }) => 
 
   const cat = normalizeStr(categoryId);
   const q = normalizeStr(search);
+  const allRaw = normalizeStr(all).toLowerCase();
+  const wantsAll = ['1', 'true', 'yes', 'y', 'all'].includes(allRaw);
 
   return trainingModel.listSkills({
     type: t,
@@ -27,6 +29,7 @@ export const getSkills = async ({ type, categoryId, search, limit, offset }) => 
     search: q || null,
     limit,
     offset,
+    all: wantsAll,
   });
 };
 
@@ -77,7 +80,7 @@ export const getSkillSlots = async (trainingSkillId) => {
   return trainingModel.listSkillSlots(trainingSkillId);
 };
 
-export const createBooking = async ({ userId, slotId, trainingSkillId }) => {
+export const createBooking = async ({ userId, slotId, mappingId, trainingSkillId, levelId }) => {
   if (!userId) {
     const err = new Error('Unauthorized');
     err.status = 401;
@@ -101,6 +104,13 @@ export const createBooking = async ({ userId, slotId, trainingSkillId }) => {
     throw err;
   }
 
+  const hasMal = await trainingModel.hasMalpractice(studentId, trainingSkillId);
+  if (hasMal) {
+    const err = new Error('Access denied due to malpractice');
+    err.status = 403;
+    throw err;
+  }
+
   const conn = await db.getConnection();
   try {
     await conn.beginTransaction();
@@ -117,6 +127,13 @@ export const createBooking = async ({ userId, slotId, trainingSkillId }) => {
       throw err;
     }
 
+    const isFutureSlot = await trainingModel.isSlotTimingInFuture(slot.slot_id, conn);
+    if (!isFutureSlot) {
+      const err = new Error('Slot time has already passed');
+      err.status = 400;
+      throw err;
+    }
+
     const existing = await trainingModel.getExistingBookingForSlotDate(studentId, slot.slot_id, conn);
     if (existing) {
       const err = new Error('Slot already booked for today');
@@ -124,10 +141,18 @@ export const createBooking = async ({ userId, slotId, trainingSkillId }) => {
       throw err;
     }
 
+    const activeBooking = await trainingModel.getExistingActiveBookingForCourse(studentId, trainingSkillId, conn);
+    if (activeBooking) {
+      const err = new Error('You already have an active/ongoing booking for this course');
+      err.status = 409;
+      throw err;
+    }
+
     const candidates = await trainingModel.listAvailableMappingsForSlot({
       startTime: slot.start_time,
       endTime: slot.end_time,
-      preferredMappingId: 0,
+      preferredMappingId: mappingId || 0,
+      trainingSkillId,
     }, conn);
 
     if (!candidates.length) {
@@ -154,6 +179,7 @@ export const createBooking = async ({ userId, slotId, trainingSkillId }) => {
     const bookingId = await trainingModel.insertStudentBooking({
       studentId,
       trainingSkillId: Number(trainingSkillId),
+      levelId: levelId ? Number(levelId) : null,
       mappingId: selectedMappingId,
       slotId: slot.slot_id,
     }, conn);
@@ -183,3 +209,192 @@ export const getStudentBookings = async ({ userId }) => {
 
   return trainingModel.listStudentBookings(studentId);
 };
+
+// ── Assessment services ───────────────────────────────────────────────────────
+
+export const getAssessment = async (trainingSkillId, levelId, userId) => {
+  if (userId) {
+    const studentId = await trainingModel.getStudentIdByUserId(userId);
+    if (studentId) {
+      const hasMal = await trainingModel.hasMalpractice(studentId, trainingSkillId);
+      if (hasMal) {
+        const err = new Error('Access denied due to malpractice');
+        err.status = 403;
+        throw err;
+      }
+    }
+  }
+  const assessment = await trainingModel.getAssessmentForLevel(trainingSkillId, levelId);
+  if (!assessment) {
+    const err = new Error('No active assessment found for this level');
+    err.status = 404;
+    throw err;
+  }
+  const typeConfigs = await trainingModel.getAssessmentMcqTypeConfig(assessment.assessment_id);
+  return { ...assessment, typeConfigs };
+};
+
+export const getAssessmentWithQuestions = async (assessmentId) => {
+  const [rows] = await (await import('../../config/db.js')).default.execute(
+    `SELECT assessment_id, assessment_title, assessment_type,
+            total_marks, passing_marks, duration_minutes, is_active
+     FROM assessments WHERE assessment_id = ? AND is_active = 1 LIMIT 1`,
+    [Number(assessmentId)]
+  );
+  const assessment = rows?.[0] ?? null;
+  if (!assessment) {
+    const err = new Error('Assessment not found');
+    err.status = 404;
+    throw err;
+  }
+  const typeConfigs = await trainingModel.getAssessmentMcqTypeConfig(assessment.assessment_id);
+  const questions = await fetchQuestionsForAssessment(assessment.assessment_id, typeConfigs);
+  return { ...assessment, typeConfigs, questions };
+};
+
+export const startAssessment = async ({ userId, assessmentId, totalMarks }) => {
+  const studentId = await trainingModel.getStudentIdByUserId(userId);
+  if (!studentId) {
+    const err = new Error('Student not found');
+    err.status = 404;
+    throw err;
+  }
+  const [assessmentRow] = await db.execute(
+    'SELECT training_skill_id FROM assessments WHERE assessment_id = ? LIMIT 1',
+    [Number(assessmentId)]
+  );
+  const skillId = assessmentRow?.[0]?.training_skill_id;
+  if (skillId) {
+    const hasMal = await trainingModel.hasMalpractice(studentId, skillId);
+    if (hasMal) {
+      const err = new Error('Access denied due to malpractice');
+      err.status = 403;
+      throw err;
+    }
+  }
+  // Fetch type configs to get random questions per type
+  const typeConfigs = await trainingModel.getAssessmentMcqTypeConfig(Number(assessmentId));
+  const studentAssessmentId = await trainingModel.insertStudentAssessment(
+    studentId,
+    Number(assessmentId),
+    Number(totalMarks)
+  );
+  // Fetch random questions per type
+  const questions = await fetchQuestionsForAssessment(Number(assessmentId), typeConfigs);
+  return { student_assessment_id: studentAssessmentId, questions };
+};
+
+export const fetchQuestionsForAssessment = async (assessmentId, typeConfigs) => {
+  // Fetch random questions for each type config and combine
+  const allQuestions = [];
+  for (const cfg of typeConfigs) {
+    const questions = await trainingModel.getRandomMcqQuestions(
+      assessmentId,
+      cfg.mcq_type_id,
+      cfg.question_count
+    );
+    // Attach type info
+    for (const q of questions) {
+      allQuestions.push({ ...q, mcq_type_name: cfg.mcq_type_name });
+    }
+  }
+  return allQuestions;
+};
+
+export const submitAssessment = async ({ studentAssessmentId, answers, passingMarks }) => {
+  // answers: [{mcq_question_id, selected_option, correct_option, marks}]
+  let scoreObtained = 0;
+  const answerRows = (answers || []).map((a) => {
+    const isCorrect = a.selected_option != null && a.selected_option === a.correct_option;
+    const marksAwarded = isCorrect ? Number(a.marks || 1) : 0;
+    scoreObtained += marksAwarded;
+    return {
+      student_assessment_id: Number(studentAssessmentId),
+      mcq_question_id: Number(a.mcq_question_id),
+      selected_option: a.selected_option || null,
+      is_correct: isCorrect,
+      marks_awarded: marksAwarded,
+    };
+  });
+
+  if (answerRows.length) {
+    await trainingModel.insertStudentMcqAnswers(answerRows);
+  }
+
+  const status = scoreObtained >= Number(passingMarks) ? 'PASSED' : 'FAILED';
+  await trainingModel.submitStudentAssessment(Number(studentAssessmentId), scoreObtained, status);
+
+  // Update student_booking status
+  try {
+    const [assessmentInfoRows] = await db.execute(
+      `SELECT sa.student_id, a.training_skill_id, a.level_id, ts.skill_type
+       FROM student_assessments sa
+       JOIN assessments a ON a.assessment_id = sa.assessment_id
+       JOIN training_skills ts ON ts.training_skill_id = a.training_skill_id
+       WHERE sa.student_assessment_id = ?
+       LIMIT 1`,
+      [Number(studentAssessmentId)]
+    );
+    const info = assessmentInfoRows?.[0];
+    if (info) {
+      const isPassed = status === 'PASSED';
+      let newBookingStatus = 'FAIL';
+      if (isPassed) {
+        newBookingStatus = info.skill_type === 'PS' ? 'PASS' : 'COMPLETED';
+      }
+      await db.execute(
+        `UPDATE student_booking
+         SET status = ?
+         WHERE student_id = ?
+           AND training_skill_id = ?
+           AND level_id = ?
+           AND status = 'ONGOING'`,
+        [newBookingStatus, Number(info.student_id), Number(info.training_skill_id), Number(info.level_id)]
+      );
+    }
+  } catch (error) {
+    console.error('Failed to update student_booking status on assessment submission:', error);
+  }
+
+  return { score_obtained: scoreObtained, status };
+};
+
+export const reportMalpractice = async ({ bookingId, studentAssessmentId }) => {
+  await trainingModel.markBookingMalpractice(Number(bookingId));
+  if (studentAssessmentId) {
+    await trainingModel.submitStudentAssessment(Number(studentAssessmentId), 0, 'FAILED');
+  }
+  return { success: true };
+};
+
+// ── Lab Record services ───────────────────────────────────────────────────────
+
+export const getLabRecordQuestions = async () => {
+  return trainingModel.getLabRecordQuestions();
+};
+
+export const saveLabRecord = async ({ userId, bookingId, responses }) => {
+  const studentId = await trainingModel.getStudentIdByUserId(userId);
+  if (!studentId) {
+    const err = new Error('Student not found');
+    err.status = 404;
+    throw err;
+  }
+
+  // Get faculty ID associated with this booking
+  const facultyId = await trainingModel.getFacultyFromBooking(bookingId);
+
+  await trainingModel.saveLabRecord({
+    studentId,
+    bookingId,
+    facultyId,
+    responses,
+  });
+
+  return { success: true };
+};
+
+export const getLabRecordByBooking = async (bookingId) => {
+  return trainingModel.getLabRecordByBooking(bookingId);
+};
+

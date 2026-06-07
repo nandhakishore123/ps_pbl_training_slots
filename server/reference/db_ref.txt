@@ -64,7 +64,34 @@ TABLE: venues
 - created_at      TIMESTAMP
 - updated_at      TIMESTAMP
 
+TABLE: venue_alloted_skills (
+-----------------------------------------------------------------------
+  venue_alloted_skill_id      BIGINT PRIMARY KEY AUTO_INCREMENT,
+  venue_id                    BIGINT NOT NULL,
+  training_skill_id           BIGINT NOT NULL,
+  is_active                   TINYINT(1) DEFAULT 1,
+  created_at                  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at                  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 
+  ON UPDATE CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_vts_venue
+        FOREIGN KEY (venue_id)
+        REFERENCES venues(venue_id),
+
+    CONSTRAINT fk_vts_skill
+        FOREIGN KEY (training_skill_id)
+        REFERENCES training_skills(training_skill_id),
+
+    CONSTRAINT uq_venue_skill
+        UNIQUE (venue_id, training_skill_id)
+);
+
+CREATE INDEX idx_vts_venue
+ON venue_training_skills(venue_id);
+
+CREATE INDEX idx_vts_skill
+ON venue_training_skills(training_skill_id);
 TABLE: training_skills
 -----------------------------------------------------------------------
 - training_skill_id BIGINT         PK
@@ -101,8 +128,7 @@ TABLE: venue_mapping
 - mapping_id        BIGINT         PK
 - faculty_id        BIGINT         FK -> faculties(faculty_id)
 - venue_id          BIGINT         FK -> venues(venue_id)
-- start_time        TIME
-- end_time          TIME
+- slot_id           BIGINT         FK -> slot_timings(slot_id)
 - current_bookings  INT
 - created_at        TIMESTAMP
 - updated_at        TIMESTAMP
@@ -127,31 +153,21 @@ TABLE: student_booking
 - booking_id        BIGINT         PK
 - student_id        BIGINT         FK -> students(student_id)
 - training_skill_id BIGINT
+- level_id          BIGINT         FK -> skill_level(level_id)
 - mapping_id        BIGINT         FK -> venue_mapping(mapping_id)
 - slot_id           BIGINT         FK -> slot_timings(slot_id)
 - booking_date      DATE
-- status            ENUM(ONGOING, PASS, FAIL)
+- status            ENUM(ONGOING, PASS, FAIL , COMPLETED , MALPRACTICE)
+- is_present        TINYINT(1)
+- created_at        TIMESTAMP
+- updated_at        TIMESTAMP
+- remarks           TEXT
 
 INDEXES:
 - UNIQUE INDEX uq_student_slot_date(student_id, slot_id, booking_date)
 - INDEX idx_booking_student(student_id)
 - INDEX idx_booking_slot_date(slot_id, booking_date)
 - INDEX idx_booking_mapping(mapping_id)
-
-
-TABLE: student_skill_progress
------------------------------------------------------------------------
-- student_progress_id BIGINT       PK
-- student_id          BIGINT       FK -> students(student_id)
-- training_skill_id   BIGINT       FK -> training_skills(training_skill_id)
-- level_id            BIGINT       FK -> skill_levels(level_id)
-- is_completed        TINYINT(1)
-- total_attempts      INT
-- created_at          TIMESTAMP
-- updated_at          TIMESTAMP
-
-INDEXES:
-- INDEX idx_ssp_student(student_id)
 
 
 TABLE: attendance
@@ -223,7 +239,7 @@ TABLE: skill_levels
 -----------------------------------------------------------------------
 - level_id          BIGINT         PK
 - training_skill_id BIGINT         FK -> training_skills(training_skill_id)
-- level_number      INT
+- level_name        VARCHAR(255)
 - core_concept      VARCHAR(255)
 - max_attempts      INT
 
@@ -277,21 +293,21 @@ INDEXES:
 TABLE: end_survey_questions
 -----------------------------------------------------------------------
 - survey_question_id BIGINT        PK
-- group_role_id      BIGINT        FK -> group_roles(group_role_id)
 - question           TEXT
 - created_at         TIMESTAMP
 
 INDEXES:
-- INDEX idx_esq_role(group_role_id)
+- INDEX idx_question_id(survey_question_id)
 
 
 TABLE: end_survey
 -----------------------------------------------------------------------
 - survey_id            BIGINT      PK
-- faculty_id           BIGINT      FK -> faculties(faculty_id)
+- faculty_id           BIGINT      FK -> faculties(faculty_id)  NULLABLE
 - student_id           BIGINT      FK -> students(student_id)
 - survey_question_id   BIGINT      FK -> end_survey_questions(survey_question_id)
 - student_response     TEXT
+- booking_id           BIGINT      FK -> student_booking(booking_id)  NULLABLE
 - is_caption_verified  BOOLEAN
 - is_incharge_verified BOOLEAN
 - created_at           TIMESTAMP
@@ -300,6 +316,7 @@ INDEXES:
 - INDEX idx_es_faculty(faculty_id)
 - INDEX idx_es_student(student_id)
 - INDEX idx_es_question(survey_question_id)
+- INDEX idx_es_booking(booking_id)
 
 
 TABLE: survey_questions_category
@@ -318,9 +335,9 @@ TABLE: venue_mapping_transfer_log
 - transfer_id       BIGINT         PK
 - from_faculty_id   BIGINT         FK -> faculties(faculty_id)
 - to_faculty_id     BIGINT         FK -> faculties(faculty_id)
+- reason            TEXT
 - venue_id          BIGINT         FK -> venues(venue_id)
-- start_time        TIME
-- end_time          TIME
+- slot_id           BIGINT         FK -> slot_timings(slot_id)
 - current_status    ENUM(PENDING, REJECTED, ACCEPTED)
 - created_at        TIMESTAMP
 
@@ -329,6 +346,28 @@ INDEXES:
 - INDEX idx_vmt_to(to_faculty_id)
 - INDEX idx_vmt_venue(venue_id)
 
+TABLE: mcq_types
+-----------------------------------------------------------------------
+  mcq_type_id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  mcq_type_name VARCHAR(100) NOT NULL,
+  is_active TINYINT(1) DEFAULT 1,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+
+TABLE: assessment_mcq_type_config
+-----------------------------------------------------------------------
+    config_id             BIGINT PRIMARY KEY AUTO_INCREMENT,
+    assessment_id         BIGINT NOT NULL,
+    mcq_type_id           BIGINT NOT NULL,
+    question_count        INT NOT NULL,
+    created_at            TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (assessment_id)
+        REFERENCES assessments(assessment_id),
+
+    FOREIGN KEY (mcq_type_id)
+        REFERENCES mcq_types(mcq_type_id),
+
+    UNIQUE KEY uq_assessment_mcq_type
+        (assessment_id, mcq_type_id)
 
 TABLE: assessments
 -----------------------------------------------------------------------
@@ -360,6 +399,8 @@ TABLE: assessment_mcq_questions
 - option_c          VARCHAR(255)
 - option_d          VARCHAR(255)
 - correct_option    ENUM(A, B, C, D)
+- mcq_type_id          BIGINT FK -> mcq_type(mcq_type_id)
+- difficulty        ENUM('EASY','MEDIUM','HARD')  
 - marks             INT
 - created_at        TIMESTAMP
 

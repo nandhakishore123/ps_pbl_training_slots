@@ -43,8 +43,6 @@ export function AppProvider({ children }) {
         settings: '/settings',
         notification: '/notification',
         notifications: '/notification',
-        'ps-slots': '/ps-slot-management',
-        'pbl-slots': '/pbl-slot-management',
         students: '/view-students',
         'venue-allocation': '/venue-allocation',
       }

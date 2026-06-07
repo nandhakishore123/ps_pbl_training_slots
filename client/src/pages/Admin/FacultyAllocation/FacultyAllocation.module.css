@@ -139,6 +139,12 @@
   font-weight: 700;
 }
 
+.facReg {
+  font-size: 11px;
+  color: var(--text3);
+  margin-top: 1px;
+}
+
 .deptCell {
   font-size: 12px;
   color: var(--text2);
@@ -192,6 +198,72 @@
 .noSlots {
   font-size: 12px;
   color: var(--text3);
+}
+
+/* DROPDOWN MENU */
+.menuWrap {
+  position: relative;
+  display: inline-block;
+}
+
+.manageBtn {
+  padding: 5px 14px;
+  border-radius: 7px;
+  border: 1.5px solid var(--purple);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  background: transparent;
+  font-family: var(--font-body);
+  color: var(--purple);
+  transition: all 0.18s;
+}
+
+.manageBtn:hover {
+  background: var(--purple);
+  color: #fff;
+}
+
+.dropdown {
+  position: absolute;
+  right: 0;
+  top: 110%;
+  background: var(--white);
+  border: 1.5px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+  z-index: 200;
+  min-width: 190px;
+  overflow: hidden;
+}
+
+.dropItem {
+  padding: 10px 16px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.dropSwap {
+  color: #059669;
+}
+
+.dropSwap:hover {
+  background: rgba(16, 185, 129, 0.08);
+}
+
+.dropMove {
+  color: #2563eb;
+}
+
+.dropMove:hover {
+  background: rgba(59, 130, 246, 0.08);
+}
+
+.dropDivider {
+  height: 1px;
+  background: var(--border);
 }
 
 /* TRANSFER BTN */
