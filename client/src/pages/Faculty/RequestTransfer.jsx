@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore.jsx'
 import { authService } from '../../services/features/authService'
 import { facultyService } from '../../services/features/facultyService'
-import { adminService } from '../../services/features/adminService'
 import styles from './FacultyDashboard.module.css'
 import tStyles from './RequestTransfer.module.css'
 
@@ -30,17 +29,26 @@ export default function RequestTransfer() {
   const logout = useAuthStore((s) => s.logout)
   const user = useAuthStore((s) => s.user)
 
-  // Form states
-  const [venues, setVenues] = useState([])
+  // Allocation Lists
+  const [myVenues, setMyVenues] = useState([])
+  const [allAllocations, setAllAllocations] = useState({ venues: [], slots: [], mappings: [] })
+  
+  // Selection States
   const [selectedMappingId, setSelectedMappingId] = useState('')
-  const [searchQuery, setSearchQuery] = useState('')
-  const [searchResults, setSearchResults] = useState([])
-  const [selectedFaculty, setSelectedFaculty] = useState(null)
+  const [targetSlotKey, setTargetSlotKey] = useState('') // "venueId-slotId"
   const [reason, setReason] = useState('')
-  const [showDropdown, setShowDropdown] = useState(false)
-  const [searchLoading, setSearchLoading] = useState(false)
+  
+  // Calendar Date State (default to tomorrow)
+  const [transferDate, setTransferDate] = useState(() => {
+    const tomorrow = new Date()
+    tomorrow.setDate(tomorrow.getDate() + 1)
+    return tomorrow.toISOString().split('T')[0]
+  })
 
-  // Status/List states
+  // Collapsible Folders State
+  const [expandedVenues, setExpandedVenues] = useState({})
+
+  // History/Status Lists
   const [transfers, setTransfers] = useState([])
   const [loading, setLoading] = useState(true)
   const [submitLoading, setSubmitLoading] = useState(false)
@@ -59,11 +67,13 @@ export default function RequestTransfer() {
   const loadData = useCallback(async () => {
     setLoading(true)
     try {
-      const [venuesRes, transfersRes] = await Promise.all([
+      const [myVenuesRes, allRes, transfersRes] = await Promise.all([
         facultyService.getMyVenues(),
+        facultyService.getAllVenueAllocations(),
         facultyService.getMyTransferRequests(),
       ])
-      if (venuesRes?.data) setVenues(venuesRes.data)
+      if (myVenuesRes?.data) setMyVenues(myVenuesRes.data)
+      if (allRes?.data) setAllAllocations(allRes.data)
       if (transfersRes?.data) setTransfers(transfersRes.data)
     } catch (err) {
       console.error('Failed to load data:', err)
@@ -76,34 +86,6 @@ export default function RequestTransfer() {
   useEffect(() => {
     loadData()
   }, [loadData])
-
-  // Debounced search for target faculty
-  useEffect(() => {
-    if (!searchQuery.trim()) {
-      setSearchResults([])
-      return
-    }
-
-    setSearchLoading(true)
-    const delayDebounceFn = setTimeout(async () => {
-      try {
-        const res = await adminService.searchFaculty(searchQuery)
-        if (res?.data) {
-          // Filter out current logged-in faculty
-          const filtered = res.data.filter(
-            (f) => f.name !== user?.name && f.reg_num !== user?.reg_num
-          )
-          setSearchResults(filtered)
-        }
-      } catch (err) {
-        console.error('Faculty search failed:', err)
-      } finally {
-        setSearchLoading(false)
-      }
-    }, 300)
-
-    return () => clearTimeout(delayDebounceFn)
-  }, [searchQuery, user])
 
   const showToast = (message, type = 'success') => {
     setToast({ message, type })
@@ -120,7 +102,16 @@ export default function RequestTransfer() {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    if (!selectedMappingId || !selectedFaculty || !reason.trim()) {
+
+    let targetVenueId = null
+    let targetSlotId = null
+    if (targetSlotKey) {
+      const [vId, sId] = targetSlotKey.split('-')
+      targetVenueId = Number(vId)
+      targetSlotId = Number(sId)
+    }
+
+    if (!selectedMappingId || !targetVenueId || !targetSlotId || !reason.trim() || !transferDate) {
       showToast('Please fill all fields', 'warning')
       return
     }
@@ -129,15 +120,17 @@ export default function RequestTransfer() {
     try {
       await facultyService.createTransferRequest(
         selectedMappingId,
-        selectedFaculty.faculty_id,
-        reason.trim()
+        null, // toFacultyId is null since transferring to a free slot
+        reason.trim(),
+        targetVenueId,
+        targetSlotId,
+        transferDate
       )
       showToast('Transfer request submitted successfully!')
       setSelectedMappingId('')
-      setSelectedFaculty(null)
-      setSearchQuery('')
+      setTargetSlotKey('')
       setReason('')
-      // Reload lists
+      // Reload logs
       const transfersRes = await facultyService.getMyTransferRequests()
       if (transfersRes?.data) setTransfers(transfersRes.data)
     } catch (err) {
@@ -156,6 +149,55 @@ export default function RequestTransfer() {
     const h12 = hh % 12 || 12
     return `${h12}:${m} ${ampm}`
   }
+
+  // Toggle venue folder open/close
+  const toggleVenue = (venueId) => {
+    setExpandedVenues(prev => ({ ...prev, [venueId]: !prev[venueId] }))
+  }
+
+  // Get status details for a slot timing under a venue
+  const getSlotStatus = (venueId, slotId) => {
+    const isOwn = myVenues.some(mv => mv.venue_id === venueId && mv.slot_id === slotId)
+    if (isOwn) {
+      const mv = myVenues.find(mv => mv.venue_id === venueId && mv.slot_id === slotId)
+      return { type: 'own', label: 'Assigned: You', mappingId: mv.mapping_id }
+    }
+    
+    const mapped = allAllocations.mappings.find(m => m.venue_id === venueId && m.slot_id === slotId)
+    if (mapped) {
+      return { type: 'assigned', label: `Assigned: ${mapped.faculty_name}`, facultyName: mapped.faculty_name, regNum: mapped.faculty_reg_num }
+    }
+
+    return { type: 'free', label: 'Free' }
+  }
+
+  // Get the selected source slot details for displaying in the form
+  const getSelectedSourceDetails = () => {
+    if (!selectedMappingId) return null
+    return myVenues.find(mv => mv.mapping_id === selectedMappingId)
+  }
+
+  const selectedSource = getSelectedSourceDetails()
+
+  // Compile list of currently free slots across all venues
+  const freeSlots = []
+  allAllocations.venues.forEach(v => {
+    allAllocations.slots.forEach(s => {
+      const status = getSlotStatus(v.venue_id, s.slot_id)
+      if (status.type === 'free') {
+        freeSlots.push({
+          key: `${v.venue_id}-${s.slot_id}`,
+          venueName: v.venue_name,
+          location: v.location,
+          slotText: `${formatTime(s.start_time)} - ${formatTime(s.end_time)}`,
+          venueId: v.venue_id,
+          slotId: s.slot_id
+        })
+      }
+    })
+  })
+
+  const todayStr = new Date().toISOString().split('T')[0]
 
   return (
     <div className={styles.page}>
@@ -219,250 +261,315 @@ export default function RequestTransfer() {
         <div className={styles.sectionHeader}>
           <div className={styles.sectionTitle}>Request Transfer</div>
           <div className={styles.sectionSub}>
-            Initiate a PENDING request to transfer ownership of a slot to another faculty member.
+            Initiate a transfer of your assigned slot to a currently free slot on a specific date.
           </div>
         </div>
 
         <div className={styles.groups}>
           {loading ? (
             <div className={tStyles.card} style={{ textAlign: 'center', padding: '40px' }}>
-              <p style={{ color: 'var(--text2)' }}>Loading transfer details...</p>
+              <p style={{ color: 'var(--text2)' }}>Loading allocation data...</p>
             </div>
           ) : (
-            <div className={tStyles.transferGrid}>
-              {/* Left Column: Assigned Venues List */}
-              <div className={tStyles.card}>
-                <h3 className={tStyles.cardTitle}>
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
-                    <line x1="16" y1="2" x2="16" y2="6"></line>
-                    <line x1="8" y1="2" x2="8" y2="6"></line>
-                    <line x1="3" y1="10" x2="21" y2="10"></line>
-                  </svg>
-                  Select Your Assigned Slot
-                </h3>
-                {venues.length === 0 ? (
-                  <p style={{ color: 'var(--text3)', fontSize: '13px' }}>No venues assigned to you.</p>
-                ) : (
-                  <div className={tStyles.venueList}>
-                    {venues.map((v) => (
-                      <div
-                        key={v.mapping_id}
-                        className={`${tStyles.venueItem} ${
-                          selectedMappingId === v.mapping_id ? tStyles.selectedVenue : ''
-                        }`}
-                        onClick={() => setSelectedMappingId(v.mapping_id)}
-                      >
-                        <div className={tStyles.venueInfo}>
-                          <span className={tStyles.venueName}>
-                            {v.venue_name} ({v.skill_type})
-                          </span>
-                          <span className={tStyles.venueLoc}>Loc: {v.location}</span>
-                          <span className={tStyles.venueTime}>
-                            {formatTime(v.start_time)} - {formatTime(v.end_time)}
-                          </span>
-                        </div>
-                        {selectedMappingId === v.mapping_id && (
-                          <svg
-                            width="20"
-                            height="20"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="var(--purple)"
-                            strokeWidth="2.5"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          >
-                            <polyline points="20 6 9 17 4 12" />
-                          </svg>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
+            <>
+              {/* Calendar date picker at the top */}
+              <div className={tStyles.calendarCard}>
+                <h4 style={{ fontSize: '13px', fontWeight: '800', textTransform: 'uppercase', color: 'var(--text2)', letterSpacing: '0.5px' }}>
+                  Choose Date of Transfer
+                </h4>
+                <div className={tStyles.calendarRow}>
+                  <input
+                    type="date"
+                    min={todayStr}
+                    value={transferDate}
+                    onChange={(e) => setTransferDate(e.target.value)}
+                    className={tStyles.dateInput}
+                  />
+                  <p style={{ fontSize: '12.5px', color: 'var(--text3)' }}>
+                    Slots will show their status on <b>{new Date(transferDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })}</b>.
+                  </p>
+                </div>
               </div>
 
-              {/* Right Column: Transfer Form */}
-              <form onSubmit={handleSubmit} className={tStyles.card}>
-                <h3 className={tStyles.cardTitle}>
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-                    <circle cx="8.5" cy="7" r="4"></circle>
-                    <line x1="20" y1="8" x2="20" y2="14"></line>
-                    <line x1="23" y1="11" x2="17" y2="11"></line>
-                  </svg>
-                  Transfer Target
-                </h3>
+              <div className={tStyles.transferGrid}>
+                {/* Left Column: All Venues & Slots Folder Tree View */}
+                <div className={tStyles.card}>
+                  <h3 className={tStyles.cardTitle}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                    </svg>
+                    Select Your Assigned Slot
+                  </h3>
+                  
+                  <p style={{ fontSize: '12.5px', color: 'var(--text2)', marginBottom: '16px', textALign: 'left' }}>
+                    Open a venue below. Click one of your own slots (purple) to release, and click a free slot (green) to select as target.
+                  </p>
 
-                {/* Selected Faculty or Search Box */}
-                <div className={tStyles.formGroup}>
-                  <label className={tStyles.label}>Target Faculty Member</label>
-                  {!selectedFaculty ? (
-                    <div className={tStyles.searchContainer}>
-                      <input
-                        type="text"
-                        placeholder="Search faculty by name or reg num..."
-                        value={searchQuery}
-                        onChange={(e) => {
-                          setSearchQuery(e.target.value)
-                          setShowDropdown(true)
-                        }}
-                        onFocus={() => setShowDropdown(true)}
-                        className={tStyles.input}
-                        style={{ width: '100%' }}
-                      />
-                      {showDropdown && searchQuery.trim() && (
-                        <div className={tStyles.dropdownList}>
-                          {searchLoading && (
-                            <div className={tStyles.dropdownItem} style={{ color: 'var(--text3)' }}>
-                              Searching...
-                            </div>
-                          )}
-                          {!searchLoading && searchResults.length === 0 && (
-                            <div className={tStyles.dropdownItem} style={{ color: 'var(--text3)' }}>
-                              No results found
-                            </div>
-                          )}
-                          {!searchLoading &&
-                            searchResults.map((f) => (
-                              <div
-                                key={f.faculty_id}
-                                className={tStyles.dropdownItem}
-                                onClick={() => {
-                                  setSelectedFaculty(f)
-                                  setShowDropdown(false)
-                                }}
+                  <div className={tStyles.folderContainer}>
+                    {allAllocations.venues.map((v) => {
+                      const isOpen = !!expandedVenues[v.venue_id]
+                      return (
+                        <div key={v.venue_id} className={tStyles.folderVenue}>
+                          <div
+                            className={`${tStyles.folderVenueHeader} ${isOpen ? tStyles.folderVenueHeaderOpen : ''}`}
+                            onClick={() => toggleVenue(v.venue_id)}
+                          >
+                            <span className={tStyles.folderVenueName}>
+                              <svg
+                                className={`${tStyles.folderVenueIcon} ${isOpen ? tStyles.folderVenueIconOpen : ''}`}
+                                width="16"
+                                height="16"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2.5"
                               >
-                                <span className={tStyles.facultyName}>{f.name}</span>
-                                <span className={tStyles.facultyMeta}>
-                                  Reg: {f.reg_num} | Dept: {f.department}
-                                </span>
-                              </div>
-                            ))}
+                                <polyline points="9 18 15 12 9 6" />
+                              </svg>
+                              {v.venue_name}
+                            </span>
+                            <span style={{ fontSize: '11px', color: 'var(--text2)' }}>
+                              Loc: {v.location} (Cap: {v.capacity})
+                            </span>
+                          </div>
+                          {isOpen && (
+                            <div className={tStyles.folderSlots}>
+                              {allAllocations.slots.map((s) => {
+                                const status = getSlotStatus(v.venue_id, s.slot_id)
+                                const slotTime = `${formatTime(s.start_time)} - ${formatTime(s.end_time)}`
+                                
+                                let slotClass = ''
+                                let badgeClass = ''
+                                let badgeText = ''
+
+                                if (status.type === 'own') {
+                                  slotClass = `${tStyles.folderSlotItem} ${tStyles.folderSlotOwn} ${
+                                    selectedMappingId === status.mappingId ? tStyles.folderSlotSelected : ''
+                                  }`
+                                  badgeClass = tStyles.badgeOwn
+                                  badgeText = 'Assigned: You'
+                                } else if (status.type === 'assigned') {
+                                  slotClass = `${tStyles.folderSlotItem} ${tStyles.folderSlotAssigned}`
+                                  badgeClass = tStyles.badgeAssigned
+                                  badgeText = `Assigned: ${status.facultyName}`
+                                } else {
+                                  const isSelectedTarget = targetSlotKey === `${v.venue_id}-${s.slot_id}`
+                                  slotClass = `${tStyles.folderSlotItem} ${tStyles.folderSlotFree} ${
+                                    isSelectedTarget ? tStyles.folderSlotSelected : ''
+                                  }`
+                                  badgeClass = tStyles.badgeFree
+                                  badgeText = 'Free'
+                                }
+
+                                const handleSlotClick = () => {
+                                  if (status.type === 'own') {
+                                    setSelectedMappingId(status.mappingId)
+                                  } else if (status.type === 'free') {
+                                    setTargetSlotKey(`${v.venue_id}-${s.slot_id}`)
+                                  } else {
+                                    showToast(`This slot is assigned to ${status.facultyName} and cannot be requested as a target.`, 'warning')
+                                  }
+                                }
+
+                                return (
+                                  <div
+                                    key={s.slot_id}
+                                    className={slotClass}
+                                    onClick={handleSlotClick}
+                                  >
+                                    <div className={tStyles.folderSlotInfo}>
+                                      <span className={tStyles.slotTimeText}>{slotTime}</span>
+                                      <span className={tStyles.slotStatusText}>
+                                        {status.type === 'assigned' && `Reg Num: ${status.regNum}`}
+                                        {status.type === 'own' && 'Click to select / release'}
+                                        {status.type === 'free' && 'Click to select as target'}
+                                      </span>
+                                    </div>
+                                    <span className={`${tStyles.badge} ${badgeClass}`}>
+                                      {badgeText}
+                                    </span>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
-                  ) : (
-                    <div className={tStyles.selectedFacultyPill}>
-                      <div>
-                        <div className={tStyles.facultyName}>{selectedFaculty.name}</div>
-                        <div className={tStyles.facultyMeta}>
-                          Reg: {selectedFaculty.reg_num} | Dept: {selectedFaculty.department}
+                      )
+                    })}
+                  </div>
+                </div>
+
+                {/* Right Column: Transfer Form */}
+                <form onSubmit={handleSubmit} className={tStyles.card}>
+                  <h3 className={tStyles.cardTitle}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                      <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                    </svg>
+                    Transfer Details
+                  </h3>
+
+                  {/* Selected Source Slot */}
+                  <div className={tStyles.formGroup}>
+                    <label className={tStyles.label}>Source Slot (To Release)</label>
+                    {selectedSource ? (
+                      <div className={tStyles.slotPill}>
+                        <div style={{ textAlign: 'left' }}>
+                          <div className={tStyles.venueName}>{selectedSource.venue_name}</div>
+                          <div className={tStyles.venueLoc}>
+                            Loc: {selectedSource.location} | Time: {formatTime(selectedSource.start_time)} - {formatTime(selectedSource.end_time)}
+                          </div>
                         </div>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedMappingId('')}
+                          style={{ background: 'none', border: 'none', color: 'var(--red)', cursor: 'pointer', fontWeight: 'bold', fontSize: '12px' }}
+                        >
+                          Clear
+                        </button>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedFaculty(null)}
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          color: 'var(--red)',
-                          cursor: 'pointer',
-                          fontWeight: 'bold',
-                        }}
-                      >
-                        Change
-                      </button>
+                    ) : (
+                      <div style={{ padding: '14px', border: '1.5px dashed var(--border)', borderRadius: '10px', fontSize: '13px', color: 'var(--text3)', background: 'rgba(0,0,0,0.01)' }}>
+                        No slot selected. Click a slot marked as <b>"Assigned: You"</b> in the tree list.
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Target Slot Selector */}
+                  <div className={tStyles.formGroup}>
+                    <label className={tStyles.label}>Target Slot (To Request)</label>
+                    <select
+                      value={targetSlotKey}
+                      onChange={(e) => setTargetSlotKey(e.target.value)}
+                      className={tStyles.input}
+                      style={{ width: '100%' }}
+                    >
+                      <option value="">Select a free target slot...</option>
+                      {freeSlots.map(s => (
+                        <option key={s.key} value={s.key}>
+                          {s.venueName} ({s.slotText}) &middot; Loc: {s.location || '—'}
+                        </option>
+                      ))}
+                    </select>
+                    <p style={{ fontSize: '11px', color: 'var(--text3)', marginTop: '2px', textAlign: 'left' }}>
+                      Tip: You can also select a free slot by clicking on a green <b>"Free"</b> slot in the tree.
+                    </p>
+                  </div>
+
+                  {/* Reason field */}
+                  <div className={tStyles.formGroup}>
+                    <label className={tStyles.label}>Reason for Transfer</label>
+                    <textarea
+                      placeholder="Provide a valid reason for the slot transfer request..."
+                      value={reason}
+                      onChange={(e) => setReason(e.target.value)}
+                      className={tStyles.textarea}
+                      rows="3"
+                      required
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={submitLoading || !selectedMappingId || !targetSlotKey || !reason.trim() || !transferDate}
+                    className={tStyles.submitBtn}
+                  >
+                    {submitLoading ? 'Submitting request...' : 'Submit Transfer Request'}
+                  </button>
+                </form>
+
+                {/* Logs Table */}
+                <div className={`${tStyles.card} ${tStyles.fullWidth}`}>
+                  <h3 className={tStyles.cardTitle}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                      <polyline points="14 2 14 8 20 8"></polyline>
+                      <line x1="16" y1="13" x2="8" y2="13"></line>
+                      <line x1="16" y1="17" x2="8" y2="17"></line>
+                      <polyline points="10 9 9 9 8 9"></polyline>
+                    </svg>
+                    Your Transfer Logs
+                  </h3>
+                  {transfers.length === 0 ? (
+                    <p style={{ color: 'var(--text3)', fontSize: '13px', textAlign: 'center', padding: '20px' }}>
+                      No transfer requests created yet.
+                    </p>
+                  ) : (
+                    <div className={tStyles.tableWrap}>
+                      <table className={tStyles.table}>
+                        <thead>
+                          <tr>
+                            <th>Original Slot</th>
+                            <th>Target Slot / Faculty</th>
+                            <th>Transfer Date</th>
+                            <th>Reason</th>
+                            <th>Requested On</th>
+                            <th>Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {transfers.map((t) => (
+                            <tr key={t.transfer_id}>
+                              <td>
+                                <div style={{ fontWeight: '700' }}>{t.venue_name}</div>
+                                <div style={{ fontSize: '11.5px', color: 'var(--purple)', fontWeight: '600' }}>
+                                  {formatTime(t.start_time)} - {formatTime(t.end_time)}
+                                </div>
+                                <div style={{ fontSize: '11px', color: 'var(--text2)' }}>
+                                  Loc: {t.location}
+                                </div>
+                              </td>
+                              <td>
+                                {t.target_venue_name ? (
+                                  <div>
+                                    <div style={{ fontWeight: '700', color: 'var(--green)' }}>{t.target_venue_name} (Free Slot)</div>
+                                    <div style={{ fontSize: '11.5px', color: 'var(--purple)', fontWeight: '600' }}>
+                                      {formatTime(t.target_start_time)} - {formatTime(t.target_end_time)}
+                                    </div>
+                                    <div style={{ fontSize: '11px', color: 'var(--text2)' }}>
+                                      Loc: {t.target_location}
+                                    </div>
+                                  </div>
+                                ) : t.to_faculty_name ? (
+                                  <div>
+                                    <div style={{ fontWeight: '600' }}>{t.to_faculty_name}</div>
+                                    <div style={{ fontSize: '11px', color: 'var(--text2)' }}>
+                                      Dept: {t.to_faculty_dept || '—'}
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <span style={{ color: 'var(--text3)' }}>—</span>
+                                )}
+                              </td>
+                              <td style={{ fontWeight: '600' }}>
+                                {t.transfer_date ? new Date(t.transfer_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
+                              </td>
+                              <td style={{ maxWidth: '200px', wordBreak: 'break-word', fontSize: '12.5px' }}>
+                                {t.reason}
+                              </td>
+                              <td>{new Date(t.created_at).toLocaleDateString()}</td>
+                              <td>
+                                <span
+                                  className={`${tStyles.badge} ${
+                                    t.current_status === 'ACCEPTED'
+                                      ? tStyles.badgeAccepted
+                                      : t.current_status === 'REJECTED'
+                                      ? tStyles.badgeRejected
+                                      : tStyles.badgePending
+                                  }`}
+                                >
+                                  {t.current_status}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
                   )}
                 </div>
-
-                {/* Reason field */}
-                <div className={tStyles.formGroup}>
-                  <label className={tStyles.label}>Reason for Transfer</label>
-                  <textarea
-                    placeholder="Provide a valid reason for the slot transfer..."
-                    value={reason}
-                    onChange={(e) => setReason(e.target.value)}
-                    className={tStyles.textarea}
-                    rows="3"
-                    required
-                  />
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={submitLoading || !selectedMappingId || !selectedFaculty || !reason.trim()}
-                  className={tStyles.submitBtn}
-                >
-                  {submitLoading ? 'Submitting request...' : 'Submit Transfer Request'}
-                </button>
-              </form>
-
-              {/* Logs Table */}
-              <div className={`${tStyles.card} ${tStyles.fullWidth}`}>
-                <h3 className={tStyles.cardTitle}>
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                    <polyline points="14 2 14 8 20 8"></polyline>
-                    <line x1="16" y1="13" x2="8" y2="13"></line>
-                    <line x1="16" y1="17" x2="8" y2="17"></line>
-                    <polyline points="10 9 9 9 8 9"></polyline>
-                  </svg>
-                  Your Transfer Logs
-                </h3>
-                {transfers.length === 0 ? (
-                  <p style={{ color: 'var(--text3)', fontSize: '13px', textAlign: 'center', padding: '20px' }}>
-                    No transfer requests created yet.
-                  </p>
-                ) : (
-                  <div className={tStyles.tableWrap}>
-                    <table className={tStyles.table}>
-                      <thead>
-                        <tr>
-                          <th>Venue & Location</th>
-                          <th>Slot Time</th>
-                          <th>Transferred To</th>
-                          <th>Reason</th>
-                          <th>Requested On</th>
-                          <th>Status</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {transfers.map((t) => (
-                          <tr key={t.transfer_id}>
-                            <td>
-                              <div style={{ fontWeight: '700' }}>{t.venue_name}</div>
-                              <div style={{ fontSize: '11px', color: 'var(--text2)' }}>
-                                {t.location}
-                              </div>
-                            </td>
-                            <td>
-                              <span className={tStyles.venueTime}>
-                                {formatTime(t.start_time)} - {formatTime(t.end_time)}
-                              </span>
-                            </td>
-                            <td>
-                              <div style={{ fontWeight: '600' }}>{t.to_faculty_name}</div>
-                              <div style={{ fontSize: '11px', color: 'var(--text2)' }}>
-                                Dept: {t.to_faculty_dept}
-                              </div>
-                            </td>
-                            <td style={{ maxWidth: '200px', wordBreak: 'break-word' }}>
-                              {t.reason}
-                            </td>
-                            <td>{new Date(t.created_at).toLocaleDateString()}</td>
-                            <td>
-                              <span
-                                className={`${tStyles.badge} ${
-                                  t.current_status === 'ACCEPTED'
-                                    ? tStyles.badgeAccepted
-                                    : t.current_status === 'REJECTED'
-                                    ? tStyles.badgeRejected
-                                    : tStyles.badgePending
-                                }`}
-                              >
-                                {t.current_status}
-                              </span>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
               </div>
-            </div>
+            </>
           )}
         </div>
       </main>

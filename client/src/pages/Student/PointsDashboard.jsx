@@ -1,11 +1,11 @@
 // PointsDashboard.jsx — Complete Standalone File
-// Reward Points listing → BASE_API (Google Apps Script)
+// Reward Points listing → BASE_API (Google Apps Script) — logic from RewardPoints.jsx
 // Reward Points details modal → PRANESH_BASE (Gradio API)
 // Activity Points → pointsService (unchanged)
 // Usage: import PointsDashboard from './PointsDashboard.jsx'
 //        <PointsDashboard onBack={() => {}} />
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { authService } from '../../services/features/authService'
 import { pointsService } from '../../services/features/pointsService'
@@ -320,7 +320,8 @@ const CSS = `
 
 // ── Constants ─────────────────────────────────────────────────
 // BASE_API: Google Apps Script — used for Reward Points student listing
-const BASE_API = 'https://script.google.com/macros/s/AKfycbwUdK6oQZwo6SC-1eNUtQlyrNYp-RcKHSy-wBy-5RDonSuQaNDs_hdNfeXxpFnxsAx5/exec'
+// (source: RewardPoints.jsx — correct key with uppercase 'I')
+const BASE_API = 'https://script.google.com/macros/s/AKfycbwUdK6oQZwo6SC-1eNUtQIyrNYp-RcKHSy-wBy-5RDonSuQaNDs_hdNfeXxpFnxsAx5/exec'
 
 // PRANESH_BASE: Gradio API — used for Reward Points details modal
 const PRANESH_BASE = 'https://praneshjs-rewardpointssite.hf.space'
@@ -616,135 +617,156 @@ function Spinner({text}) {
   return <div className="pt-spinner-wrap"><div className="pt-spinner"/><div className="pt-spinner-text">{text}</div></div>
 }
 
-// ── fetchRewardRanking: hits BASE_API (Google Apps Script) ─────
-// Expected GAS response shape (adjust field names to match your sheet):
-//   { status:"success", data:[ { name, reg_num, course, year_of_study, points_available }, … ] }
-// or a flat array.
-async function fetchRewardRanking({ dept, year, search }) {
-  const params = new URLSearchParams({ action: 'getRewardRanking' })
-  if (dept && dept !== 'ALL') params.set('dept', dept)
-  if (year && year !== 'ALL') params.set('year', year)
-  if (search) params.set('search', search)
-
-  const url = `${BASE_API}?${params.toString()}`
-  const res = await fetch(url)
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
-  const json = await res.json()
-
-  // Handle both { data: [...] } and flat array responses
-  const items = Array.isArray(json) ? json
-    : Array.isArray(json?.data) ? json.data
-    : Array.isArray(json?.data?.items) ? json.data.items
-    : []
-
-  return items
+// ── highlight: case-insensitive <mark> highlighter ────────────
+function highlight(text, search) {
+  const t = String(text)
+  if (!search) return t
+  const out = []
+  const upper = t.toUpperCase()
+  const su = search.toUpperCase()
+  let i = 0, key = 0
+  if (!su.length) return t
+  while (true) {
+    const idx = upper.indexOf(su, i)
+    if (idx === -1) { out.push(t.slice(i)); break }
+    if (idx > i) out.push(t.slice(i, idx))
+    out.push(<mark key={key++}>{t.slice(idx, idx + su.length)}</mark>)
+    i = idx + su.length
+  }
+  return out
 }
 
 // ── RewardPoints: listing via BASE_API ────────────────────────
+// Logic ported directly from RewardPoints.jsx (standalone):
+//   - Fetches GET BASE_API?dept=<dept>  → { data: [{name, roll, balance}] }
+//   - Filtering by year and search done client-side
+//   - Field names: s.name, s.roll, s.balance  (matching the GAS response)
 function RewardPoints({ onOpenDetails }) {
-  const [dept,   setDept]   = useState('ALL')
+  const [dept,   setDept]   = useState('BT')
   const [year,   setYear]   = useState('ALL')
   const [search, setSearch] = useState('')
-  const [data,   setData]   = useState([])
-  const [loading,setLoading]= useState(false)
-  const [error,  setError]  = useState('')
+  const [rpData, setRpData] = useState([])
+  const [status, setStatus] = useState('loading') // loading | loaded | error
+  const reqRef = useRef(0)
 
-  const loadRP = useCallback(async () => {
-    setLoading(true); setError('')
+  async function loadRP(d) {
+    const id = ++reqRef.current
+    setStatus('loading')
     try {
-      const items = await fetchRewardRanking({ dept, year, search })
-      setData(items)
+      const res  = await fetch(`${BASE_API}?dept=${encodeURIComponent(d)}`)
+      const json = await res.json()
+      if (id !== reqRef.current) return
+      setRpData(json.data || [])
+      setStatus('loaded')
     } catch (e) {
-      setError('Failed to load. Check connection.')
-      setData([])
-    } finally { setLoading(false) }
-  }, [dept, year, search])
+      if (id !== reqRef.current) return
+      setStatus('error')
+    }
+  }
 
   useEffect(() => {
-    const t = setTimeout(() => { loadRP() }, 300)
-    return () => clearTimeout(t)
-  }, [loadRP])
+    loadRP(dept)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dept])
 
-  // Sort by points descending; slice to 20 unless searching
-  const sorted   = [...data].sort((a,b)=>Number(b.points_available||b.points||0)-Number(a.points_available||a.points||0))
-  const showRows = search ? sorted : sorted.slice(0, 20)
+  // Client-side sort → year filter → search filter  (mirrors RewardPoints.jsx exactly)
+  const sorted   = [...rpData].sort((a, b) => b.balance - a.balance)
+  const byYear   = year === 'ALL' ? sorted : sorted.filter(s => s.roll.substring(4, 6) === year)
+  const su       = search.trim().toUpperCase()
+  const filtered = byYear.filter(s => !su || s.name.toUpperCase().includes(su) || s.roll.includes(su))
 
   return (
     <div>
       <div className="pt-filters">
-        <select className="pt-select" value={dept} onChange={e=>setDept(e.target.value)}>
-          <option value="ALL">All Departments</option>
-          {DEPTS.map(d=><option key={d} value={d}>{DEPT_NAMES[d]||d}</option>)}
+        <select className="pt-select" value={dept} onChange={e => setDept(e.target.value)}>
+          {DEPTS.map(d => (
+            <option key={d} value={d}>{DEPT_NAMES[d] || d}</option>
+          ))}
         </select>
-        <select className="pt-select" value={year} onChange={e=>setYear(e.target.value)}>
-          <option value="ALL">All Years</option>
-          <option value="3rd">3rd Year</option>
-          <option value="2nd">2nd Year</option>
-          <option value="1st">1st Year</option>
+        <select className="pt-select" value={year} onChange={e => setYear(e.target.value)}>
+          <option value="ALL">Overall Ranking</option>
+          <option value="23">3rd Year</option>
+          <option value="24">2nd Year</option>
+          <option value="25">1st Year</option>
         </select>
         <input
           className="pt-search"
-          placeholder="eg Gowtham J / 7376242AL126..."
+          placeholder="e.g. Saswath kumar J / 7376242BT192"
           value={search}
-          onChange={e=>setSearch(e.target.value)}
+          onChange={e => setSearch(e.target.value)}
         />
       </div>
-      <div className="pt-count">Showing {showRows.length} students</div>
-      {loading && <Spinner text={`Loading ${dept==='ALL'?'all departments':(DEPT_NAMES[dept]||dept)} rankings...`}/>}
-      {error   && <div className="pt-empty" style={{color:'var(--red)'}}>{error}</div>}
-      {!loading && !error && (
+
+      <div className="pt-count">
+        {status === 'loaded' ? `Showing ${filtered.length} of ${byYear.length} students` : ''}
+      </div>
+
+      {status === 'loading' && (
+        <Spinner text={`Loading ${DEPT_NAMES[dept] || dept} rankings...`} />
+      )}
+
+      {status === 'error' && (
+        <div className="pt-empty" style={{ color: 'var(--red)' }}>Failed to load. Check connection.</div>
+      )}
+
+      {status === 'loaded' && (
         <div className="pt-table-card">
-          {/* Desktop: RANK | STUDENT | DETAILS | DEPARTMENT | POINTS
-              Mobile:  RANK | STUDENT | YEAR */}
+          {/* Desktop: RANK | STUDENT | DETAILS | YEAR | POINTS
+              Mobile:  RANK | STUDENT | YEAR            */}
           <div className="pt-table-head-with-btn">
-            <div>Rank</div>
-            <div>Student</div>
-            <div className="pt-col-desktop-only">Details</div>
-            <div className="pt-col-desktop-only">Department</div>
-            <div className="pt-col-desktop-only pt-table-head-pts">Points</div>
-            <div className="pt-col-mobile-year">Year</div>
+            <span>RANK</span>
+            <span>STUDENT</span>
+            <span className="pt-col-desktop-only"></span>
+            <span className="pt-col-desktop-only">YEAR</span>
+            <span className="pt-col-desktop-only pt-table-head-pts">POINTS</span>
+            <span className="pt-col-mobile-year">YEAR</span>
           </div>
-          {showRows.length===0
+
+          {filtered.length === 0
             ? <div className="pt-empty">No students found.</div>
-            : showRows.map((s,i)=>{
-              const rawYear = s.year_of_study || s.year || ''
-              const y = Number(rawYear)
-              const yrTxt = y===1?'1st Year':y===2?'2nd Year':y===3?'3rd Year': String(rawYear)
-              const pts   = Number(s.points_available ?? s.points ?? 0)
-              const deptVal = s.course || s.dept || s.department || dept
+            : filtered.map((s, i) => {
+              const globalRank = byYear.indexOf(s)
+              const yr = s.roll.substring(4, 6)
+              const yrTxt = yr === '23' ? '3rd Year' : yr === '24' ? '2nd Year' : '1st Year'
               return (
                 <div
                   className="pt-table-row-with-btn"
-                  key={s.reg_num||s.roll||i}
-                  style={{animationDelay:`${Math.min(i,20)*0.03}s`}}
+                  key={s.roll + i}
+                  style={{ animationDelay: `${Math.min(i * 12, 350)}ms` }}
                 >
                   {/* Col 1: Rank */}
-                  <div><RankCell rank={i}/></div>
+                  <div className="pt-rank">{globalRank + 1}</div>
+
                   {/* Col 2: Student — always visible */}
                   <div>
-                    <div className="pt-name">{s.name}</div>
-                    <div className="pt-roll">{s.reg_num||s.roll}</div>
-                    {/* Details button — shown inline ONLY on mobile */}
+                    <div className="pt-name">{highlight(s.name, su)}</div>
+                    <div className="pt-roll">{highlight(s.roll, su)}</div>
+                    {/* Details button inline — mobile only */}
                     <button
                       className="details-btn pt-details-mobile-inline"
-                      onClick={()=>onOpenDetails?.(s.reg_num||s.roll, s.name)}
+                      onClick={() => onOpenDetails?.(s.roll, s.name)}
                     >
                       Details
                     </button>
                   </div>
+
                   {/* Col 3: Details button — desktop only */}
                   <div className="pt-col-desktop-only">
                     <button
                       className="details-btn"
-                      onClick={()=>onOpenDetails?.(s.reg_num||s.roll, s.name)}
+                      onClick={() => onOpenDetails?.(s.roll, s.name)}
+                      title="View reward point breakdown"
                     >
                       Details
                     </button>
                   </div>
-                  {/* Col 4: Department — desktop only */}
-                  <div className="pt-col-desktop-only pt-dept">{deptVal}</div>
+
+                  {/* Col 4: Year — desktop only */}
+                  <div className="pt-col-desktop-only pt-dept">{yrTxt}</div>
+
                   {/* Col 5: Points — desktop only */}
-                  <div className="pt-col-desktop-only pt-pts">{pts.toLocaleString()}</div>
+                  <div className="pt-col-desktop-only pt-pts">{s.balance.toLocaleString()}</div>
+
                   {/* Col 3 (mobile): Year — mobile only */}
                   <div className="pt-col-mobile-year">{yrTxt}</div>
                 </div>
@@ -831,7 +853,7 @@ function ActivityPoints({ onOpenGroup }) {
               <option value="ALL">All Depts</option>
               {DEPTS.map(d=><option key={d} value={d}>{d}</option>)}
             </select>
-            <input className="pt-search" placeholder="e.g. Saswath kumar J / 7376242BT192" value={apSearch} onChange={e=>setApSearch(e.target.value)}/>
+            <input className="pt-search" placeholder="e.g. Gowtham J / 7376242AL126" value={apSearch} onChange={e=>setApSearch(e.target.value)}/>
           </div>
           {indLoading && <Spinner text="Loading activity rankings..."/>}
           {indError   && <div className="pt-empty" style={{color:'var(--red)'}}>{indError}</div>}

@@ -278,3 +278,194 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* CALENDAR */
+.calendarCard {
+  margin-bottom: 20px;
+  background: var(--white);
+  border: 1.5px solid var(--border);
+  border-radius: 14px;
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.calendarRow {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.dateInput {
+  padding: 10px 14px;
+  border: 1.5px solid var(--border);
+  border-radius: 10px;
+  background: var(--white);
+  font-size: 13px;
+  color: var(--text);
+  outline: none;
+  font-family: var(--font-body);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  min-width: 200px;
+}
+
+.dateInput:focus {
+  border-color: var(--purple);
+  box-shadow: 0 0 0 3px var(--purple-dim);
+}
+
+/* FOLDER STRUCTURE */
+.folderContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 500px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.folderVenue {
+  border: 1.5px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--white);
+  transition: border-color 0.2s ease;
+}
+
+.folderVenue:hover {
+  border-color: var(--purple-glow);
+}
+
+.folderVenueHeader {
+  padding: 14px;
+  background: var(--white);
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  user-select: none;
+  border-bottom: 1px solid transparent;
+  transition: background 0.15s ease;
+}
+
+.folderVenueHeaderOpen {
+  border-bottom-color: var(--border);
+  background: var(--purple-dim);
+}
+
+.folderVenueName {
+  font-size: 14px;
+  font-weight: 750;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.folderVenueIcon {
+  transition: transform 0.2s ease;
+  color: var(--purple);
+}
+
+.folderVenueIconOpen {
+  transform: rotate(90deg);
+}
+
+.folderSlots {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: rgba(248, 247, 255, 0.5);
+}
+
+.folderSlotItem {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--white);
+}
+
+.folderSlotItem:hover {
+  border-color: var(--purple-glow);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
+}
+
+.folderSlotSelected {
+  box-shadow: 0 0 0 2.5px var(--purple);
+  border-color: var(--purple);
+}
+
+.folderSlotFree {
+  border-left: 4px solid #10b981;
+}
+
+.folderSlotAssigned {
+  border-left: 4px solid #6b7280;
+}
+
+.folderSlotOwn {
+  border-left: 4px solid var(--purple);
+  background: var(--purple-dim);
+}
+
+.folderSlotOwn:hover {
+  background: rgba(108, 71, 255, 0.08);
+}
+
+.folderSlotInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: left;
+}
+
+.slotTimeText {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.slotStatusText {
+  font-size: 11px;
+  color: var(--text2);
+}
+
+.slotAssignedName {
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* BADGES */
+.badgeFree {
+  background: rgba(16, 185, 129, 0.12);
+  color: #047857;
+}
+
+.badgeAssigned {
+  background: rgba(107, 114, 128, 0.12);
+  color: #4b5563;
+}
+
+.badgeOwn {
+  background: rgba(108, 71, 255, 0.12);
+  color: var(--purple);
+}
+
+.slotPill {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--purple-dim);
+  border: 1.5px solid var(--purple);
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin-top: 4px;
+}

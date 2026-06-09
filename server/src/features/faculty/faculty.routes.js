@@ -23,8 +23,13 @@ router.post('/mappings/:mappingId/attendance/all', facultyController.markAllAtte
 router.post('/bookings/:bookingId/malpractice', facultyController.markMalpractice);
 router.post('/bookings/:bookingId/revoke-malpractice', facultyController.revokeMalpractice);
 
+// ── Review MCQ & Survey ───────────────────────────────────────────────
+router.get('/bookings/:bookingId/review', facultyController.getStudentReviewData);
+router.patch('/bookings/:bookingId/verify-incharge', facultyController.verifyInchargeLabRecord);
+
 // ── Transfer Requests ─────────────────────────────────────────────────
 router.get('/transfer-requests', facultyController.getMyTransferRequests);
 router.post('/transfer-requests', facultyController.createTransferRequest);
+router.get('/all-venue-allocations', facultyController.getAllVenueAllocations);
 
 export default router;

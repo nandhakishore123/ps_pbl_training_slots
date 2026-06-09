@@ -141,16 +141,69 @@ export const createTransferRequest = async (req, res, next) => {
     try {
         const facultyId = await resolveFacultyId(req, res);
         if (!facultyId) return;
-        const { mappingId, toFacultyId, reason } = req.body;
-        if (!mappingId || !toFacultyId || !reason?.trim()) {
-            return errorResponse(res, 'mappingId, toFacultyId and reason are all required', 400);
+        const { mappingId, toFacultyId, reason, targetVenueId, targetSlotId, transferDate } = req.body;
+        if (!mappingId || !reason?.trim()) {
+            return errorResponse(res, 'mappingId and reason are required', 400);
         }
-        const transferId = await facultyModel.createTransferRequest(facultyId, mappingId, toFacultyId, reason.trim());
+        const transferId = await facultyModel.createTransferRequest(
+            facultyId,
+            mappingId,
+            toFacultyId || null,
+            reason.trim(),
+            targetVenueId || null,
+            targetSlotId || null,
+            transferDate || null
+        );
         return successResponse(res, 'Transfer request created successfully', { transferId });
     } catch (error) {
         if (error.message?.includes('Forbidden')) {
             return errorResponse(res, error.message, 403);
         }
+        next(error);
+    }
+};
+
+// GET /faculty/bookings/:bookingId/review
+export const getStudentReviewData = async (req, res, next) => {
+    try {
+        const facultyId = await resolveFacultyId(req, res);
+        if (!facultyId) return;
+        const { bookingId } = req.params;
+        const data = await facultyModel.getStudentReviewData(bookingId, facultyId);
+        return successResponse(res, 'Student review data retrieved successfully', data);
+    } catch (error) {
+        if (error.message?.includes('Forbidden')) {
+            return errorResponse(res, error.message, 403);
+        }
+        next(error);
+    }
+};
+
+// PATCH /faculty/bookings/:bookingId/verify-incharge
+export const verifyInchargeLabRecord = async (req, res, next) => {
+    try {
+        const facultyId = await resolveFacultyId(req, res);
+        if (!facultyId) return;
+        const { bookingId } = req.params;
+        const affected = await facultyModel.verifyInchargeLabRecord(bookingId, facultyId);
+        if (affected === 0) {
+            return errorResponse(res, 'No survey records found to verify for this booking', 404);
+        }
+        return successResponse(res, 'Lab record verified by in-charge successfully', { affected });
+    } catch (error) {
+        if (error.message?.includes('Forbidden')) {
+            return errorResponse(res, error.message, 403);
+        }
+        next(error);
+    }
+};
+
+// GET /faculty/all-venue-allocations
+export const getAllVenueAllocations = async (req, res, next) => {
+    try {
+        const data = await facultyModel.getAllVenueAllocations();
+        return successResponse(res, 'All venue allocations retrieved successfully', data);
+    } catch (error) {
         next(error);
     }
 };

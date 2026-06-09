@@ -65,7 +65,11 @@ export default function PCDPLogin() {
       return '/student-dashboard';
     }
 
-    if (numericRoleId === 2 || numericRoleId === 3) {
+    if (numericRoleId === 2) {
+      return '/faculty-dashboard';
+    }
+
+    if (numericRoleId === 3) {
       return '/admin-dashboard';
     }
 
