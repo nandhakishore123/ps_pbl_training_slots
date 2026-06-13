@@ -322,6 +322,7 @@ export const getBookingById = async (bookingId, conn = null) => {
         sb.booking_id,
         sb.student_id,
         sb.training_skill_id,
+        sb.level_id,
         ts.skill_name,
         ts.skill_type,
         sb.mapping_id,

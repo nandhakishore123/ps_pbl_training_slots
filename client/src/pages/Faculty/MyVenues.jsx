@@ -35,18 +35,48 @@ const formatTime = (timeStr) => {
 // ── Shared Primitives ──────────────────────────────────────────────────────
 
 function StatusBadge({ status }) {
+  let config = {
+    classes: "bg-red-100 text-red-700",
+    dotClass: "bg-red-500",
+    label: "Malpractice"
+  };
+
   if (status === "ONGOING") {
-    return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">
-        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
-        Ongoing
-      </span>
-    );
+    config = {
+      classes: "bg-emerald-100 text-emerald-700",
+      dotClass: "bg-emerald-500",
+      label: "Ongoing"
+    };
+  } else if (status === "PASS") {
+    config = {
+      classes: "bg-green-100 text-green-700",
+      dotClass: "bg-green-500",
+      label: "Pass"
+    };
+  } else if (status === "COMPLETED") {
+    config = {
+      classes: "bg-blue-100 text-blue-700",
+      dotClass: "bg-blue-500",
+      label: "Completed"
+    };
+  } else if (status === "FAIL") {
+    config = {
+      classes: "bg-rose-100 text-rose-700",
+      dotClass: "bg-rose-500",
+      label: "Fail"
+    };
+  } else if (status === "MALPRACTICE") {
+    config = {
+      classes: "bg-red-100 text-red-700",
+      dotClass: "bg-red-500",
+      label: "Malpractice"
+    };
   }
+
   return (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">
-      <span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block" />
-      Malpractice
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${config.classes}`}>
+      <span className={`w-1.5 h-1.5 rounded-full inline-block ${config.dotClass}`} />
+      {config.label}
     </span>
   );
 }
