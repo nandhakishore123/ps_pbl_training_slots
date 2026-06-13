@@ -319,11 +319,7 @@ const CSS = `
 `
 
 // ── Constants ─────────────────────────────────────────────────
-// BASE_API: Google Apps Script — used for Reward Points student listing
-// (source: RewardPoints.jsx — correct key with uppercase 'I')
-const BASE_API = 'https://script.google.com/macros/s/AKfycbwUdK6oQZwo6SC-1eNUtQIyrNYp-RcKHSy-wBy-5RDonSuQaNDs_hdNfeXxpFnxsAx5/exec'
-
-// PRANESH_BASE: Gradio API — used for Reward Points details modal
+// PRANESH_BASE: Gradio API — used for Reward Points details
 const PRANESH_BASE = 'https://praneshjs-rewardpointssite.hf.space'
 
 const DEPTS = ['AGRI','AIDS','AIML','BIOMEDICAL','BT','CIVIL','CSBS','CSD','CSE','CT','EEE','ECE','EIE','FT','ISE','IT','MECH','MTRS']
@@ -376,126 +372,7 @@ function parseCourseDetails(raw) {
   return { courses, totalPoints }
 }
 
-// ── DetailsModal (uses PRANESH_BASE Gradio API) ───────────────
-function DetailsModal({ isOpen, onClose, roll, name }) {
-  const [status, setStatus] = useState('loading')
-  const [raw,    setRaw]    = useState('')
-  const [errMsg, setErrMsg] = useState('')
 
-  useEffect(() => {
-    if (!isOpen || !roll) return
-    setStatus('loading'); setRaw(''); setErrMsg('')
-    fetchData(roll)
-  }, [isOpen, roll])
-
-  async function fetchData(r) {
-    try {
-      const submitRes = await fetch(`${PRANESH_BASE}/gradio_api/call/search_student`, {
-        method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ data:[r] }),
-      })
-      if (!submitRes.ok) throw new Error(`HTTP ${submitRes.status}`)
-      const { event_id } = await submitRes.json()
-      if (!event_id) throw new Error('No event_id')
-      const rawText = await new Promise((resolve, reject) => {
-        const src   = new EventSource(`${PRANESH_BASE}/gradio_api/call/search_student/${event_id}`)
-        const timer = setTimeout(() => { src.close(); reject(new Error('Timeout')) }, 30000)
-        src.addEventListener('complete', (e) => {
-          clearTimeout(timer); src.close()
-          try { resolve(String(JSON.parse(e.data)[0]||'')) }
-          catch { reject(new Error('Parse error')) }
-        })
-        src.onmessage = (e) => {
-          if (e.data && e.data !== '[DONE]') {
-            try {
-              const d = JSON.parse(e.data)
-              if (Array.isArray(d) && d[0]) { clearTimeout(timer); src.close(); resolve(String(d[0])) }
-            } catch {}
-          }
-        }
-        src.onerror = () => { clearTimeout(timer); src.close(); reject(new Error('Stream error')) }
-      })
-      if (!rawText || rawText.trim().length < 10) {
-        setErrMsg(`No data found for ${r}.`); setStatus('error')
-      } else {
-        setRaw(rawText); setStatus('done')
-      }
-    } catch(err) {
-      setErrMsg(err.message||'Failed to fetch.'); setStatus('error')
-    }
-  }
-
-  if (!isOpen) return null
-
-  const { courses, totalPoints } = status==='done' ? parseCourseDetails(raw) : { courses:[], totalPoints:0 }
-  const grouped = {}
-  for (const c of courses) {
-    if (!grouped[c.category]) grouped[c.category] = []
-    grouped[c.category].push(c)
-  }
-
-  return (
-    <div className="pt-details-overlay" onClick={e=>{if(e.target===e.currentTarget) onClose()}}>
-      <div className="pt-details-modal">
-        <div className="pt-details-header">
-          <div>
-            <div className="pt-details-name">{name}</div>
-            <div className="pt-details-roll">{roll}</div>
-          </div>
-          <button className="pt-details-close" onClick={onClose}>✕</button>
-        </div>
-        {/* pt-details-body has overflow-y:auto + flex:1 + min-height:0 → scrollable */}
-        <div className="pt-details-body">
-          {status==='loading' && (
-            <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:14,padding:'50px 20px',color:'var(--text2)',fontSize:14}}>
-              <div className="pt-spinner"/>
-              <p>Fetching details for <strong>{roll}</strong>...</p>
-            </div>
-          )}
-          {status==='error' && (
-            <div style={{textAlign:'center',padding:'50px 20px',color:'var(--text3)',fontSize:14}}>{errMsg}</div>
-          )}
-          {status==='done' && (
-            <>
-              {!courses.length
-                ? <div style={{textAlign:'center',padding:'50px 20px',color:'var(--text3)',fontSize:14}}>No course activity found.</div>
-                : <>
-                  {totalPoints>0 && (
-                    <div className="pt-details-total">
-                      <span className="pt-details-total-label">Total Points from Activities</span>
-                      <span className="pt-details-total-val">{totalPoints.toLocaleString()} pts</span>
-                    </div>
-                  )}
-                  {Object.entries(grouped).map(([cat, items]) => {
-                    const s = getCatGroupStyle(cat)
-                    const grpTotal = items.reduce((a,c)=>a+c.points,0)
-                    return (
-                      <div className="pt-details-group" key={cat}>
-                        <div className="pt-details-group-hdr" style={{background:s.bg, color:s.hdr, borderBottom:`1px solid ${s.border}`}}>
-                          <span>{cat}</span>
-                          <span className="pt-details-group-total">{grpTotal.toLocaleString()} PTS</span>
-                        </div>
-                        {items.map((c,i)=>(
-                          <div className="pt-details-item" key={i}>
-                            <div>
-                              <div className="pt-details-item-name">{c.name}</div>
-                              {c.dateRange && <div className="pt-details-item-date">{c.dateRange}</div>}
-                            </div>
-                            <div className="pt-details-item-pts">+{c.points.toLocaleString()} pts</div>
-                          </div>
-                        ))}
-                      </div>
-                    )
-                  })}
-                </>
-              }
-            </>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
 
 // ── GroupDetailsModal (unchanged — uses pointsService) ─────────
 function GroupDetailsModal({ isOpen, onClose, group }) {
@@ -636,143 +513,111 @@ function highlight(text, search) {
   return out
 }
 
-// ── RewardPoints: listing via BASE_API ────────────────────────
-// Logic ported directly from RewardPoints.jsx (standalone):
-//   - Fetches GET BASE_API?dept=<dept>  → { data: [{name, roll, balance}] }
-//   - Filtering by year and search done client-side
-//   - Field names: s.name, s.roll, s.balance  (matching the GAS response)
-function RewardPoints({ onOpenDetails }) {
-  const [dept,   setDept]   = useState('BT')
-  const [year,   setYear]   = useState('ALL')
-  const [search, setSearch] = useState('')
-  const [rpData, setRpData] = useState([])
-  const [status, setStatus] = useState('loading') // loading | loaded | error
-  const reqRef = useRef(0)
+// ── RewardPoints: inline details via PRANESH_BASE Gradio API ────
+function RewardPoints({ user }) {
+  const [status, setStatus] = useState('loading') // loading | done | error
+  const [raw,    setRaw]    = useState('')
+  const [errMsg, setErrMsg] = useState('')
 
-  async function loadRP(d) {
-    const id = ++reqRef.current
-    setStatus('loading')
+  const fetchData = useCallback(async (r) => {
     try {
-      const res  = await fetch(`${BASE_API}?dept=${encodeURIComponent(d)}`)
-      const json = await res.json()
-      if (id !== reqRef.current) return
-      setRpData(json.data || [])
-      setStatus('loaded')
-    } catch (e) {
-      if (id !== reqRef.current) return
-      setStatus('error')
+      const submitRes = await fetch(`${PRANESH_BASE}/gradio_api/call/search_student`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ data:[r] }),
+      })
+      if (!submitRes.ok) throw new Error(`HTTP ${submitRes.status}`)
+      const { event_id } = await submitRes.json()
+      if (!event_id) throw new Error('No event_id')
+      const rawText = await new Promise((resolve, reject) => {
+        const src   = new EventSource(`${PRANESH_BASE}/gradio_api/call/search_student/${event_id}`)
+        const timer = setTimeout(() => { src.close(); reject(new Error('Timeout')) }, 30000)
+        src.addEventListener('complete', (e) => {
+          clearTimeout(timer); src.close()
+          try { resolve(String(JSON.parse(e.data)[0]||'')) }
+          catch { reject(new Error('Parse error')) }
+        })
+        src.onmessage = (e) => {
+          if (e.data && e.data !== '[DONE]') {
+            try {
+              const d = JSON.parse(e.data)
+              if (Array.isArray(d) && d[0]) { clearTimeout(timer); src.close(); resolve(String(d[0])) }
+            } catch {}
+          }
+        }
+        src.onerror = () => { clearTimeout(timer); src.close(); reject(new Error('Stream error')) }
+      })
+      if (!rawText || rawText.trim().length < 10) {
+        setErrMsg(`No data found for ${r}.`); setStatus('error')
+      } else {
+        setRaw(rawText); setStatus('done')
+      }
+    } catch(err) {
+      setErrMsg(err.message||'Failed to fetch.'); setStatus('error')
     }
-  }
+  }, [])
 
   useEffect(() => {
-    loadRP(dept)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dept])
+    if (!user?.reg_num) return
+    setStatus('loading'); setRaw(''); setErrMsg('')
+    fetchData(user.reg_num)
+  }, [user?.reg_num, fetchData])
 
-  // Client-side sort → year filter → search filter  (mirrors RewardPoints.jsx exactly)
-  const sorted   = [...rpData].sort((a, b) => b.balance - a.balance)
-  const byYear   = year === 'ALL' ? sorted : sorted.filter(s => s.roll.substring(4, 6) === year)
-  const su       = search.trim().toUpperCase()
-  const filtered = byYear.filter(s => !su || s.name.toUpperCase().includes(su) || s.roll.includes(su))
+  const { courses, totalPoints } = status==='done' ? parseCourseDetails(raw) : { courses:[], totalPoints:0 }
+  const grouped = {}
+  for (const c of courses) {
+    if (!grouped[c.category]) grouped[c.category] = []
+    grouped[c.category].push(c)
+  }
 
   return (
-    <div>
-      <div className="pt-filters">
-        <select className="pt-select" value={dept} onChange={e => setDept(e.target.value)}>
-          {DEPTS.map(d => (
-            <option key={d} value={d}>{DEPT_NAMES[d] || d}</option>
-          ))}
-        </select>
-        <select className="pt-select" value={year} onChange={e => setYear(e.target.value)}>
-          <option value="ALL">Overall Ranking</option>
-          <option value="23">3rd Year</option>
-          <option value="24">2nd Year</option>
-          <option value="25">1st Year</option>
-        </select>
-        <input
-          className="pt-search"
-          placeholder="e.g. Saswath kumar J / 7376242BT192"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-        />
-      </div>
-
-      <div className="pt-count">
-        {status === 'loaded' ? `Showing ${filtered.length} of ${byYear.length} students` : ''}
+    <div style={{ marginTop: 16 }}>
+      <div className="pt-count" style={{ marginBottom: 12 }}>
+        Your Reward Points Details
       </div>
 
       {status === 'loading' && (
-        <Spinner text={`Loading ${DEPT_NAMES[dept] || dept} rankings...`} />
+        <Spinner text="Fetching your detailed reward points..." />
       )}
 
       {status === 'error' && (
-        <div className="pt-empty" style={{ color: 'var(--red)' }}>Failed to load. Check connection.</div>
+        <div className="pt-empty" style={{ color: 'var(--red)' }}>{errMsg}</div>
       )}
 
-      {status === 'loaded' && (
-        <div className="pt-table-card">
-          {/* Desktop: RANK | STUDENT | DETAILS | YEAR | POINTS
-              Mobile:  RANK | STUDENT | YEAR            */}
-          <div className="pt-table-head-with-btn">
-            <span>RANK</span>
-            <span>STUDENT</span>
-            <span className="pt-col-desktop-only"></span>
-            <span className="pt-col-desktop-only">YEAR</span>
-            <span className="pt-col-desktop-only pt-table-head-pts">POINTS</span>
-            <span className="pt-col-mobile-year">YEAR</span>
-          </div>
-
-          {filtered.length === 0
-            ? <div className="pt-empty">No students found.</div>
-            : filtered.map((s, i) => {
-              const globalRank = byYear.indexOf(s)
-              const yr = s.roll.substring(4, 6)
-              const yrTxt = yr === '23' ? '3rd Year' : yr === '24' ? '2nd Year' : '1st Year'
-              return (
-                <div
-                  className="pt-table-row-with-btn"
-                  key={s.roll + i}
-                  style={{ animationDelay: `${Math.min(i * 12, 350)}ms` }}
-                >
-                  {/* Col 1: Rank */}
-                  <div className="pt-rank">{globalRank + 1}</div>
-
-                  {/* Col 2: Student — always visible */}
-                  <div>
-                    <div className="pt-name">{highlight(s.name, su)}</div>
-                    <div className="pt-roll">{highlight(s.roll, su)}</div>
-                    {/* Details button inline — mobile only */}
-                    <button
-                      className="details-btn pt-details-mobile-inline"
-                      onClick={() => onOpenDetails?.(s.roll, s.name)}
-                    >
-                      Details
-                    </button>
-                  </div>
-
-                  {/* Col 3: Details button — desktop only */}
-                  <div className="pt-col-desktop-only">
-                    <button
-                      className="details-btn"
-                      onClick={() => onOpenDetails?.(s.roll, s.name)}
-                      title="View reward point breakdown"
-                    >
-                      Details
-                    </button>
-                  </div>
-
-                  {/* Col 4: Year — desktop only */}
-                  <div className="pt-col-desktop-only pt-dept">{yrTxt}</div>
-
-                  {/* Col 5: Points — desktop only */}
-                  <div className="pt-col-desktop-only pt-pts">{s.balance.toLocaleString()}</div>
-
-                  {/* Col 3 (mobile): Year — mobile only */}
-                  <div className="pt-col-mobile-year">{yrTxt}</div>
+      {status === 'done' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {!courses.length ? (
+            <div className="pt-empty">No course activity found.</div>
+          ) : (
+            <>
+              {totalPoints > 0 && (
+                <div className="pt-details-total">
+                  <span className="pt-details-total-label">Total Points from Activities</span>
+                  <span className="pt-details-total-val">{totalPoints.toLocaleString()} pts</span>
                 </div>
-              )
-            })
-          }
+              )}
+              {Object.entries(grouped).map(([cat, items]) => {
+                const s = getCatGroupStyle(cat)
+                const grpTotal = items.reduce((a,c)=>a+c.points,0)
+                return (
+                  <div className="pt-details-group" key={cat}>
+                    <div className="pt-details-group-hdr" style={{background:s.bg, color:s.hdr, borderBottom:`1px solid ${s.border}`}}>
+                      <span>{cat}</span>
+                      <span className="pt-details-group-total">{grpTotal.toLocaleString()} PTS</span>
+                    </div>
+                    {items.map((c,i)=>(
+                      <div className="pt-details-item" key={i}>
+                        <div>
+                          <div className="pt-details-item-name">{c.name}</div>
+                          {c.dateRange && <div className="pt-details-item-date">{c.dateRange}</div>}
+                        </div>
+                        <div className="pt-details-item-pts">+{c.points.toLocaleString()} pts</div>
+                      </div>
+                    ))}
+                  </div>
+                )
+              })}
+            </>
+          )}
         </div>
       )}
     </div>
@@ -930,14 +775,11 @@ function ActivityPoints({ onOpenGroup }) {
 }
 
 // ── Main PointsDashboard ──────────────────────────────────────
-export default function PointsDashboard({ onBack, onOpenDetails }) {
+export default function PointsDashboard({ onBack }) {
   const navigate = useNavigate()
   const [tab,          setTab]          = useState('rp')
   const [darkMode,     setDarkMode]     = useState(()=>localStorage.getItem('pt-dark')==='1')
   const { user } = useAuthStore()
-  const [detailsOpen,  setDetailsOpen]  = useState(false)
-  const [detailsRoll,  setDetailsRoll]  = useState('')
-  const [detailsName,  setDetailsName]  = useState('')
   const [groupOpen,    setGroupOpen]    = useState(false)
   const [selectedGroup,setSelectedGroup]= useState(null)
 
@@ -950,13 +792,6 @@ export default function PointsDashboard({ onBack, onOpenDetails }) {
   const handleLogout = async () => {
     try { await authService.logout() }
     finally { navigate('/auth/login',{replace:true}) }
-  }
-
-  const handleOpenDetails = (roll, name) => {
-    setDetailsRoll(roll)
-    setDetailsName(name)
-    setDetailsOpen(true)
-    onOpenDetails?.(roll, name)
   }
 
   useEffect(() => {
@@ -1020,19 +855,11 @@ export default function PointsDashboard({ onBack, onOpenDetails }) {
           <button className={`pt-tab${tab==='rp'?' active':''}`} onClick={()=>setTab('rp')}>Reward Points</button>
           <button className={`pt-tab${tab==='ap'?' active':''}`} onClick={()=>setTab('ap')}>Activity Points</button>
         </div>
-        {tab==='rp' && <RewardPoints onOpenDetails={handleOpenDetails}/>}
+        {tab==='rp' && <RewardPoints user={user}/>}
         {tab==='ap' && <ActivityPoints onOpenGroup={(g)=>{setSelectedGroup(g);setGroupOpen(true)}}/>}
       </div>
 
       {/* ── Modals ── */}
-      {detailsOpen && (
-        <DetailsModal
-          isOpen={detailsOpen}
-          onClose={()=>setDetailsOpen(false)}
-          roll={detailsRoll}
-          name={detailsName}
-        />
-      )}
       {groupOpen && (
         <GroupDetailsModal
           isOpen={groupOpen}
