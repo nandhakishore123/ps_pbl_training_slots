@@ -152,37 +152,55 @@ export const markAllAttendance = async (mappingId, facultyId) => {
 // ── Mark malpractice ─────────────────────────────────────────
 export const markMalpractice = async (bookingId, facultyId, reason) => {
   const [rows] = await db.execute(
-    `SELECT sb.booking_id FROM student_booking sb
+    `SELECT sb.booking_id, sb.mapping_id, sb.status FROM student_booking sb
      JOIN venue_mapping vm ON sb.mapping_id = vm.mapping_id
      WHERE sb.booking_id = ? AND vm.faculty_id = ?`,
     [bookingId, facultyId]
   );
   if (rows.length === 0) throw new Error('Forbidden or not found');
+  const booking = rows[0];
 
-  await db.execute(
-    `UPDATE student_booking
-     SET status = 'MALPRACTICE', remarks = ?
-     WHERE booking_id = ?`,
-    [reason, bookingId]
-  );
+  if (booking.status === 'ONGOING') {
+    await db.execute(
+      `UPDATE student_booking
+       SET status = 'MALPRACTICE', remarks = ?
+       WHERE booking_id = ?`,
+      [reason, bookingId]
+    );
+    await db.execute(
+      `UPDATE venue_mapping
+       SET current_bookings = GREATEST(0, COALESCE(current_bookings, 1) - 1)
+       WHERE mapping_id = ?`,
+      [booking.mapping_id]
+    );
+  }
 };
 
 // ── Revoke malpractice ───────────────────────────────────────
 export const revokeMalpractice = async (bookingId, facultyId) => {
   const [rows] = await db.execute(
-    `SELECT sb.booking_id FROM student_booking sb
+    `SELECT sb.booking_id, sb.mapping_id, sb.status FROM student_booking sb
      JOIN venue_mapping vm ON sb.mapping_id = vm.mapping_id
      WHERE sb.booking_id = ? AND vm.faculty_id = ?`,
     [bookingId, facultyId]
   );
   if (rows.length === 0) throw new Error('Forbidden or not found');
+  const booking = rows[0];
 
-  await db.execute(
-    `UPDATE student_booking
-     SET status = 'ONGOING', remarks = NULL
-     WHERE booking_id = ?`,
-    [bookingId]
-  );
+  if (booking.status === 'MALPRACTICE') {
+    await db.execute(
+      `UPDATE student_booking
+       SET status = 'ONGOING', remarks = NULL
+       WHERE booking_id = ?`,
+      [bookingId]
+    );
+    await db.execute(
+      `UPDATE venue_mapping
+       SET current_bookings = COALESCE(current_bookings, 0) + 1
+       WHERE mapping_id = ?`,
+      [booking.mapping_id]
+    );
+  }
 };
 
 // ── Transfer request ─────────────────────────────────────────

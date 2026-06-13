@@ -497,15 +497,29 @@ export const getExistingActiveBookingForCourse = async (studentId, trainingSkill
 
 export const markBookingMalpractice = async (bookingId, conn = null) => {
   const exec = getExec(conn);
-  const [result] = await exec.execute(
-    `UPDATE student_booking
-     SET status = 'MALPRACTICE',
-         remarks = 'Tried to switch tabs',
-         updated_at = NOW()
-     WHERE booking_id = ?`,
+  const [rows] = await exec.execute(
+    `SELECT mapping_id, status FROM student_booking WHERE booking_id = ? LIMIT 1`,
     [Number(bookingId)]
   );
-  return result?.affectedRows ?? 0;
+  const booking = rows?.[0];
+  if (booking && booking.status === 'ONGOING') {
+    const [result] = await exec.execute(
+      `UPDATE student_booking
+       SET status = 'MALPRACTICE',
+           remarks = 'Tried to switch tabs',
+           updated_at = NOW()
+       WHERE booking_id = ?`,
+      [Number(bookingId)]
+    );
+    await exec.execute(
+      `UPDATE venue_mapping
+       SET current_bookings = GREATEST(0, COALESCE(current_bookings, 1) - 1)
+       WHERE mapping_id = ?`,
+      [booking.mapping_id]
+    );
+    return result?.affectedRows ?? 0;
+  }
+  return 0;
 };
 
 // ── Lab Record (end_survey) ───────────────────────────────────────────────────

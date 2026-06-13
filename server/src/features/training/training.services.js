@@ -342,15 +342,32 @@ export const submitAssessment = async ({ studentAssessmentId, answers, passingMa
       if (isPassed) {
         newBookingStatus = info.skill_type === 'PS' ? 'PASS' : 'COMPLETED';
       }
-      await db.execute(
-        `UPDATE student_booking
-         SET status = ?
+      
+      const [bookingRows] = await db.execute(
+        `SELECT booking_id, mapping_id
+         FROM student_booking
          WHERE student_id = ?
            AND training_skill_id = ?
            AND level_id = ?
-           AND status = 'ONGOING'`,
-        [newBookingStatus, Number(info.student_id), Number(info.training_skill_id), Number(info.level_id)]
+           AND status = 'ONGOING'
+         LIMIT 1`,
+        [Number(info.student_id), Number(info.training_skill_id), Number(info.level_id)]
       );
+      const booking = bookingRows?.[0];
+      if (booking) {
+        await db.execute(
+          `UPDATE student_booking
+           SET status = ?
+           WHERE booking_id = ?`,
+          [newBookingStatus, booking.booking_id]
+        );
+        await db.execute(
+          `UPDATE venue_mapping
+           SET current_bookings = GREATEST(0, COALESCE(current_bookings, 1) - 1)
+           WHERE mapping_id = ?`,
+          [booking.mapping_id]
+        );
+      }
     }
   } catch (error) {
     console.error('Failed to update student_booking status on assessment submission:', error);
