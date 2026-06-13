@@ -222,6 +222,17 @@ export const getAssessment = async (trainingSkillId, levelId, userId) => {
         err.status = 403;
         throw err;
       }
+      const [bookingRows] = await db.execute(
+        `SELECT booking_id FROM student_booking
+         WHERE student_id = ? AND training_skill_id = ? AND level_id = ? AND status = 'ONGOING'
+         LIMIT 1`,
+        [Number(studentId), Number(trainingSkillId), Number(levelId)]
+      );
+      if (!bookingRows?.length) {
+        const err = new Error('You do not have an active ongoing booking for this assessment.');
+        err.status = 400;
+        throw err;
+      }
     }
   }
   const assessment = await trainingModel.getAssessmentForLevel(trainingSkillId, levelId);
@@ -260,15 +271,29 @@ export const startAssessment = async ({ userId, assessmentId, totalMarks }) => {
     throw err;
   }
   const [assessmentRow] = await db.execute(
-    'SELECT training_skill_id FROM assessments WHERE assessment_id = ? LIMIT 1',
+    'SELECT training_skill_id, level_id FROM assessments WHERE assessment_id = ? LIMIT 1',
     [Number(assessmentId)]
   );
   const skillId = assessmentRow?.[0]?.training_skill_id;
+  const levelId = assessmentRow?.[0]?.level_id;
   if (skillId) {
     const hasMal = await trainingModel.hasMalpractice(studentId, skillId);
     if (hasMal) {
       const err = new Error('Access denied due to malpractice');
       err.status = 403;
+      throw err;
+    }
+  }
+  if (skillId && levelId) {
+    const [bookingRows] = await db.execute(
+      `SELECT booking_id FROM student_booking
+       WHERE student_id = ? AND training_skill_id = ? AND level_id = ? AND status = 'ONGOING'
+       LIMIT 1`,
+      [Number(studentId), Number(skillId), Number(levelId)]
+    );
+    if (!bookingRows?.length) {
+      const err = new Error('No active ongoing booking found for this assessment');
+      err.status = 400;
       throw err;
     }
   }
@@ -342,15 +367,32 @@ export const submitAssessment = async ({ studentAssessmentId, answers, passingMa
       if (isPassed) {
         newBookingStatus = info.skill_type === 'PS' ? 'PASS' : 'COMPLETED';
       }
-      await db.execute(
-        `UPDATE student_booking
-         SET status = ?
+      
+      const [bookingRows] = await db.execute(
+        `SELECT booking_id, mapping_id
+         FROM student_booking
          WHERE student_id = ?
            AND training_skill_id = ?
            AND level_id = ?
-           AND status = 'ONGOING'`,
-        [newBookingStatus, Number(info.student_id), Number(info.training_skill_id), Number(info.level_id)]
+           AND status = 'ONGOING'
+         LIMIT 1`,
+        [Number(info.student_id), Number(info.training_skill_id), Number(info.level_id)]
       );
+      const booking = bookingRows?.[0];
+      if (booking) {
+        await db.execute(
+          `UPDATE student_booking
+           SET status = ?
+           WHERE booking_id = ?`,
+          [newBookingStatus, booking.booking_id]
+        );
+        await db.execute(
+          `UPDATE venue_mapping
+           SET current_bookings = GREATEST(0, COALESCE(current_bookings, 1) - 1)
+           WHERE mapping_id = ?`,
+          [booking.mapping_id]
+        );
+      }
     }
   } catch (error) {
     console.error('Failed to update student_booking status on assessment submission:', error);

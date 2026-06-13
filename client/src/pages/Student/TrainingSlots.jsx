@@ -2063,7 +2063,7 @@ function PSSection({ bookedSlots, rawBookings = [], onBookSlot }) {
         selectedLevel,
       }}
       onBack={() => setLevelIdx(null)}
-      onBookSlot={(c) => { onBookSlot?.(c); setLevelIdx(null) }}
+      onBookSlot={onBookSlot}
       activeBooking={activeBooking}
       finishedBooking={finishedBooking}
     />
@@ -2371,7 +2371,7 @@ function PBLSection({ bookedSlots, rawBookings = [], onBookSlot, onFillLabRecord
         selectedLevel,
       }}
       onBack={() => setActivityIdx(null)}
-      onBookSlot={(l) => { onBookSlot?.(l); setActivityIdx(null) }}
+      onBookSlot={onBookSlot}
       activeBooking={activeBooking}
       finishedBooking={finishedBooking}
       onFillLabRecord={onFillLabRecord}
@@ -2479,6 +2479,7 @@ export default function TrainingSlots({ onBack }) {
       if (!normalized) throw new Error('Booking failed')
       setBookedSlots(prev => ({ ...prev, [normalized.key]: normalized.booking }))
       setRawBookings(prev => [...prev, row])
+      await fetchBookings()
       setLastBooking(normalized.booking)
       setShowModal(false)
       setShowConfirm(true)

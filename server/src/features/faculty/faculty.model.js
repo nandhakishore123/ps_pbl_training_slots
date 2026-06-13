@@ -152,41 +152,59 @@ export const markAllAttendance = async (mappingId, facultyId) => {
 // ── Mark malpractice ─────────────────────────────────────────
 export const markMalpractice = async (bookingId, facultyId, reason) => {
   const [rows] = await db.execute(
-    `SELECT sb.booking_id FROM student_booking sb
+    `SELECT sb.booking_id, sb.mapping_id, sb.status FROM student_booking sb
      JOIN venue_mapping vm ON sb.mapping_id = vm.mapping_id
      WHERE sb.booking_id = ? AND vm.faculty_id = ?`,
     [bookingId, facultyId]
   );
   if (rows.length === 0) throw new Error('Forbidden or not found');
+  const booking = rows[0];
 
-  await db.execute(
-    `UPDATE student_booking
-     SET status = 'MALPRACTICE', remarks = ?
-     WHERE booking_id = ?`,
-    [reason, bookingId]
-  );
+  if (booking.status === 'ONGOING') {
+    await db.execute(
+      `UPDATE student_booking
+       SET status = 'MALPRACTICE', remarks = ?
+       WHERE booking_id = ?`,
+      [reason, bookingId]
+    );
+    await db.execute(
+      `UPDATE venue_mapping
+       SET current_bookings = GREATEST(0, COALESCE(current_bookings, 1) - 1)
+       WHERE mapping_id = ?`,
+      [booking.mapping_id]
+    );
+  }
 };
 
 // ── Revoke malpractice ───────────────────────────────────────
 export const revokeMalpractice = async (bookingId, facultyId) => {
   const [rows] = await db.execute(
-    `SELECT sb.booking_id FROM student_booking sb
+    `SELECT sb.booking_id, sb.mapping_id, sb.status FROM student_booking sb
      JOIN venue_mapping vm ON sb.mapping_id = vm.mapping_id
      WHERE sb.booking_id = ? AND vm.faculty_id = ?`,
     [bookingId, facultyId]
   );
   if (rows.length === 0) throw new Error('Forbidden or not found');
+  const booking = rows[0];
 
-  await db.execute(
-    `UPDATE student_booking
-     SET status = 'ONGOING', remarks = NULL
-     WHERE booking_id = ?`,
-    [bookingId]
-  );
+  if (booking.status === 'MALPRACTICE') {
+    await db.execute(
+      `UPDATE student_booking
+       SET status = 'ONGOING', remarks = NULL
+       WHERE booking_id = ?`,
+      [bookingId]
+    );
+    await db.execute(
+      `UPDATE venue_mapping
+       SET current_bookings = COALESCE(current_bookings, 0) + 1
+       WHERE mapping_id = ?`,
+      [booking.mapping_id]
+    );
+  }
 };
 
 // ── Transfer request ─────────────────────────────────────────
-export const createTransferRequest = async (fromFacultyId, mappingId, toFacultyId, reason) => {
+export const createTransferRequest = async (fromFacultyId, mappingId, toFacultyId, reason, targetVenueId = null, targetSlotId = null, transferDate = null) => {
   // Get the mapping details
   const [rows] = await db.execute(
     `SELECT venue_id, slot_id FROM venue_mapping WHERE mapping_id = ? AND faculty_id = ?`,
@@ -197,9 +215,9 @@ export const createTransferRequest = async (fromFacultyId, mappingId, toFacultyI
 
   const [result] = await db.execute(
     `INSERT INTO venue_mapping_transfer_log
-       (from_faculty_id, to_faculty_id, reason, venue_id, slot_id, current_status)
-     VALUES (?, ?, ?, ?, ?, 'PENDING')`,
-    [fromFacultyId, toFacultyId, reason, venue_id, slot_id]
+       (from_faculty_id, to_faculty_id, reason, venue_id, slot_id, target_venue_id, target_slot_id, transfer_date, current_status)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'PENDING')`,
+    [fromFacultyId, toFacultyId || null, reason, venue_id, slot_id, targetVenueId || null, targetSlotId || null, transferDate || null]
   );
   return result.insertId;
 };
@@ -208,17 +226,153 @@ export const createTransferRequest = async (fromFacultyId, mappingId, toFacultyI
 export const getMyTransferRequests = async (facultyId) => {
   const [rows] = await db.execute(
     `SELECT
-       tl.transfer_id, tl.current_status, tl.reason, tl.created_at,
+       tl.transfer_id, tl.current_status, tl.reason, tl.created_at, tl.transfer_date,
        v.venue_name, v.location,
        st.start_time, st.end_time,
+       tv.venue_name as target_venue_name, tv.location as target_location,
+       tst.start_time as target_start_time, tst.end_time as target_end_time,
        tf.name as to_faculty_name, tf.department as to_faculty_dept
      FROM venue_mapping_transfer_log tl
      JOIN venues v ON tl.venue_id = v.venue_id
      JOIN slot_timings st ON tl.slot_id = st.slot_id
-     JOIN faculties tf ON tl.to_faculty_id = tf.faculty_id
+     LEFT JOIN venues tv ON tl.target_venue_id = tv.venue_id
+     LEFT JOIN slot_timings tst ON tl.target_slot_id = tst.slot_id
+     LEFT JOIN faculties tf ON tl.to_faculty_id = tf.faculty_id
      WHERE tl.from_faculty_id = ?
      ORDER BY tl.created_at DESC`,
     [facultyId]
   );
   return rows;
+};
+
+// ── Get student review data (MCQ assessment + end survey response) ──
+export const getStudentReviewData = async (bookingId, facultyId) => {
+  // 1. Verify faculty owns the booking mapping and retrieve booking info (including venue/slot)
+  const [bookingRows] = await db.execute(
+    `SELECT sb.booking_id, sb.student_id, sb.training_skill_id, sb.level_id,
+            sb.booking_date, sb.status, sb.is_present, sb.remarks,
+            s.name as student_name, s.reg_num as student_reg_num,
+            s.course as student_course,
+            ts.skill_name, sl.level_name,
+            v.venue_name,
+            st.start_time, st.end_time
+     FROM student_booking sb
+     JOIN students s ON sb.student_id = s.student_id
+     JOIN venue_mapping vm ON sb.mapping_id = vm.mapping_id
+     JOIN venues v ON vm.venue_id = v.venue_id
+     JOIN slot_timings st ON vm.slot_id = st.slot_id
+     JOIN training_skills ts ON sb.training_skill_id = ts.training_skill_id
+     LEFT JOIN skill_levels sl ON sb.level_id = sl.level_id
+     WHERE sb.booking_id = ? AND vm.faculty_id = ?`,
+    [bookingId, facultyId]
+  );
+
+  if (bookingRows.length === 0) {
+    throw new Error('Forbidden: Booking not found or mapping not yours');
+  }
+  const booking = bookingRows[0];
+
+  // 2. Fetch assessment details if there is an active MCQ assessment for this skill and level
+  const [assessmentRows] = await db.execute(
+    `SELECT assessment_id, assessment_title, total_marks, passing_marks
+     FROM assessments
+     WHERE training_skill_id = ? AND level_id = ? AND assessment_type = 'MCQ' AND is_active = 1`,
+    [booking.training_skill_id, booking.level_id]
+  );
+
+  let assessment = null;
+  let mcqAnswers = [];
+
+  if (assessmentRows.length > 0) {
+    const ass = assessmentRows[0];
+
+    // Fetch the student's submission
+    const [subRows] = await db.execute(
+      `SELECT student_assessment_id, score_obtained, status, submitted_at
+       FROM student_assessments
+       WHERE student_id = ? AND assessment_id = ?
+       ORDER BY submitted_at DESC LIMIT 1`,
+      [booking.student_id, ass.assessment_id]
+    );
+
+    if (subRows.length > 0) {
+      const sub = subRows[0];
+      assessment = {
+        assessment_id: ass.assessment_id,
+        assessment_title: ass.assessment_title,
+        total_marks: ass.total_marks,
+        passing_marks: ass.passing_marks,
+        score_obtained: sub.score_obtained,
+        status: sub.status,
+        submitted_at: sub.submitted_at
+      };
+
+      // Get individual answers/questions
+      const [answerRows] = await db.execute(
+        `SELECT
+           q.mcq_question_id, q.question_text, q.option_a, q.option_b, q.option_c, q.option_d, q.correct_option,
+           ans.selected_option, ans.is_correct, ans.marks_awarded
+         FROM assessment_mcq_questions q
+         LEFT JOIN student_mcq_answers ans ON q.mcq_question_id = ans.mcq_question_id AND ans.student_assessment_id = ?
+         WHERE q.assessment_id = ?`,
+        [sub.student_assessment_id, ass.assessment_id]
+      );
+      mcqAnswers = answerRows;
+    }
+  }
+
+  // 3. Fetch end survey responses for this booking
+  const [surveyRows] = await db.execute(
+    `SELECT q.survey_question_id, q.question, es.student_response, es.is_caption_verified, es.is_incharge_verified
+     FROM end_survey es
+     JOIN end_survey_questions q ON es.survey_question_id = q.survey_question_id
+     WHERE es.booking_id = ? AND es.student_id = ?`,
+    [bookingId, booking.student_id]
+  );
+
+  return {
+    booking,
+    assessment,
+    mcqAnswers,
+    surveyResponses: surveyRows
+  };
+};
+
+// ── Verify / approve a student's end-survey as incharge ──────
+export const verifyInchargeLabRecord = async (bookingId, facultyId) => {
+  // Verify the faculty owns the mapping this booking belongs to
+  const [rows] = await db.execute(
+    `SELECT sb.booking_id, sb.student_id
+     FROM student_booking sb
+     JOIN venue_mapping vm ON sb.mapping_id = vm.mapping_id
+     WHERE sb.booking_id = ? AND vm.faculty_id = ?`,
+    [bookingId, facultyId]
+  );
+  if (rows.length === 0) throw new Error('Forbidden: Booking not found or mapping not yours');
+  const { student_id } = rows[0];
+
+  // Update is_incharge_verified for all survey rows of this booking
+  const [result] = await db.execute(
+    `UPDATE end_survey
+     SET is_incharge_verified = 1
+     WHERE booking_id = ? AND student_id = ?`,
+    [bookingId, student_id]
+  );
+  return result.affectedRows;
+};
+
+// ── Get all active venues, slot timings, and current allocations ──────
+export const getAllVenueAllocations = async () => {
+  const [venues] = await db.execute(
+    `SELECT venue_id, venue_name, location, capacity FROM venues WHERE is_active = 1`
+  );
+  const [slots] = await db.execute(
+    `SELECT slot_id, start_time, end_time FROM slot_timings WHERE is_active = 1`
+  );
+  const [mappings] = await db.execute(
+    `SELECT vm.mapping_id, vm.venue_id, vm.slot_id, vm.faculty_id, f.name as faculty_name, f.reg_num as faculty_reg_num
+     FROM venue_mapping vm
+     JOIN faculties f ON vm.faculty_id = f.faculty_id`
+  );
+  return { venues, slots, mappings };
 };

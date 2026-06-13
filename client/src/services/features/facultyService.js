@@ -42,7 +42,22 @@ export const facultyService = {
   },
 
   /** Create a new transfer request */
-  createTransferRequest(mappingId, toFacultyId, reason) {
-    return api.post('/faculty/transfer-requests', { mappingId, toFacultyId, reason });
+  createTransferRequest(mappingId, toFacultyId, reason, targetVenueId, targetSlotId, transferDate) {
+    return api.post('/faculty/transfer-requests', { mappingId, toFacultyId, reason, targetVenueId, targetSlotId, transferDate });
+  },
+
+  /** Get all active venue allocations (venues, slots, mappings) */
+  getAllVenueAllocations() {
+    return api.get('/faculty/all-venue-allocations');
+  },
+
+  /** Get review details for MCQ assessment and end survey */
+  getStudentReviewData(bookingId) {
+    return api.get(`/faculty/bookings/${bookingId}/review`);
+  },
+
+  /** Mark the student's lab record (end survey) as verified by the in-charge faculty */
+  verifyInchargeLabRecord(bookingId) {
+    return api.patch(`/faculty/bookings/${bookingId}/verify-incharge`);
   },
 };
