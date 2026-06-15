@@ -88,8 +88,8 @@ function WarningPopup({ count, onDismiss }) {
         </div>
         <div style={{ fontSize: 13, color: "#6b7280", lineHeight: 1.6, marginBottom: 22 }}>
           {count === 1
-            ? "You left the assessment window! This is your first warning (1 of 2). One more violation and the NEXT switch will auto-submit your test immediately."
-            : "This is your FINAL warning (2 of 2)! If you leave the assessment window ONE MORE TIME, your test will be automatically submitted with your current answers and marked as MALPRACTICE."}
+            ? "You left the assessment window or exited fullscreen! This is your first warning (1 of 2). One more violation will auto-submit your test immediately."
+            : "This is your FINAL warning (2 of 2)! If you leave the assessment window or exit fullscreen ONE MORE TIME, your test will be automatically submitted with your current answers and marked as MALPRACTICE."}
         </div>
         <button onClick={onDismiss}
           style={{ padding: "12px 28px", background: P, border: "none", borderRadius: 10, color: "#fff", fontSize: 14, fontWeight: 800, cursor: "pointer", fontFamily: "inherit" }}>
@@ -130,6 +130,7 @@ export default function MCQAssessment() {
   const [result, setResult] = useState(null);
 
   const timerRef = useRef(null);
+  const isFinishingRef = useRef(false); // true while submitting; suppresses our own exitFullscreen() from counting as a violation
 
   // ── Fetch Assessment Details on Mount ────────────────────────
   useEffect(() => {
@@ -198,6 +199,7 @@ export default function MCQAssessment() {
       setCurrent(0);
       setWarnings(0);
       setAutoSubmit(false);
+      isFinishingRef.current = false;
       setTotalSecondsLeft(assessment.duration_minutes * 60);
       
       if (formatted.length > 0) {
@@ -215,6 +217,7 @@ export default function MCQAssessment() {
 
   // ── Submit Test ─────────────────────────────────────────────
   const submitTest = async (answersMap = userAnswers) => {
+    isFinishingRef.current = true;
     clearInterval(timerRef.current);
     setLoading(true);
     try {
@@ -301,6 +304,34 @@ export default function MCQAssessment() {
     };
     document.addEventListener("visibilitychange", onVis);
     return () => document.removeEventListener("visibilitychange", onVis);
+  }, [phase, studentAssessmentId, userAnswers]);
+
+  // ── Anti-cheat Fullscreen Exit Hook ──────────────────────────
+  // Feeds the SAME `warnings` counter as visibilitychange, so tab-switch
+  // + fullscreen-exit together count toward 2 warnings / 3rd auto-submit.
+  useEffect(() => {
+    if (phase !== "running" || !studentAssessmentId) return;
+    const onFsChange = () => {
+      // Only react to LEAVING fullscreen (re-entering sets fullscreenElement).
+      if (document.fullscreenElement) return;
+      // Ignore the exitFullscreen() we trigger ourselves during submit.
+      if (isFinishingRef.current) return;
+      clearInterval(timerRef.current);
+      setWarnings(w => {
+        const nw = w + 1;
+        if (nw >= 3) {
+          // 3rd combined violation → auto-submit, no popup, keep counter at 2.
+          doAutoSubmit();
+          return w;
+        }
+        // 1st or 2nd violation → show warning and try to pull back into fullscreen.
+        setShowWarn(true);
+        document.documentElement.requestFullscreen?.().catch(() => {});
+        return nw;
+      });
+    };
+    document.addEventListener("fullscreenchange", onFsChange);
+    return () => document.removeEventListener("fullscreenchange", onFsChange);
   }, [phase, studentAssessmentId, userAnswers]);
 
   const goNext = useCallback(() => {
@@ -596,7 +627,7 @@ export default function MCQAssessment() {
                   </div>
                   <div style={{ fontSize: 13, color: "#6b7280", maxWidth: 340, textAlign: "center", lineHeight: 1.6 }}>
                     {autoSubmit
-                      ? "Your test was auto-submitted due to tab-switching violations. Status has been updated to MALPRACTICE."
+                      ? "Your test was auto-submitted due to anti-cheat violations (tab switching or exiting fullscreen). Status has been updated to MALPRACTICE."
                       : result?.status === 'PASSED'
                         ? "Congratulations! You have passed the assessment."
                         : "You did not achieve the passing marks. Please review and try again next time."}
