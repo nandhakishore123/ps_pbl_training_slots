@@ -1,12 +1,35 @@
 import { useState, useRef } from 'react'
 import styles from './VenueMapModal.module.css'
-import { venueBlocks } from '../../pages/Admin/data/venues'
 
-export default function VenueMapModal({ isOpen, onClose }) {
+export default function VenueMapModal({ isOpen, onClose, venues = [] }) {
   const [tooltip, setTooltip] = useState({ visible: false, text: '', x: 0, y: 0 })
   const overlayRef = useRef(null)
 
   if (!isOpen) return null
+
+  // Dynamically group real database venues by block/location
+  const grouped = {}
+  venues.forEach((v) => {
+    const blockName = v.location || 'General Block'
+    if (!grouped[blockName]) {
+      grouped[blockName] = []
+    }
+    const exists = grouped[blockName].some((x) => x.venue_id === v.venue_id)
+    if (!exists) {
+      grouped[blockName].push(v)
+    }
+  })
+
+  const venueBlocks = Object.keys(grouped).map((blockName) => ({
+    block: blockName,
+    venues: grouped[blockName].map((v) => ({
+      venue_id: v.venue_id,
+      name: v.venue_name,
+      type: v.skill_type || 'PS',
+      status: v.faculty_id ? 'occupied' : 'free',
+      faculty: v.faculty_name || null,
+    })),
+  }))
 
   const handleMouseOver = (e, title) => {
     setTooltip({

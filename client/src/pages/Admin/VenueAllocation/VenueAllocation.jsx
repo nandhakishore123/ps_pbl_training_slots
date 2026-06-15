@@ -3,54 +3,52 @@ import styles from './VenueAllocation.module.css'
 import Header from '../Header/Header'
 import SectionCard from '../../../components/ui/SectionCard'
 import Badge from '../../../components/ui/Badge'
-import TransferModal from '../../../components/modals/TransferModal'
+import SwapFacultyModal from '../../../components/modals/SwapFacultyModal'
 import VenueMapModal from '../../../components/modals/VenueMapModal'
 import { useData } from '../context/DataContext'
-import { useApp } from '../context/AppContext'
 
 export default function VenueAllocation() {
-  const { venues, faculty, revokeVenueTransfer } = useData()
-  const { showToast } = useApp()
+  const { venues, loading } = useData()
 
   const [statusFilter, setStatusFilter] = useState('all')
-  const [typeFilter, setTypeFilter] = useState('all')
   const [openMenuId, setOpenMenuId] = useState(null)
-  const [transferOpen, setTransferOpen] = useState(false)
-  const [transferContext, setTransferContext] = useState(null)
+  const [swapOpen, setSwapOpen] = useState(false)
+  const [swapMapping, setSwapMapping] = useState(null)
   const [mapOpen, setMapOpen] = useState(false)
 
   // ── FILTERED DATA ────────────────────────────────────────────
-  const filtered = venues
-    .filter((v) => statusFilter === 'all' || v.status === statusFilter)
-    .filter((v) => typeFilter === 'all' || v.type === typeFilter)
+  // Deduplicate by venue_id (keep latest entry per venue) as safety net
+  const uniqueVenues = Array.from(
+    venues.reduce((map, v) => {
+      map.set(v.venue_id, v)
+      return map
+    }, new Map()).values()
+  )
 
-  const occupied = venues.filter((v) => v.status === 'occupied').length
-  const free = venues.filter((v) => v.status === 'free').length
+  const processedVenues = uniqueVenues.map(v => ({
+    ...v,
+    status: v.faculty_id ? 'occupied' : 'free'
+  }))
+
+  const filtered = processedVenues
+    .filter((v) => statusFilter === 'all' || v.status === statusFilter)
+
+  const occupied = processedVenues.filter((v) => v.status === 'occupied').length
+  const free = processedVenues.filter((v) => v.status === 'free').length
 
   // ── MENU HANDLERS ────────────────────────────────────────────
-  const toggleMenu = (venueId, e) => {
+  // Use mapping_id as the toggle key (unique per row)
+  const toggleMenu = (mappingId, e) => {
     e.stopPropagation()
-    setOpenMenuId((prev) => (prev === venueId ? null : venueId))
+    setOpenMenuId((prev) => (prev === mappingId ? null : mappingId))
   }
 
   const closeMenu = () => setOpenMenuId(null)
 
   // ── TRANSFER HANDLERS ────────────────────────────────────────
-  const openSwap = (venueId) => {
-    setTransferContext({ type: 'swap', id: venueId })
-    setTransferOpen(true)
-    closeMenu()
-  }
-
-  const openMove = (venueId) => {
-    setTransferContext({ type: 'move', id: venueId })
-    setTransferOpen(true)
-    closeMenu()
-  }
-
-  const handleRevoke = (venueId) => {
-    revokeVenueTransfer(venueId)
-    showToast('Transfer revoked', false)
+  const openSwap = (venue) => {
+    setSwapMapping(venue)
+    setSwapOpen(true)
     closeMenu()
   }
 
@@ -68,7 +66,7 @@ export default function VenueAllocation() {
         <div className={styles.topRow}>
           <div className={styles.miniStats}>
             <div className={`${styles.miniCard} ${styles.purpleAccent}`}>
-              <div className={`${styles.miniVal} ${styles.purple}`}>12</div>
+              <div className={`${styles.miniVal} ${styles.purple}`}>{processedVenues.length}</div>
               <div className={styles.miniLabel}>Total Venues</div>
             </div>
             <div className={`${styles.miniCard} ${styles.redAccent}`}>
@@ -101,15 +99,6 @@ export default function VenueAllocation() {
               <option value="occupied">Occupied</option>
               <option value="free">Free</option>
             </select>
-            <select
-              className={styles.select}
-              value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value)}
-            >
-              <option value="all">All Types</option>
-              <option value="PBL">PBL Labs</option>
-              <option value="PS">PS Labs</option>
-            </select>
           </div>
 
           {/* TABLE */}
@@ -117,93 +106,67 @@ export default function VenueAllocation() {
             <table className={styles.table}>
               <thead>
                 <tr>
-                  <th style={{ width: '20%' }}>Venue Name</th>
-                  <th style={{ width: '15%' }}>Block / Room</th>
-                  <th style={{ width: '12%' }}>Type</th>
-                  <th style={{ width: '20%' }}>Assigned Faculty</th>
-                  <th style={{ width: '18%' }}>Current Slot</th>
-                  <th style={{ width: '10%' }}>Status</th>
+                  <th style={{ width: '25%' }}>Venue Name</th>
+                  <th style={{ width: '20%' }}>Location</th>
+                  <th style={{ width: '25%' }}>Assigned Faculty</th>
+                  <th style={{ width: '15%' }}>Status</th>
                   <th style={{ width: '15%' }}>Action</th>
                 </tr>
               </thead>
               <tbody>
-                {filtered.length > 0 ? filtered.map((v) => {
-                  const fac = v.faculty ? faculty.find((f) => f.id === v.faculty) : null
-                  const tf = v.transferredTo ? faculty.find((f) => f.id === v.transferredTo) : null
-                  return (
-                    <tr key={v.id}>
-                      <td><b>{v.name}</b></td>
-                      <td className={styles.blockCell}>
-                        {v.block}
-                        <br />
-                        <span className={styles.roomText}>{v.room}</span>
-                      </td>
-                      <td>
-                        <Badge status={v.type === 'PBL' ? 'occupied' : 'approved'} />
-                      </td>
-                      <td>
-                        {fac ? (
-                          <div>
-                            <div className={styles.facName}>{fac.name}</div>
-                            <div className={styles.facDept}>{fac.dept}</div>
-                          </div>
-                        ) : (
-                          <span className={styles.unassigned}>— Unassigned</span>
-                        )}
-                        {tf && (
-                          <div className={styles.transferredTag}>
-                            → Transferred to {tf.name}
-                          </div>
-                        )}
-                      </td>
-                      <td className={styles.slotCell}>{v.slot || '—'}</td>
-                      <td><Badge status={v.status} /></td>
-                      <td>
+                {loading ? (
+                  <tr>
+                    <td colSpan={5} className={styles.empty}>Loading venues...</td>
+                  </tr>
+                ) : filtered.length > 0 ? filtered.map((v) => (
+                  <tr key={v.venue_id}>
+                    <td>
+                      <b>{v.venue_name}</b>
+                      <div className={styles.capacityText}>Capacity: {v.capacity}</div>
+                    </td>
+                    <td className={styles.blockCell}>
+                      {v.location || '—'}
+                    </td>
+                    <td>
+                      {v.faculty_id ? (
+                        <div>
+                          <div className={styles.facName}>{v.faculty_name}</div>
+                          <div className={styles.facDept}>{v.reg_num}</div>
+                        </div>
+                      ) : (
+                        <span className={styles.unassigned}>— Unassigned</span>
+                      )}
+                    </td>
+                    <td><Badge status={v.status} /></td>
+                    <td>
+                      {v.faculty_id && v.mapping_id && (
                         <div
                           className={styles.menuWrap}
                           onClick={(e) => e.stopPropagation()}
                         >
                           <button
                             className={styles.manageBtn}
-                            onClick={(e) => toggleMenu(v.id, e)}
+                            onClick={(e) => toggleMenu(v.mapping_id, e)}
                           >
                             Manage ▾
                           </button>
-                          {openMenuId === v.id && (
+                          {openMenuId === v.mapping_id && (
                             <div className={styles.dropdown}>
                               <div
                                 className={`${styles.dropItem} ${styles.dropSwap}`}
-                                onClick={() => openSwap(v.id)}
+                                onClick={() => openSwap(v)}
                               >
                                 ⇄ Swap Faculty
                               </div>
-                              <div className={styles.dropDivider} />
-                              <div
-                                className={`${styles.dropItem} ${styles.dropMove}`}
-                                onClick={() => openMove(v.id)}
-                              >
-                                ↗ Move Venue
-                              </div>
-                              {v.transferredTo && (
-                                <>
-                                  <div className={styles.dropDivider} />
-                                  <div
-                                    className={`${styles.dropItem} ${styles.dropRevoke}`}
-                                    onClick={() => handleRevoke(v.id)}
-                                  >
-                                    ✕ Revoke Transfer
-                                  </div>
-                                </>
-                              )}
                             </div>
                           )}
                         </div>
-                      </td>
-                    </tr>
-                  )
-                }) : (
+                      )}
+                    </td>
+                  </tr>
+                )) : (
                   <tr>
-                    <td colSpan={7}>
+                    <td colSpan={5}>
                       <div className={styles.empty}>No venues match filter</div>
                     </td>
                   </tr>
@@ -215,15 +178,19 @@ export default function VenueAllocation() {
       </div>
 
       {/* MODALS */}
-      <TransferModal
-        isOpen={transferOpen}
-        onClose={() => setTransferOpen(false)}
-        context={transferContext}
-      />
+      {swapOpen && swapMapping && (
+        <SwapFacultyModal
+          isOpen={swapOpen}
+          onClose={() => setSwapOpen(false)}
+          mapping={swapMapping}
+        />
+      )}
       <VenueMapModal
         isOpen={mapOpen}
         onClose={() => setMapOpen(false)}
+        venues={processedVenues}
       />
     </div>
   )
 }
+

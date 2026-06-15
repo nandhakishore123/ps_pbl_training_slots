@@ -6,43 +6,60 @@ const normalizeStr = (v) => {
   return String(v).trim();
 };
 
-const shouldRetryStatusError = (error) => {
-  if (!error) return false;
-  if (error.code === 'WARN_DATA_TRUNCATED' || error.errno === 1265) return true;
-  const msg = String(error.sqlMessage || error.message || '');
-  return msg.toLowerCase().includes("status");
+// ── Time-based booking window (all times IST) ─────────────────────────────────
+// Rule: each day at 19:45 IST the NEXT working day's slots open (Sunday is a
+// holiday and is skipped). A slot for date D is bookable while
+// 19:45-on-the-working-day-before-D <= now < D@slot.start_time.
+const BOOKING_OPEN_HOUR = 19;
+const BOOKING_OPEN_MINUTE = 45;
+
+// Pure: given the current IST wall-clock ('YYYY-MM-DD HH:MM:SS'), returns the
+// currently-open booking day and (for the same-day case) the start-time cutoff.
+// { bookingDate: 'YYYY-MM-DD'|null, startAfterTime: 'HH:MM:SS'|null, isToday }
+export const computeBookingWindow = (istNowStr) => {
+  if (!istNowStr) return { bookingDate: null, startAfterTime: null, isToday: false };
+  const [datePart, timePart = '00:00:00'] = String(istNowStr).trim().split(' ');
+  const [y, mo, d] = datePart.split('-').map(Number);
+  const [hh, mi, ss] = timePart.split(':').map(Number);
+
+  // Plain calendar carrier — values are already IST, so use UTC accessors to
+  // avoid any server-local-timezone drift.
+  const today = new Date(Date.UTC(y, mo - 1, d));
+  const addDays = (base, n) => new Date(base.getTime() + n * 86400000);
+  const fmt = (dt) =>
+    `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(dt.getUTCDate()).padStart(2, '0')}`;
+  const isSunday = (dt) => dt.getUTCDay() === 0;
+
+  const minutesNow = hh * 60 + mi;
+  const openMinutes = BOOKING_OPEN_HOUR * 60 + BOOKING_OPEN_MINUTE;
+
+  if (minutesNow >= openMinutes) {
+    // 19:45 passed → next working day's slots have opened (skip Sunday).
+    let next = addDays(today, 1);
+    if (isSunday(next)) next = addDays(next, 1);
+    return { bookingDate: fmt(next), startAfterTime: null, isToday: false };
+  }
+
+  // Before 19:45 → today's not-yet-started slots remain bookable, unless today
+  // is Sunday (holiday; Monday opens only at Sunday 19:45).
+  if (isSunday(today)) {
+    return { bookingDate: null, startAfterTime: null, isToday: false };
+  }
+  const startAfterTime =
+    `${String(hh).padStart(2, '0')}:${String(mi).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
+  return { bookingDate: fmt(today), startAfterTime, isToday: true };
 };
 
-const resolveStudentId = async (user, conn = null) => {
-  const userId = user?.user_id ?? user;
-  if (!userId) {
-    const err = new Error('Unauthorized');
-    err.status = 401;
-    throw err;
-  }
-
-  const name = normalizeStr(user?.name) || null;
-  const regNum = normalizeStr(user?.reg_num) || null;
-  const studentId = await trainingModel.getOrCreateStudentIdByUser({
-    userId,
-    name,
-    regNum,
-  }, conn);
-
-  if (!studentId) {
-    const err = new Error('Student not found');
-    err.status = 404;
-    throw err;
-  }
-
-  return studentId;
+const getCurrentBookingWindow = async (conn = null) => {
+  const istNow = await trainingModel.getIstNow(conn);
+  return computeBookingWindow(istNow);
 };
 
 export const getCategories = async () => {
   return trainingModel.listCategories();
 };
 
-export const getSkills = async ({ type, categoryId, search, limit, offset }) => {
+export const getSkills = async ({ type, categoryId, search, limit, offset, all }) => {
   const t = normalizeStr(type).toUpperCase();
   if (t !== 'PS' && t !== 'PBL') {
     const err = new Error('Invalid skill type');
@@ -52,6 +69,8 @@ export const getSkills = async ({ type, categoryId, search, limit, offset }) => 
 
   const cat = normalizeStr(categoryId);
   const q = normalizeStr(search);
+  const allRaw = normalizeStr(all).toLowerCase();
+  const wantsAll = ['1', 'true', 'yes', 'y', 'all'].includes(allRaw);
 
   return trainingModel.listSkills({
     type: t,
@@ -59,6 +78,7 @@ export const getSkills = async ({ type, categoryId, search, limit, offset }) => 
     search: q || null,
     limit,
     offset,
+    all: wantsAll,
   });
 };
 
@@ -106,12 +126,17 @@ export const getSkillDetails = async (trainingSkillId) => {
 };
 
 export const getSkillSlots = async (trainingSkillId) => {
-  return trainingModel.listSkillSlots(trainingSkillId);
+  const window = await getCurrentBookingWindow();
+  // Nothing currently open → empty list; the frontend shows the friendly
+  // "booking opens at 7:45 PM" empty state.
+  if (!window.bookingDate) return [];
+  return trainingModel.listSkillSlots(trainingSkillId, {
+    startAfterTime: window.startAfterTime,
+  });
 };
 
-export const createBooking = async ({ user, userId, slotId, trainingSkillId }) => {
-  const resolvedUser = user || (userId ? { user_id: userId } : null);
-  if (!resolvedUser) {
+export const createBooking = async ({ userId, slotId, mappingId, trainingSkillId, levelId }) => {
+  if (!userId) {
     const err = new Error('Unauthorized');
     err.status = 401;
     throw err;
@@ -127,11 +152,23 @@ export const createBooking = async ({ user, userId, slotId, trainingSkillId }) =
     throw err;
   }
 
+  const studentId = await trainingModel.getStudentIdByUserId(userId);
+  if (!studentId) {
+    const err = new Error('Student not found');
+    err.status = 404;
+    throw err;
+  }
+
+  const hasMal = await trainingModel.hasMalpractice(studentId, trainingSkillId);
+  if (hasMal) {
+    const err = new Error('Access denied due to malpractice');
+    err.status = 403;
+    throw err;
+  }
+
   const conn = await db.getConnection();
   try {
     await conn.beginTransaction();
-
-    const studentId = await resolveStudentId(resolvedUser, conn);
 
     const slot = await trainingModel.getSlotTimingById(slotId, conn);
     if (!slot) {
@@ -145,9 +182,30 @@ export const createBooking = async ({ user, userId, slotId, trainingSkillId }) =
       throw err;
     }
 
-    const existing = await trainingModel.getExistingBookingForSlotDate(studentId, slot.slot_id, conn);
+    // Re-validate the booking window server-side (never trust the client).
+    const window = await getCurrentBookingWindow(conn);
+    if (!window.bookingDate) {
+      const err = new Error('Booking is not open right now. Booking opens daily at 7:45 PM for the next day.');
+      err.status = 400;
+      throw err;
+    }
+    // Same-day window: a slot is bookable only until its own start time.
+    if (window.isToday && window.startAfterTime && String(slot.start_time) <= window.startAfterTime) {
+      const err = new Error("This slot's booking window has closed — a slot can only be booked before its start time.");
+      err.status = 400;
+      throw err;
+    }
+
+    const existing = await trainingModel.getExistingBookingForSlotDate(studentId, slot.slot_id, window.bookingDate, conn);
     if (existing) {
-      const err = new Error('Slot already booked for today');
+      const err = new Error('You have already booked this time slot for that day');
+      err.status = 409;
+      throw err;
+    }
+
+    const activeBooking = await trainingModel.getExistingActiveBookingForCourse(studentId, trainingSkillId, conn);
+    if (activeBooking) {
+      const err = new Error('You already have an active/ongoing booking for this course');
       err.status = 409;
       throw err;
     }
@@ -155,7 +213,8 @@ export const createBooking = async ({ user, userId, slotId, trainingSkillId }) =
     const candidates = await trainingModel.listAvailableMappingsForSlot({
       startTime: slot.start_time,
       endTime: slot.end_time,
-      preferredMappingId: 0,
+      preferredMappingId: mappingId || 0,
+      trainingSkillId,
     }, conn);
 
     if (!candidates.length) {
@@ -179,28 +238,14 @@ export const createBooking = async ({ user, userId, slotId, trainingSkillId }) =
       throw err;
     }
 
-    let bookingId;
-    try {
-      bookingId = await trainingModel.insertStudentBooking({
-        studentId,
-        trainingSkillId: Number(trainingSkillId),
-        mappingId: selectedMappingId,
-        slotId: slot.slot_id,
-        status: 'ONGOING',
-      }, conn);
-    } catch (error) {
-      if (shouldRetryStatusError(error)) {
-        bookingId = await trainingModel.insertStudentBooking({
-          studentId,
-          trainingSkillId: Number(trainingSkillId),
-          mappingId: selectedMappingId,
-          slotId: slot.slot_id,
-          status: 1,
-        }, conn);
-      } else {
-        throw error;
-      }
-    }
+    const bookingId = await trainingModel.insertStudentBooking({
+      studentId,
+      trainingSkillId: Number(trainingSkillId),
+      levelId: levelId ? Number(levelId) : null,
+      mappingId: selectedMappingId,
+      slotId: slot.slot_id,
+      bookingDate: window.bookingDate,
+    }, conn);
 
     const booking = await trainingModel.getBookingById(bookingId, conn);
     await conn.commit();
@@ -217,14 +262,244 @@ export const createBooking = async ({ user, userId, slotId, trainingSkillId }) =
   }
 };
 
-export const getStudentBookings = async ({ user, userId }) => {
-  const resolvedUser = user || (userId ? { user_id: userId } : null);
-  if (!resolvedUser) {
-    const err = new Error('Unauthorized');
-    err.status = 401;
+export const getStudentBookings = async ({ userId }) => {
+  const studentId = await trainingModel.getStudentIdByUserId(userId);
+  if (!studentId) {
+    const err = new Error('Student not found');
+    err.status = 404;
     throw err;
   }
 
-  const studentId = await resolveStudentId(resolvedUser);
   return trainingModel.listStudentBookings(studentId);
 };
+
+// ── Assessment services ───────────────────────────────────────────────────────
+
+export const getAssessment = async (trainingSkillId, levelId, userId) => {
+  if (userId) {
+    const studentId = await trainingModel.getStudentIdByUserId(userId);
+    if (studentId) {
+      const hasMal = await trainingModel.hasMalpractice(studentId, trainingSkillId);
+      if (hasMal) {
+        const err = new Error('Access denied due to malpractice');
+        err.status = 403;
+        throw err;
+      }
+      const [bookingRows] = await db.execute(
+        `SELECT booking_id FROM student_booking
+         WHERE student_id = ? AND training_skill_id = ? AND level_id = ? AND status = 'ONGOING'
+         LIMIT 1`,
+        [Number(studentId), Number(trainingSkillId), Number(levelId)]
+      );
+      if (!bookingRows?.length) {
+        const err = new Error('You do not have an active ongoing booking for this assessment.');
+        err.status = 400;
+        throw err;
+      }
+    }
+  }
+  const assessment = await trainingModel.getAssessmentForLevel(trainingSkillId, levelId);
+  if (!assessment) {
+    const err = new Error('No active assessment found for this level');
+    err.status = 404;
+    throw err;
+  }
+  const typeConfigs = await trainingModel.getAssessmentMcqTypeConfig(assessment.assessment_id);
+  return { ...assessment, typeConfigs };
+};
+
+export const getAssessmentWithQuestions = async (assessmentId) => {
+  const [rows] = await (await import('../../config/db.js')).default.execute(
+    `SELECT assessment_id, assessment_title, assessment_type,
+            total_marks, passing_marks, duration_minutes, is_active
+     FROM assessments WHERE assessment_id = ? AND is_active = 1 LIMIT 1`,
+    [Number(assessmentId)]
+  );
+  const assessment = rows?.[0] ?? null;
+  if (!assessment) {
+    const err = new Error('Assessment not found');
+    err.status = 404;
+    throw err;
+  }
+  const typeConfigs = await trainingModel.getAssessmentMcqTypeConfig(assessment.assessment_id);
+  const questions = await fetchQuestionsForAssessment(assessment.assessment_id, typeConfigs);
+  return { ...assessment, typeConfigs, questions };
+};
+
+export const startAssessment = async ({ userId, assessmentId, totalMarks }) => {
+  const studentId = await trainingModel.getStudentIdByUserId(userId);
+  if (!studentId) {
+    const err = new Error('Student not found');
+    err.status = 404;
+    throw err;
+  }
+  const [assessmentRow] = await db.execute(
+    'SELECT training_skill_id, level_id FROM assessments WHERE assessment_id = ? LIMIT 1',
+    [Number(assessmentId)]
+  );
+  const skillId = assessmentRow?.[0]?.training_skill_id;
+  const levelId = assessmentRow?.[0]?.level_id;
+  if (skillId) {
+    const hasMal = await trainingModel.hasMalpractice(studentId, skillId);
+    if (hasMal) {
+      const err = new Error('Access denied due to malpractice');
+      err.status = 403;
+      throw err;
+    }
+  }
+  if (skillId && levelId) {
+    const [bookingRows] = await db.execute(
+      `SELECT booking_id FROM student_booking
+       WHERE student_id = ? AND training_skill_id = ? AND level_id = ? AND status = 'ONGOING'
+       LIMIT 1`,
+      [Number(studentId), Number(skillId), Number(levelId)]
+    );
+    if (!bookingRows?.length) {
+      const err = new Error('No active ongoing booking found for this assessment');
+      err.status = 400;
+      throw err;
+    }
+  }
+  // Fetch type configs to get random questions per type
+  const typeConfigs = await trainingModel.getAssessmentMcqTypeConfig(Number(assessmentId));
+  const studentAssessmentId = await trainingModel.insertStudentAssessment(
+    studentId,
+    Number(assessmentId),
+    Number(totalMarks)
+  );
+  // Fetch random questions per type
+  const questions = await fetchQuestionsForAssessment(Number(assessmentId), typeConfigs);
+  return { student_assessment_id: studentAssessmentId, questions };
+};
+
+export const fetchQuestionsForAssessment = async (assessmentId, typeConfigs) => {
+  // Fetch random questions for each type config and combine
+  const allQuestions = [];
+  for (const cfg of typeConfigs) {
+    const questions = await trainingModel.getRandomMcqQuestions(
+      assessmentId,
+      cfg.mcq_type_id,
+      cfg.question_count
+    );
+    // Attach type info
+    for (const q of questions) {
+      allQuestions.push({ ...q, mcq_type_name: cfg.mcq_type_name });
+    }
+  }
+  return allQuestions;
+};
+
+export const submitAssessment = async ({ studentAssessmentId, answers, passingMarks }) => {
+  // answers: [{mcq_question_id, selected_option, correct_option, marks}]
+  let scoreObtained = 0;
+  const answerRows = (answers || []).map((a) => {
+    const isCorrect = a.selected_option != null && a.selected_option === a.correct_option;
+    const marksAwarded = isCorrect ? Number(a.marks || 1) : 0;
+    scoreObtained += marksAwarded;
+    return {
+      student_assessment_id: Number(studentAssessmentId),
+      mcq_question_id: Number(a.mcq_question_id),
+      selected_option: a.selected_option || null,
+      is_correct: isCorrect,
+      marks_awarded: marksAwarded,
+    };
+  });
+
+  if (answerRows.length) {
+    await trainingModel.insertStudentMcqAnswers(answerRows);
+  }
+
+  const status = scoreObtained >= Number(passingMarks) ? 'PASSED' : 'FAILED';
+  await trainingModel.submitStudentAssessment(Number(studentAssessmentId), scoreObtained, status);
+
+  // Update student_booking status
+  try {
+    const [assessmentInfoRows] = await db.execute(
+      `SELECT sa.student_id, a.training_skill_id, a.level_id, ts.skill_type
+       FROM student_assessments sa
+       JOIN assessments a ON a.assessment_id = sa.assessment_id
+       JOIN training_skills ts ON ts.training_skill_id = a.training_skill_id
+       WHERE sa.student_assessment_id = ?
+       LIMIT 1`,
+      [Number(studentAssessmentId)]
+    );
+    const info = assessmentInfoRows?.[0];
+    if (info) {
+      const isPassed = status === 'PASSED';
+      let newBookingStatus = 'FAIL';
+      if (isPassed) {
+        newBookingStatus = info.skill_type === 'PS' ? 'PASS' : 'COMPLETED';
+      }
+      
+      const [bookingRows] = await db.execute(
+        `SELECT booking_id, mapping_id
+         FROM student_booking
+         WHERE student_id = ?
+           AND training_skill_id = ?
+           AND level_id = ?
+           AND status = 'ONGOING'
+         LIMIT 1`,
+        [Number(info.student_id), Number(info.training_skill_id), Number(info.level_id)]
+      );
+      const booking = bookingRows?.[0];
+      if (booking) {
+        await db.execute(
+          `UPDATE student_booking
+           SET status = ?
+           WHERE booking_id = ?`,
+          [newBookingStatus, booking.booking_id]
+        );
+        await db.execute(
+          `UPDATE venue_mapping
+           SET current_bookings = GREATEST(0, COALESCE(current_bookings, 1) - 1)
+           WHERE mapping_id = ?`,
+          [booking.mapping_id]
+        );
+      }
+    }
+  } catch (error) {
+    console.error('Failed to update student_booking status on assessment submission:', error);
+  }
+
+  return { score_obtained: scoreObtained, status };
+};
+
+export const reportMalpractice = async ({ bookingId, studentAssessmentId }) => {
+  await trainingModel.markBookingMalpractice(Number(bookingId));
+  if (studentAssessmentId) {
+    await trainingModel.submitStudentAssessment(Number(studentAssessmentId), 0, 'FAILED');
+  }
+  return { success: true };
+};
+
+// ── Lab Record services ───────────────────────────────────────────────────────
+
+export const getLabRecordQuestions = async () => {
+  return trainingModel.getLabRecordQuestions();
+};
+
+export const saveLabRecord = async ({ userId, bookingId, responses }) => {
+  const studentId = await trainingModel.getStudentIdByUserId(userId);
+  if (!studentId) {
+    const err = new Error('Student not found');
+    err.status = 404;
+    throw err;
+  }
+
+  // Get faculty ID associated with this booking
+  const facultyId = await trainingModel.getFacultyFromBooking(bookingId);
+
+  await trainingModel.saveLabRecord({
+    studentId,
+    bookingId,
+    facultyId,
+    responses,
+  });
+
+  return { success: true };
+};
+
+export const getLabRecordByBooking = async (bookingId) => {
+  return trainingModel.getLabRecordByBooking(bookingId);
+};
+

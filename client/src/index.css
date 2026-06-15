@@ -1,3 +1,7 @@
+@import "tailwindcss/theme" theme(reference);
+@import "tailwindcss/utilities";
+@source "./";
+
 *,
 *::before,
 *::after {

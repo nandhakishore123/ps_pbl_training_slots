@@ -1,178 +1,173 @@
-import { createContext, useContext, useState } from 'react'
-import { allFaculty, facultySlotMap } from '../data/faculty'
-import { allVenues } from '../data/venues'
-import { initialPsSlots, initialPblSlots } from '../data/slots'
-import { allStudents } from '../data/students'
+import { createContext, useContext, useState, useEffect, useCallback } from 'react'
+import { adminService } from '../../../services/features/adminService'
+import { useApp } from './AppContext'
+
+// Mock approvals since they are not fully migrated yet
 import { initialLabApprovals, initialApApprovals } from '../data/approvals'
 
 const DataContext = createContext(null)
 
 export function DataProvider({ children }) {
-  // ── VENUES ──────────────────────────────────────────────────
-  const [venues, setVenues] = useState(allVenues)
+  const { showToast } = useApp()
 
-  // ── FACULTY ─────────────────────────────────────────────────
-  const [faculty, setFaculty] = useState(allFaculty)
-
-  // ── FACULTY SLOT MAP ─────────────────────────────────────────
-  const [slotMap, setSlotMap] = useState(facultySlotMap)
-
-  // ── SLOTS ───────────────────────────────────────────────────
-  const [psSlots, setPsSlots] = useState(initialPsSlots)
-  const [pblSlots, setPblSlots] = useState(initialPblSlots)
-
-  // ── STUDENTS ────────────────────────────────────────────────
-  const [students] = useState(allStudents)
-
-  // ── APPROVALS ───────────────────────────────────────────────
+  // ── STATE ───────────────────────────────────────────────────
+  const [dashboardKPI, setDashboardKPI] = useState(null)
+  const [venues, setVenues] = useState([])
+  const [faculty, setFaculty] = useState([])
+  const [students, setStudents] = useState([])
+  const [trainingSkills, setTrainingSkills] = useState([])
+  const [slotTimings, setSlotTimings] = useState([])
+  
+  // Mock approvals
   const [labApprovals, setLabApprovals] = useState(initialLabApprovals)
   const [apApprovals, setApApprovals] = useState(initialApApprovals)
 
-  // ── VENUE ACTIONS ────────────────────────────────────────────
-  const updateVenue = (venueId, changes) => {
-    setVenues((prev) =>
-      prev.map((v) => (v.id === venueId ? { ...v, ...changes } : v))
-    )
-  }
+  const [loading, setLoading] = useState(true)
 
-  const revokeVenueTransfer = (venueId) => {
-    updateVenue(venueId, { transferredTo: null })
-  }
+  // ── FETCH DATA ──────────────────────────────────────────────
+  const fetchDashboardKPI = useCallback(async () => {
+    try {
+      const res = await adminService.getDashboardKPI()
+      setDashboardKPI(res.data)
+    } catch (err) {
+      console.error(err)
+    }
+  }, [])
 
-  // ── FACULTY ACTIONS ──────────────────────────────────────────
-  const updateFaculty = (facultyId, changes) => {
-    setFaculty((prev) =>
-      prev.map((f) => (f.id === facultyId ? { ...f, ...changes } : f))
-    )
-  }
+  const fetchVenues = useCallback(async () => {
+    try {
+      const res = await adminService.getVenues()
+      setVenues(Array.isArray(res.data) ? res.data : [])
+    } catch (err) {
+      console.error(err)
+    }
+  }, [])
 
-  // ── TRANSFER ACTIONS ─────────────────────────────────────────
+  const fetchFaculty = useCallback(async () => {
+    try {
+      const res = await adminService.getFaculty()
+      setFaculty(Array.isArray(res.data) ? res.data : [])
+    } catch (err) {
+      console.error(err)
+    }
+  }, [])
 
-  // Swap Faculty — same venue, new incharge
-  const swapFaculty = (venueId, toFacultyId) => {
-    updateVenue(venueId, { transferredTo: toFacultyId })
-  }
+  const fetchStudents = useCallback(async () => {
+    try {
+      const res = await adminService.getStudents()
+      setStudents(Array.isArray(res.data) ? res.data : [])
+    } catch (err) {
+      console.error(err)
+    }
+  }, [])
 
-  // Move Venue — same faculty, new room
-  const moveVenue = (fromVenueId, toVenueId) => {
-    setVenues((prev) => {
-      const updated = prev.map((v) => {
-        if (v.id === fromVenueId) {
-          return { ...v, faculty: null, slot: null, status: 'free', transferredTo: null }
-        }
-        if (v.id === toVenueId) {
-          const fromV = prev.find((x) => x.id === fromVenueId)
-          return { ...v, faculty: fromV.faculty, slot: fromV.slot, status: 'occupied' }
-        }
-        return v
-      })
-      return updated
-    })
-    // Update faculty venues list
-    setVenues((prev) => {
-      const fromV = prev.find((v) => v.id === fromVenueId)
-      const toV = prev.find((v) => v.id === toVenueId)
-      if (fromV && toV && fromV.faculty) {
-        setFaculty((fPrev) =>
-          fPrev.map((f) => {
-            if (f.id === fromV.faculty) {
-              return {
-                ...f,
-                venues: [...f.venues.filter((x) => x !== fromV.name), toV.name],
-              }
-            }
-            return f
-          })
-        )
-      }
-      return prev
-    })
-  }
+  const fetchTrainingSkills = useCallback(async () => {
+    try {
+      const res = await adminService.getTrainingSkills()
+      setTrainingSkills(Array.isArray(res.data) ? res.data : [])
+    } catch (err) {
+      console.error(err)
+    }
+  }, [])
 
-  // Transfer single slot
-  const transferSingleSlot = (fromFacultyId, slotId, toFacultyId) => {
-    setSlotMap((prev) => {
-      const fromSlots = prev[fromFacultyId] || []
-      const slot = fromSlots.find((s) => s.id === slotId)
-      if (!slot) return prev
-      const newFromSlots = fromSlots.filter((s) => s.id !== slotId)
-      const toSlots = prev[toFacultyId] || []
-      const newSlot = {
-        ...slot,
-        id: toFacultyId + '-S' + (toSlots.length + 1),
-      }
-      return {
-        ...prev,
-        [fromFacultyId]: newFromSlots,
-        [toFacultyId]: [...toSlots, newSlot],
-      }
-    })
-    setFaculty((prev) =>
-      prev.map((f) => {
-        if (f.id === fromFacultyId) {
-          return { ...f, slots: (slotMap[fromFacultyId] || []).length - 1 }
-        }
-        if (f.id === toFacultyId) {
-          return { ...f, slots: (slotMap[toFacultyId] || []).length + 1 }
-        }
-        return f
-      })
-    )
-  }
+  const fetchSlotTimings = useCallback(async () => {
+    try {
+      const res = await adminService.getSlotTimings()
+      setSlotTimings(Array.isArray(res.data) ? res.data : [])
+    } catch (err) {
+      console.error(err)
+    }
+  }, [])
 
-  // Transfer all slots from one faculty to another
-  const transferAllSlots = (fromFacultyId, toFacultyId) => {
-    setSlotMap((prev) => {
-      const fromSlots = prev[fromFacultyId] || []
-      const toSlots = prev[toFacultyId] || []
-      const movedSlots = fromSlots.map((s, i) => ({
-        ...s,
-        id: toFacultyId + '-S' + (toSlots.length + i + 1),
-      }))
-      return {
-        ...prev,
-        [fromFacultyId]: [],
-        [toFacultyId]: [...toSlots, ...movedSlots],
-      }
-    })
-    setFaculty((prev) =>
-      prev.map((f) => {
-        if (f.id === fromFacultyId) return { ...f, slots: 0, venues: [] }
-        if (f.id === toFacultyId) {
-          return {
-            ...f,
-            slots: (slotMap[toFacultyId] || []).length + (slotMap[fromFacultyId] || []).length,
-          }
-        }
-        return f
-      })
-    )
-  }
-
-  // ── SLOT ACTIONS ─────────────────────────────────────────────
-  const addPsSlot = (slot) => {
-    setPsSlots((prev) => [
-      ...prev,
-      { ...slot, id: 'PS0' + (prev.length + 1) },
+  const refreshAll = useCallback(async () => {
+    setLoading(true)
+    await Promise.all([
+      fetchDashboardKPI(),
+      fetchVenues(),
+      fetchFaculty(),
+      fetchStudents(),
+      fetchTrainingSkills(),
+      fetchSlotTimings()
     ])
+    setLoading(false)
+  }, [fetchDashboardKPI, fetchVenues, fetchFaculty, fetchStudents, fetchTrainingSkills, fetchSlotTimings])
+
+  useEffect(() => {
+    refreshAll()
+  }, [refreshAll])
+
+  // ── ACTIONS ─────────────────────────────────────────────────
+
+  const swapFaculty = async (mappingId, newFacultyId, reason) => {
+    try {
+      await adminService.swapFaculty(mappingId, newFacultyId, reason)
+      await fetchVenues()
+      await fetchFaculty()
+      return true
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to swap faculty', true)
+      return false
+    }
   }
 
-  const deletePsSlot = (index) => {
-    setPsSlots((prev) => prev.filter((_, i) => i !== index))
+  const addVenueToFaculty = async (facultyId, venueId, skillType, slotId) => {
+    try {
+      await adminService.addVenueToFaculty(facultyId, venueId, skillType, slotId)
+      await fetchFaculty()
+      await fetchVenues()
+      return true
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to add venue', true)
+      return false
+    }
   }
 
-  const addPblSlot = (slot) => {
-    setPblSlots((prev) => [
-      ...prev,
-      { ...slot, id: 'PBL0' + (prev.length + 1) },
-    ])
+  const transferIndividualVenue = async (mappingId, toFacultyId, reason) => {
+    try {
+      await adminService.transferIndividualVenue(mappingId, toFacultyId, reason)
+      await fetchFaculty()
+      await fetchVenues()
+      return true
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to transfer venue', true)
+      return false
+    }
   }
 
-  const deletePblSlot = (index) => {
-    setPblSlots((prev) => prev.filter((_, i) => i !== index))
+  const transferAllVenues = async (fromFacultyId, toFacultyId, reason) => {
+    try {
+      await adminService.transferAllVenues(fromFacultyId, toFacultyId, reason)
+      await fetchFaculty()
+      await fetchVenues()
+      return true
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to transfer venues', true)
+      return false
+    }
   }
 
-  // ── APPROVAL ACTIONS ─────────────────────────────────────────
+  const addSlotTiming = async (startTime, endTime) => {
+    try {
+      await adminService.addSlotTiming(startTime, endTime)
+      await fetchSlotTimings()
+      return true
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to add slot timing', true)
+      return false
+    }
+  }
+
+  const deleteSlotTiming = async (slotId) => {
+    try {
+      await adminService.deleteSlotTiming(slotId)
+      await fetchSlotTimings()
+      return true
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to delete slot timing', true)
+      return false
+    }
+  }
+
   const handleLabApproval = (id, action) => {
     setLabApprovals((prev) =>
       prev.map((l) => (l.id === id ? { ...l, status: action } : l))
@@ -188,29 +183,23 @@ export function DataProvider({ children }) {
   return (
     <DataContext.Provider
       value={{
-        // state
+        loading,
+        dashboardKPI,
         venues,
         faculty,
-        slotMap,
-        psSlots,
-        pblSlots,
         students,
+        trainingSkills,
+        slotTimings,
         labApprovals,
         apApprovals,
-        // venue actions
-        updateVenue,
-        revokeVenueTransfer,
-        // transfer actions
+        refreshAll,
+        // actions
         swapFaculty,
-        moveVenue,
-        transferSingleSlot,
-        transferAllSlots,
-        // slot actions
-        addPsSlot,
-        deletePsSlot,
-        addPblSlot,
-        deletePblSlot,
-        // approval actions
+        addVenueToFaculty,
+        transferIndividualVenue,
+        transferAllVenues,
+        addSlotTiming,
+        deleteSlotTiming,
         handleLabApproval,
         handleApApproval,
       }}
@@ -225,3 +214,4 @@ export function useData() {
   if (!ctx) throw new Error('useData must be used within DataProvider')
   return ctx
 }
+
