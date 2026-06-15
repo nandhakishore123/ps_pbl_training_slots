@@ -126,3 +126,41 @@ export const deleteSlotTiming = async (req, res, next) => {
         next(error);
     }
 };
+
+// ── Attendance ───────────────────────────────────────────────
+
+export const getAttendanceMappings = async (req, res, next) => {
+    try {
+        const data = await adminService.getAttendanceMappings();
+        return successResponse(res, 'Attendance mappings retrieved successfully', data);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const getAttendanceStudents = async (req, res, next) => {
+    try {
+        const { mappingId } = req.params;
+        const data = await adminService.getAttendanceStudents(mappingId);
+        return successResponse(res, 'Students retrieved successfully', data);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const markAttendance = async (req, res, next) => {
+    try {
+        const { bookingId } = req.params;
+        const status = (req.body.status || '').toUpperCase();
+        if (status !== 'PRESENT' && status !== 'ABSENT') {
+            return errorResponse(res, 'Status must be PRESENT or ABSENT', 400);
+        }
+        await adminService.markAttendance(bookingId, status);
+        return successResponse(res, `Attendance marked as ${status}`, null);
+    } catch (error) {
+        if (error.message?.includes('not found')) {
+            return errorResponse(res, error.message, 404);
+        }
+        next(error);
+    }
+};

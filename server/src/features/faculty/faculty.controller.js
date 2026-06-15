@@ -62,8 +62,12 @@ export const markAttendance = async (req, res, next) => {
         const facultyId = await resolveFacultyId(req, res);
         if (!facultyId) return;
         const { bookingId } = req.params;
-        await facultyModel.markAttendance(bookingId, facultyId);
-        return successResponse(res, 'Attendance marked successfully', null);
+        const status = (req.body.status || 'PRESENT').toUpperCase();
+        if (status !== 'PRESENT' && status !== 'ABSENT') {
+            return errorResponse(res, 'Status must be PRESENT or ABSENT', 400);
+        }
+        await facultyModel.markAttendance(bookingId, facultyId, status);
+        return successResponse(res, `Attendance marked as ${status}`, null);
     } catch (error) {
         if (error.message?.includes('Forbidden')) {
             return errorResponse(res, error.message, 403);
@@ -78,8 +82,12 @@ export const markAllAttendance = async (req, res, next) => {
         const facultyId = await resolveFacultyId(req, res);
         if (!facultyId) return;
         const { mappingId } = req.params;
-        const marked = await facultyModel.markAllAttendance(mappingId, facultyId);
-        return successResponse(res, `${marked} students marked as present`, { marked });
+        const status = (req.body.status || 'PRESENT').toUpperCase();
+        if (status !== 'PRESENT' && status !== 'ABSENT') {
+            return errorResponse(res, 'Status must be PRESENT or ABSENT', 400);
+        }
+        const marked = await facultyModel.markAllAttendance(mappingId, facultyId, status);
+        return successResponse(res, `${marked} students marked as ${status.toLowerCase()}`, { marked });
     } catch (error) {
         if (error.message?.includes('Forbidden')) {
             return errorResponse(res, error.message, 403);

@@ -16,9 +16,9 @@ export const facultyService = {
     return api.get(`/faculty/mappings/${mappingId}/students`);
   },
 
-  /** Mark a single student's attendance as PRESENT */
-  markAttendance(bookingId) {
-    return api.post(`/faculty/bookings/${bookingId}/attendance`);
+  /** Mark a single student's attendance as PRESENT or ABSENT */
+  markAttendance(bookingId, status = 'PRESENT') {
+    return api.post(`/faculty/bookings/${bookingId}/attendance`, { status });
   },
 
   /** Mark ALL ongoing students in a mapping as PRESENT */

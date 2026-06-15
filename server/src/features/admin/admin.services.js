@@ -70,3 +70,26 @@ export const transferAllVenues = async (fromFacultyId, toFacultyId, reason) => {
     }
     await adminModel.transferAllVenues(fromFacultyId, toFacultyId, reason);
 };
+
+// ── Attendance ───────────────────────────────────────────────
+
+export const getAttendanceMappings = async () => {
+    return await adminModel.listAllMappingsWithVenues();
+};
+
+export const getAttendanceStudents = async (mappingId) => {
+    if (!mappingId) {
+        throw new Error('Mapping ID is required');
+    }
+    return await adminModel.getStudentsByMappingAdmin(mappingId);
+};
+
+export const markAttendance = async (bookingId, status) => {
+    if (!bookingId) {
+        throw new Error('Booking ID is required');
+    }
+    if (!status || !['PRESENT', 'ABSENT'].includes(status)) {
+        throw new Error('Status must be PRESENT or ABSENT');
+    }
+    await adminModel.markAttendanceAdmin(bookingId, status);
+};

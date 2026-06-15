@@ -23,4 +23,9 @@ router.post('/faculty/:facultyId/add-venue', adminController.addVenueToFaculty);
 router.post('/faculty/transfer-individual', adminController.transferIndividualVenue);
 router.post('/faculty/transfer-all', adminController.transferAllVenues);
 
+// ── Attendance (Admin only — role_id 3) ──────────────────────
+router.get('/attendance/mappings', requireRole(3), adminController.getAttendanceMappings);
+router.get('/attendance/mappings/:mappingId/students', requireRole(3), adminController.getAttendanceStudents);
+router.post('/attendance/bookings/:bookingId', requireRole(3), adminController.markAttendance);
+
 export default router;

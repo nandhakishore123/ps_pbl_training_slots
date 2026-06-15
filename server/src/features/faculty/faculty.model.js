@@ -75,9 +75,11 @@ export const getStudentsByMapping = async (mappingId, facultyId) => {
   const [rows] = await db.execute(
     `SELECT
        sb.booking_id, sb.status, sb.is_present, sb.remarks,
-       s.student_id, s.name, s.reg_num, s.course, s.year_of_study
+       s.student_id, s.name, s.reg_num, s.course, s.year_of_study,
+       a.attendance_status
      FROM student_booking sb
      JOIN students s ON sb.student_id = s.student_id
+     LEFT JOIN attendance a ON sb.booking_id = a.booking_id
      WHERE sb.mapping_id = ?
      ORDER BY s.name ASC`,
     [mappingId]
@@ -86,7 +88,7 @@ export const getStudentsByMapping = async (mappingId, facultyId) => {
 };
 
 // ── Mark single attendance ───────────────────────────────────
-export const markAttendance = async (bookingId, facultyId) => {
+export const markAttendance = async (bookingId, facultyId, status = 'PRESENT') => {
   // Verify ownership
   const [rows] = await db.execute(
     `SELECT sb.booking_id, sb.student_id, sb.mapping_id
@@ -101,20 +103,21 @@ export const markAttendance = async (bookingId, facultyId) => {
   // Upsert into attendance
   await db.execute(
     `INSERT INTO attendance (booking_id, student_id, attendance_status)
-     VALUES (?, ?, 'PRESENT')
-     ON DUPLICATE KEY UPDATE attendance_status = 'PRESENT'`,
-    [bookingId, booking.student_id]
+     VALUES (?, ?, ?)
+     ON DUPLICATE KEY UPDATE attendance_status = ?`,
+    [bookingId, booking.student_id, status, status]
   );
 
   // Also set is_present flag on booking
+  const isPresent = status === 'PRESENT' ? 1 : 0;
   await db.execute(
-    `UPDATE student_booking SET is_present = 1 WHERE booking_id = ?`,
-    [bookingId]
+    `UPDATE student_booking SET is_present = ? WHERE booking_id = ?`,
+    [isPresent, bookingId]
   );
 };
 
 // ── Mark ALL ongoing students in a mapping as present ────────
-export const markAllAttendance = async (mappingId, facultyId) => {
+export const markAllAttendance = async (mappingId, facultyId, status = 'PRESENT') => {
   // Verify ownership
   const [mappingRows] = await db.execute(
     `SELECT mapping_id FROM venue_mapping WHERE mapping_id = ? AND faculty_id = ?`,
@@ -122,27 +125,28 @@ export const markAllAttendance = async (mappingId, facultyId) => {
   );
   if (mappingRows.length === 0) throw new Error('Forbidden: mapping not yours');
 
-  // Get all ONGOING bookings without attendance
+  // Get all ONGOING bookings that don't already have this status
   const [bookings] = await db.execute(
     `SELECT sb.booking_id, sb.student_id
      FROM student_booking sb
      LEFT JOIN attendance a ON sb.booking_id = a.booking_id
      WHERE sb.mapping_id = ?
        AND sb.status = 'ONGOING'
-       AND (a.attendance_id IS NULL OR a.attendance_status = 'ABSENT')`,
-    [mappingId]
+       AND (a.attendance_id IS NULL OR a.attendance_status != ?)`,
+    [mappingId, status]
   );
 
+  const isPresent = status === 'PRESENT' ? 1 : 0;
   for (const b of bookings) {
     await db.execute(
       `INSERT INTO attendance (booking_id, student_id, attendance_status)
-       VALUES (?, ?, 'PRESENT')
-       ON DUPLICATE KEY UPDATE attendance_status = 'PRESENT'`,
-      [b.booking_id, b.student_id]
+       VALUES (?, ?, ?)
+       ON DUPLICATE KEY UPDATE attendance_status = ?`,
+      [b.booking_id, b.student_id, status, status]
     );
     await db.execute(
-      `UPDATE student_booking SET is_present = 1 WHERE booking_id = ?`,
-      [b.booking_id]
+      `UPDATE student_booking SET is_present = ? WHERE booking_id = ?`,
+      [isPresent, b.booking_id]
     );
   }
 

@@ -51,5 +51,19 @@ export const adminService = {
 
   transferAllVenues(fromFacultyId, toFacultyId, reason) {
     return api.post('/admin/faculty/transfer-all', { fromFacultyId, toFacultyId, reason });
+  },
+
+  // ── Attendance ───────────────────────────────────────────────
+
+  getAttendanceMappings() {
+    return api.get('/admin/attendance/mappings');
+  },
+
+  getAttendanceStudents(mappingId) {
+    return api.get(`/admin/attendance/mappings/${mappingId}/students`);
+  },
+
+  markAttendance(bookingId, status) {
+    return api.post(`/admin/attendance/bookings/${bookingId}`, { status });
   }
 };

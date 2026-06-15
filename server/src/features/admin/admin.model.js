@@ -230,3 +230,61 @@ export const transferAllVenues = async (fromFacultyId, toFacultyId, reason) => {
     conn.release();
   }
 };
+
+// ── Admin Attendance ─────────────────────────────────────────
+
+export const listAllMappingsWithVenues = async () => {
+  const [rows] = await db.execute(`
+    SELECT
+      vm.mapping_id, vm.current_bookings,
+      v.venue_id, v.venue_name, v.location, v.capacity,
+      f.faculty_id, f.name as faculty_name, f.reg_num as faculty_reg_num,
+      st.slot_id, st.start_time, st.end_time
+    FROM venue_mapping vm
+    JOIN venues v ON vm.venue_id = v.venue_id
+    JOIN slot_timings st ON vm.slot_id = st.slot_id
+    LEFT JOIN faculties f ON vm.faculty_id = f.faculty_id
+    WHERE v.is_active = 1
+    ORDER BY v.venue_name ASC, st.start_time ASC
+  `);
+  return rows;
+};
+
+export const getStudentsByMappingAdmin = async (mappingId) => {
+  const [rows] = await db.execute(
+    `SELECT
+       sb.booking_id, sb.status, sb.is_present, sb.remarks, sb.booking_date,
+       s.student_id, s.name, s.reg_num, s.course, s.year_of_study,
+       a.attendance_status
+     FROM student_booking sb
+     JOIN students s ON sb.student_id = s.student_id
+     LEFT JOIN attendance a ON sb.booking_id = a.booking_id
+     WHERE sb.mapping_id = ?
+     ORDER BY s.name ASC`,
+    [mappingId]
+  );
+  return rows;
+};
+
+export const markAttendanceAdmin = async (bookingId, status) => {
+  // No ownership check — admin can mark any booking
+  const [rows] = await db.execute(
+    `SELECT booking_id, student_id FROM student_booking WHERE booking_id = ?`,
+    [bookingId]
+  );
+  if (rows.length === 0) throw new Error('Booking not found');
+  const booking = rows[0];
+
+  await db.execute(
+    `INSERT INTO attendance (booking_id, student_id, attendance_status)
+     VALUES (?, ?, ?)
+     ON DUPLICATE KEY UPDATE attendance_status = ?`,
+    [bookingId, booking.student_id, status, status]
+  );
+
+  const isPresent = status === 'PRESENT' ? 1 : 0;
+  await db.execute(
+    `UPDATE student_booking SET is_present = ? WHERE booking_id = ?`,
+    [isPresent, bookingId]
+  );
+};

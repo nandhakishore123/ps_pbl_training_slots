@@ -253,7 +253,7 @@ function AttendanceModal({ student, onConfirm, onCancel }) {
         <div className="p-6 space-y-4">
           <div>
             <h3 className="text-base font-bold text-gray-900">Mark Attendance</h3>
-            <p className="text-xs text-gray-400 mt-0.5">Confirm attendance for today's session.</p>
+            <p className="text-xs text-gray-400 mt-0.5">Select Present or Absent for this student.</p>
           </div>
           <div className="flex items-center gap-3 bg-gray-50 rounded-xl px-4 py-3 border border-gray-200">
             <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 ${getAvatarColor(student._idx || 0)}`}>
@@ -264,9 +264,13 @@ function AttendanceModal({ student, onConfirm, onCancel }) {
               <p className="text-xs text-gray-400 font-mono">{student.reg_num} &middot; {student.course}</p>
             </div>
           </div>
+          {student.attendance_status && (
+            <div className="text-xs text-gray-400 text-center">Currently marked: <span className="font-semibold">{student.attendance_status}</span></div>
+          )}
           <div className="flex gap-3 pt-1">
-            <button onClick={onCancel} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 transition-colors">Cancel</button>
-            <button onClick={onConfirm} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 transition-colors">Mark Present</button>
+            <button onClick={onCancel} className="py-2.5 px-4 rounded-xl text-sm font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 transition-colors">Cancel</button>
+            <button onClick={() => onConfirm('PRESENT')} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 transition-colors">✓ Present</button>
+            <button onClick={() => onConfirm('ABSENT')} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white bg-red-500 hover:bg-red-600 transition-colors">✗ Absent</button>
           </div>
         </div>
       </div>
@@ -295,10 +299,16 @@ function StudentCard({ student, idx, onMarkAttendance, onMarkMalpractice, onRevo
         {/* Status + attendance */}
         <div className="flex flex-wrap gap-1.5">
           <StatusBadge status={student.status} />
-          {student.is_present === 1 && (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
+          {student.attendance_status === 'PRESENT' && (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M20 6L9 17l-5-5"/></svg>
               Present
+            </span>
+          )}
+          {student.attendance_status === 'ABSENT' && (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M18 6L6 18M6 6l12 12"/></svg>
+              Absent
             </span>
           )}
         </div>
@@ -319,12 +329,20 @@ function StudentCard({ student, idx, onMarkAttendance, onMarkMalpractice, onRevo
 
         {/* Action buttons */}
         <div className="flex flex-col gap-1.5 mt-auto pt-1">
-          {student.is_present !== 1 && student.status !== "MALPRACTICE" && (
+          {!student.attendance_status && student.status !== "MALPRACTICE" && (
             <button
               onClick={() => onMarkAttendance(student)}
               className="w-full py-2 rounded-lg text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700 active:scale-95 transition-all"
             >
               Mark Attendance
+            </button>
+          )}
+          {student.attendance_status && student.status !== "MALPRACTICE" && (
+            <button
+              onClick={() => onMarkAttendance(student)}
+              className="w-full py-2 rounded-lg text-xs font-semibold border border-gray-300 text-gray-600 hover:bg-gray-50 active:scale-95 transition-all"
+            >
+              Change Attendance
             </button>
           )}
           {student.status === "ONGOING" && (
@@ -867,7 +885,8 @@ function VenueDetail({ venue, onBack }) {
 
   const ongoingCount = students.filter((s) => s.status === "ONGOING").length;
   const malpracticeCount = students.filter((s) => s.status === "MALPRACTICE").length;
-  const attendedCount = students.filter((s) => s.is_present === 1).length;
+  const attendedCount = students.filter((s) => s.attendance_status === 'PRESENT').length;
+  const absentCount = students.filter((s) => s.attendance_status === 'ABSENT').length;
 
   const filtered = students.filter((s) => {
     const matchStatus = filterStatus === "ALL" || s.status === filterStatus;
@@ -875,11 +894,12 @@ function VenueDetail({ venue, onBack }) {
     return matchStatus && (s.name.toLowerCase().includes(q) || (s.reg_num || '').toLowerCase().includes(q));
   });
 
-  const handleMarkAttendance = async (student) => {
+  const handleMarkAttendance = async (student, status) => {
     try {
-      await facultyService.markAttendance(student.booking_id);
-      setStudents(prev => prev.map(s => s.booking_id === student.booking_id ? { ...s, is_present: 1 } : s));
-      showToast(`Attendance marked for ${student.name}.`, "success");
+      await facultyService.markAttendance(student.booking_id, status);
+      const isPresent = status === 'PRESENT' ? 1 : 0;
+      setStudents(prev => prev.map(s => s.booking_id === student.booking_id ? { ...s, is_present: isPresent, attendance_status: status } : s));
+      showToast(`${student.name} marked as ${status.toLowerCase()}.`, "success");
     } catch {
       showToast('Failed to mark attendance.', 'error');
     }
@@ -920,7 +940,7 @@ function VenueDetail({ venue, onBack }) {
     }
   };
 
-  const pendingAttendance = students.filter(s => s.is_present !== 1 && s.status === "ONGOING").length;
+  const pendingAttendance = students.filter(s => !s.attendance_status && s.status === "ONGOING").length;
 
   return (
     <div className="space-y-5">
@@ -970,7 +990,8 @@ function VenueDetail({ venue, onBack }) {
           { label: "Total Students", value: students.length, dot: "bg-gray-400" },
           { label: "Ongoing", value: ongoingCount, dot: "bg-emerald-500" },
           { label: "Malpractice", value: malpracticeCount, dot: "bg-red-500" },
-          { label: "Attendance Marked", value: attendedCount, dot: "bg-blue-500" },
+          { label: "Present", value: attendedCount, dot: "bg-emerald-500" },
+          { label: "Absent", value: absentCount, dot: "bg-red-500" },
         ].map((s) => (
           <div key={s.label} className="bg-white rounded-xl border border-gray-200 px-4 py-3">
             <p className="text-xs text-gray-400 mb-1">{s.label}</p>
@@ -1060,7 +1081,7 @@ function VenueDetail({ venue, onBack }) {
       <AttendanceModal
         student={modalAttendance}
         onCancel={() => setModalAttendance(null)}
-        onConfirm={() => handleMarkAttendance(modalAttendance)}
+        onConfirm={(status) => handleMarkAttendance(modalAttendance, status)}
       />
       <MalpracticeModal
         student={modalMalpractice}
