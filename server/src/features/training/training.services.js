@@ -6,6 +6,55 @@ const normalizeStr = (v) => {
   return String(v).trim();
 };
 
+// ── Time-based booking window (all times IST) ─────────────────────────────────
+// Rule: each day at 19:45 IST the NEXT working day's slots open (Sunday is a
+// holiday and is skipped). A slot for date D is bookable while
+// 19:45-on-the-working-day-before-D <= now < D@slot.start_time.
+const BOOKING_OPEN_HOUR = 19;
+const BOOKING_OPEN_MINUTE = 45;
+
+// Pure: given the current IST wall-clock ('YYYY-MM-DD HH:MM:SS'), returns the
+// currently-open booking day and (for the same-day case) the start-time cutoff.
+// { bookingDate: 'YYYY-MM-DD'|null, startAfterTime: 'HH:MM:SS'|null, isToday }
+export const computeBookingWindow = (istNowStr) => {
+  if (!istNowStr) return { bookingDate: null, startAfterTime: null, isToday: false };
+  const [datePart, timePart = '00:00:00'] = String(istNowStr).trim().split(' ');
+  const [y, mo, d] = datePart.split('-').map(Number);
+  const [hh, mi, ss] = timePart.split(':').map(Number);
+
+  // Plain calendar carrier — values are already IST, so use UTC accessors to
+  // avoid any server-local-timezone drift.
+  const today = new Date(Date.UTC(y, mo - 1, d));
+  const addDays = (base, n) => new Date(base.getTime() + n * 86400000);
+  const fmt = (dt) =>
+    `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(dt.getUTCDate()).padStart(2, '0')}`;
+  const isSunday = (dt) => dt.getUTCDay() === 0;
+
+  const minutesNow = hh * 60 + mi;
+  const openMinutes = BOOKING_OPEN_HOUR * 60 + BOOKING_OPEN_MINUTE;
+
+  if (minutesNow >= openMinutes) {
+    // 19:45 passed → next working day's slots have opened (skip Sunday).
+    let next = addDays(today, 1);
+    if (isSunday(next)) next = addDays(next, 1);
+    return { bookingDate: fmt(next), startAfterTime: null, isToday: false };
+  }
+
+  // Before 19:45 → today's not-yet-started slots remain bookable, unless today
+  // is Sunday (holiday; Monday opens only at Sunday 19:45).
+  if (isSunday(today)) {
+    return { bookingDate: null, startAfterTime: null, isToday: false };
+  }
+  const startAfterTime =
+    `${String(hh).padStart(2, '0')}:${String(mi).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
+  return { bookingDate: fmt(today), startAfterTime, isToday: true };
+};
+
+const getCurrentBookingWindow = async (conn = null) => {
+  const istNow = await trainingModel.getIstNow(conn);
+  return computeBookingWindow(istNow);
+};
+
 export const getCategories = async () => {
   return trainingModel.listCategories();
 };
@@ -77,7 +126,13 @@ export const getSkillDetails = async (trainingSkillId) => {
 };
 
 export const getSkillSlots = async (trainingSkillId) => {
-  return trainingModel.listSkillSlots(trainingSkillId);
+  const window = await getCurrentBookingWindow();
+  // Nothing currently open → empty list; the frontend shows the friendly
+  // "booking opens at 7:45 PM" empty state.
+  if (!window.bookingDate) return [];
+  return trainingModel.listSkillSlots(trainingSkillId, {
+    startAfterTime: window.startAfterTime,
+  });
 };
 
 export const createBooking = async ({ userId, slotId, mappingId, trainingSkillId, levelId }) => {
@@ -127,16 +182,23 @@ export const createBooking = async ({ userId, slotId, mappingId, trainingSkillId
       throw err;
     }
 
-    const isFutureSlot = await trainingModel.isSlotTimingInFuture(slot.slot_id, conn);
-    if (!isFutureSlot) {
-      const err = new Error('Slot time has already passed');
+    // Re-validate the booking window server-side (never trust the client).
+    const window = await getCurrentBookingWindow(conn);
+    if (!window.bookingDate) {
+      const err = new Error('Booking is not open right now. Booking opens daily at 7:45 PM for the next day.');
+      err.status = 400;
+      throw err;
+    }
+    // Same-day window: a slot is bookable only until its own start time.
+    if (window.isToday && window.startAfterTime && String(slot.start_time) <= window.startAfterTime) {
+      const err = new Error("This slot's booking window has closed — a slot can only be booked before its start time.");
       err.status = 400;
       throw err;
     }
 
-    const existing = await trainingModel.getExistingBookingForSlotDate(studentId, slot.slot_id, conn);
+    const existing = await trainingModel.getExistingBookingForSlotDate(studentId, slot.slot_id, window.bookingDate, conn);
     if (existing) {
-      const err = new Error('Slot already booked for today');
+      const err = new Error('You have already booked this time slot for that day');
       err.status = 409;
       throw err;
     }
@@ -182,6 +244,7 @@ export const createBooking = async ({ userId, slotId, mappingId, trainingSkillId
       levelId: levelId ? Number(levelId) : null,
       mappingId: selectedMappingId,
       slotId: slot.slot_id,
+      bookingDate: window.bookingDate,
     }, conn);
 
     const booking = await trainingModel.getBookingById(bookingId, conn);

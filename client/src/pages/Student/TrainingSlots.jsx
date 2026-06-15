@@ -1713,7 +1713,9 @@ function BookingModal({ isOpen, onClose, onConfirm, courseName, type, trainingSk
             </div>
           )}
           {!loading && !hasSlots && (
-            <div className="pt-empty" style={{ padding: '12px 0' }}>No slots available for this course yet.</div>
+            <div className="pt-empty" style={{ padding: '12px 0' }}>
+              Booking opens daily at 7:45 PM for the next day. Please check back then.
+            </div>
           )}
           {info && (
             <div className="pt-slot-info">

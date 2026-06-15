@@ -155,7 +155,14 @@ export const getSkillLevelPoints = async (trainingSkillId) => {
   return rows ?? [];
 };
 
-export const listSkillSlots = async (trainingSkillId) => {
+export const listSkillSlots = async (trainingSkillId, { startAfterTime = null } = {}) => {
+  const params = [Number(trainingSkillId)];
+  let timeFilter = '';
+  if (startAfterTime) {
+    // Same-day window: a slot is bookable only until its own start time.
+    timeFilter = '\n        AND st.start_time > ?';
+    params.push(startAfterTime);
+  }
   const [rows] = await db.execute(
     `SELECT
         vm.mapping_id,
@@ -173,15 +180,24 @@ export const listSkillSlots = async (trainingSkillId) => {
       WHERE st.is_active = 1
         AND vas.training_skill_id = ?
         AND vas.is_active = 1
-        AND v.is_active = 1
-        AND st.end_time > TIME(CONVERT_TZ(UTC_TIMESTAMP(), '+00:00', '+05:30'))
+        AND v.is_active = 1${timeFilter}
       ORDER BY st.start_time ASC, st.end_time ASC, v.venue_name ASC`,
-    [Number(trainingSkillId)]
+    params
   );
   return rows ?? [];
 };
 
 const getExec = (conn) => (conn ? conn : db);
+
+// Current wall-clock time in IST ('YYYY-MM-DD HH:MM:SS'), using the same
+// CONVERT_TZ(UTC_TIMESTAMP(), '+00:00', '+05:30') pattern used across this model.
+export const getIstNow = async (conn = null) => {
+  const exec = getExec(conn);
+  const [rows] = await exec.execute(
+    `SELECT DATE_FORMAT(CONVERT_TZ(UTC_TIMESTAMP(), '+00:00', '+05:30'), '%Y-%m-%d %H:%i:%s') AS ist_now`
+  );
+  return rows?.[0]?.ist_now ?? null;
+};
 
 export const isSlotTimingInFuture = async (slotId, conn = null) => {
   const exec = getExec(conn);
@@ -248,16 +264,16 @@ export const getMappingSlotDetails = async (mappingId, conn = null) => {
   return rows?.[0] ?? null;
 };
 
-export const getExistingBookingForSlotDate = async (studentId, slotId, conn = null) => {
+export const getExistingBookingForSlotDate = async (studentId, slotId, bookingDate, conn = null) => {
   const exec = getExec(conn);
   const [rows] = await exec.execute(
     `SELECT booking_id
      FROM student_booking
      WHERE student_id = ?
        AND slot_id = ?
-       AND booking_date = CURDATE()
+       AND booking_date = ?
      LIMIT 1`,
-    [Number(studentId), Number(slotId)]
+    [Number(studentId), Number(slotId), bookingDate]
   );
   return rows?.[0] ?? null;
 };
@@ -304,13 +320,13 @@ export const incrementMappingBooking = async (mappingId, conn = null) => {
   return result?.affectedRows ?? 0;
 };
 
-export const insertStudentBooking = async ({ studentId, trainingSkillId, levelId, mappingId, slotId }, conn = null) => {
+export const insertStudentBooking = async ({ studentId, trainingSkillId, levelId, mappingId, slotId, bookingDate }, conn = null) => {
   const exec = getExec(conn);
   const [result] = await exec.execute(
     `INSERT INTO student_booking
       (student_id, training_skill_id, level_id, mapping_id, slot_id, booking_date, status)
-     VALUES (?, ?, ?, ?, ?, CURDATE(), 'ONGOING')`,
-    [Number(studentId), Number(trainingSkillId), levelId ? Number(levelId) : null, Number(mappingId), Number(slotId)]
+     VALUES (?, ?, ?, ?, ?, ?, 'ONGOING')`,
+    [Number(studentId), Number(trainingSkillId), levelId ? Number(levelId) : null, Number(mappingId), Number(slotId), bookingDate]
   );
   return result?.insertId ?? null;
 };
