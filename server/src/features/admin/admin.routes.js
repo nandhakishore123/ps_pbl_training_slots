@@ -28,4 +28,7 @@ router.get('/attendance/mappings', requireRole(3), adminController.getAttendance
 router.get('/attendance/mappings/:mappingId/students', requireRole(3), adminController.getAttendanceStudents);
 router.post('/attendance/bookings/:bookingId', requireRole(3), adminController.markAttendance);
 
+// ── All Bookings dashboard (Admin only — role_id 3) ──────────
+router.get('/bookings', requireRole(3), adminController.getAllBookings);
+
 export default router;

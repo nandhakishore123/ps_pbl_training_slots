@@ -65,5 +65,10 @@ export const adminService = {
 
   markAttendance(bookingId, status) {
     return api.post(`/admin/attendance/bookings/${bookingId}`, { status });
+  },
+
+  // ── All Bookings dashboard ───────────────────────────────────
+  getAllBookings(params = {}) {
+    return api.get('/admin/bookings', { params });
   }
 };

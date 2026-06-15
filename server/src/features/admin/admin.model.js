@@ -288,3 +288,64 @@ export const markAttendanceAdmin = async (bookingId, status) => {
     [isPresent, bookingId]
   );
 };
+
+// ── Admin All-Bookings dashboard ─────────────────────────────
+// Every booking joined with student, venue/lab, slot time, faculty, attendance
+// and the student's LATEST assessment result for that skill+level.
+export const listAllBookings = async ({ venueId, date, slotId } = {}) => {
+  const where = [];
+  const params = [];
+  if (venueId) { where.push('vm.venue_id = ?'); params.push(Number(venueId)); }
+  if (date)    { where.push('sb.booking_date = ?'); params.push(date); }
+  if (slotId)  { where.push('sb.slot_id = ?'); params.push(Number(slotId)); }
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+  const [rows] = await db.execute(
+    `SELECT
+        sb.booking_id,
+        DATE_FORMAT(sb.booking_date, '%Y-%m-%d') AS booking_date,
+        sb.status AS booking_status,
+        s.student_id,
+        s.name AS student_name,
+        s.reg_num,
+        s.course,
+        s.year_of_study,
+        v.venue_id,
+        v.venue_name,
+        st.slot_id,
+        st.start_time,
+        st.end_time,
+        f.faculty_id,
+        f.name AS faculty_name,
+        att.attendance_status,
+        (SELECT sa.status FROM student_assessments sa
+           JOIN assessments a ON a.assessment_id = sa.assessment_id
+          WHERE sa.student_id = sb.student_id
+            AND a.training_skill_id = sb.training_skill_id
+            AND (sb.level_id IS NULL OR a.level_id = sb.level_id)
+          ORDER BY sa.student_assessment_id DESC LIMIT 1) AS assessment_status,
+        (SELECT sa.score_obtained FROM student_assessments sa
+           JOIN assessments a ON a.assessment_id = sa.assessment_id
+          WHERE sa.student_id = sb.student_id
+            AND a.training_skill_id = sb.training_skill_id
+            AND (sb.level_id IS NULL OR a.level_id = sb.level_id)
+          ORDER BY sa.student_assessment_id DESC LIMIT 1) AS assessment_score,
+        (SELECT sa.total_marks FROM student_assessments sa
+           JOIN assessments a ON a.assessment_id = sa.assessment_id
+          WHERE sa.student_id = sb.student_id
+            AND a.training_skill_id = sb.training_skill_id
+            AND (sb.level_id IS NULL OR a.level_id = sb.level_id)
+          ORDER BY sa.student_assessment_id DESC LIMIT 1) AS assessment_total
+      FROM student_booking sb
+      JOIN students s ON s.student_id = sb.student_id
+      JOIN venue_mapping vm ON vm.mapping_id = sb.mapping_id
+      JOIN venues v ON v.venue_id = vm.venue_id
+      JOIN slot_timings st ON st.slot_id = sb.slot_id
+      LEFT JOIN faculties f ON f.faculty_id = vm.faculty_id
+      LEFT JOIN attendance att ON att.booking_id = sb.booking_id
+      ${whereSql}
+      ORDER BY sb.booking_date DESC, st.start_time ASC, s.name ASC`,
+    params
+  );
+  return rows ?? [];
+};

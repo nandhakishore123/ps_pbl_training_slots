@@ -93,3 +93,9 @@ export const markAttendance = async (bookingId, status) => {
     }
     await adminModel.markAttendanceAdmin(bookingId, status);
 };
+
+// ── All-Bookings dashboard ───────────────────────────────────
+
+export const getAllBookings = async ({ venueId, date, slotId } = {}) => {
+    return await adminModel.listAllBookings({ venueId, date, slotId });
+};

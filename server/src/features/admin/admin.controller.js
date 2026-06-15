@@ -164,3 +164,15 @@ export const markAttendance = async (req, res, next) => {
         next(error);
     }
 };
+
+// ── All-Bookings dashboard ───────────────────────────────────
+
+export const getAllBookings = async (req, res, next) => {
+    try {
+        const { venueId, date, slotId } = req.query;
+        const data = await adminService.getAllBookings({ venueId, date, slotId });
+        return successResponse(res, 'Bookings retrieved successfully', data);
+    } catch (error) {
+        next(error);
+    }
+};
