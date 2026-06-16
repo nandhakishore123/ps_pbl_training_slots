@@ -6,7 +6,8 @@ import { useApp } from '../context/AppContext'
 
 export default function Settings() {
   const { showToast } = useApp()
-  const { allSlotTimings, addSlotTiming, updateSlotTiming, setSlotActive, trainingSkills, loading } = useData()
+  const { allSlotTimings, addSlotTiming, updateSlotTiming, setSlotActive, trainingSkills, loading,
+          bookingWindow, updateBookingWindowConfig } = useData()
 
   const [startTime, setStartTime] = useState('')
   const [endTime, setEndTime] = useState('')
@@ -18,7 +19,14 @@ export default function Settings() {
   const [editEnd, setEditEnd] = useState('')
   const [rowBusy, setRowBusy] = useState(false)
 
+  // Booking-open time
+  const [editingWindow, setEditingWindow] = useState(false)
+  const [windowTime, setWindowTime] = useState('')
+  const [windowSaving, setWindowSaving] = useState(false)
+
   const toHHMM = (t) => (t ? String(t).slice(0, 5) : '')
+  const pad2 = (n) => String(n).padStart(2, '0')
+  const windowHHMM = bookingWindow ? `${pad2(bookingWindow.openHour)}:${pad2(bookingWindow.openMinute)}` : null
 
   const handleAddSlot = async () => {
     if (!startTime || !endTime) {
@@ -87,6 +95,42 @@ export default function Settings() {
     if (ok) showToast(next ? 'Slot opened' : 'Slot closed')
   }
 
+  // ── Booking open time ───────────────────────────────────────
+  const startEditWindow = () => {
+    setWindowTime(windowHHMM || '19:45')
+    setEditingWindow(true)
+  }
+
+  const cancelEditWindow = () => {
+    setEditingWindow(false)
+    setWindowTime('')
+  }
+
+  const handleSaveWindow = async () => {
+    if (!windowTime) {
+      showToast('Please set a time', true)
+      return
+    }
+    const [h, m] = windowTime.split(':').map(Number)
+    if (Number.isNaN(h) || Number.isNaN(m)) {
+      showToast('Invalid time', true)
+      return
+    }
+    const curLabel = windowHHMM ? `${windowHHMM} (${formatTime(`${windowHHMM}:00`)})` : '—'
+    const newLabel = `${windowTime} (${formatTime(`${windowTime}:00`)})`
+    const ok = window.confirm(
+      `This changes when booking opens for ALL students (currently ${curLabel} → new ${newLabel}).\n\nConfirm?`
+    )
+    if (!ok) return
+    setWindowSaving(true)
+    const success = await updateBookingWindowConfig(h, m)
+    setWindowSaving(false)
+    if (success) {
+      showToast('Booking open time updated')
+      setEditingWindow(false)
+    }
+  }
+
   const formatTime = (timeStr) => {
     if (!timeStr) return ''
     const [h, m] = timeStr.split(':')
@@ -144,6 +188,41 @@ export default function Settings() {
                 )}
               </tbody>
             </table>
+          </div>
+        </div>
+
+        {/* BOOKING OPEN TIME */}
+        <div className={styles.sectionCard}>
+          <div className={styles.sectionTitle}>Booking Open Time</div>
+          <p style={{ fontSize: 13, color: 'var(--text2, #6b7280)', margin: '4px 0 14px' }}>
+            Each day at this time (IST), the next working day&apos;s slots open for students. Sundays are skipped.
+          </p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+            {!editingWindow ? (
+              <>
+                <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--text, #1a1a2e)' }}>
+                  {windowHHMM || 'Loading…'}
+                  {windowHHMM && (
+                    <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text2, #6b7280)', marginLeft: 8 }}>
+                      ({formatTime(`${windowHHMM}:00`)})
+                    </span>
+                  )}
+                </div>
+                <button onClick={startEditWindow} disabled={!bookingWindow}>Edit</button>
+              </>
+            ) : (
+              <>
+                <input
+                  type="time"
+                  value={windowTime}
+                  onChange={(e) => setWindowTime(e.target.value)}
+                />
+                <button onClick={handleSaveWindow} disabled={windowSaving}>
+                  {windowSaving ? 'Saving…' : 'Save'}
+                </button>
+                <button onClick={cancelEditWindow} disabled={windowSaving}>Cancel</button>
+              </>
+            )}
           </div>
         </div>
 

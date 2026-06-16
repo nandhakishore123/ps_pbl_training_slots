@@ -108,6 +108,15 @@ export const adminService = {
     return api.post(`/admin/attendance/bookings/${bookingId}`, { status });
   },
 
+  // ── Booking-open time config (admin-only) ───────────────────
+  getBookingWindowConfig() {
+    return api.get('/admin/config/booking-window');
+  },
+
+  updateBookingWindowConfig(openHour, openMinute) {
+    return api.put('/admin/config/booking-window', { openHour, openMinute });
+  },
+
   // ── All Bookings dashboard ───────────────────────────────────
   getAllBookings(params = {}) {
     return api.get('/admin/bookings', { params });

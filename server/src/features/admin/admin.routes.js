@@ -43,6 +43,10 @@ router.get('/attendance/mappings', requireRole(3), adminController.getAttendance
 router.get('/attendance/mappings/:mappingId/students', requireRole(3), adminController.getAttendanceStudents);
 router.post('/attendance/bookings/:bookingId', requireRole(3), adminController.markAttendance);
 
+// ── Booking-open time config (Admin only — role_id 3) ────────
+router.get('/config/booking-window', requireRole(3), adminController.getBookingWindowConfig);
+router.put('/config/booking-window', requireRole(3), adminController.updateBookingWindowConfig);
+
 // ── All Bookings dashboard (Admin only — role_id 3) ──────────
 router.get('/bookings', requireRole(3), adminController.getAllBookings);
 

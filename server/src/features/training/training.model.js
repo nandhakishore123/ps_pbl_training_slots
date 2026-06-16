@@ -199,6 +199,41 @@ export const getIstNow = async (conn = null) => {
   return rows?.[0]?.ist_now ?? null;
 };
 
+// Booking-open time (admin-configurable) from app_config. Safe fallback to
+// 19:45 if rows are missing or invalid. Reads existing rows only — no DDL.
+export const getBookingOpenConfig = async (conn = null) => {
+  const exec = getExec(conn);
+  const [rows] = await exec.execute(
+    `SELECT config_key, config_value
+     FROM app_config
+     WHERE config_key IN ('booking_open_hour', 'booking_open_minute')`
+  );
+  let openHour = 19;
+  let openMinute = 45;
+  for (const r of rows ?? []) {
+    if (r.config_key === 'booking_open_hour') {
+      const h = Number(r.config_value);
+      if (Number.isInteger(h) && h >= 0 && h <= 23) openHour = h;
+    } else if (r.config_key === 'booking_open_minute') {
+      const m = Number(r.config_value);
+      if (Number.isInteger(m) && m >= 0 && m <= 59) openMinute = m;
+    }
+  }
+  return { openHour, openMinute };
+};
+
+// Update the two existing app_config rows (no insert/DDL).
+export const updateBookingOpenConfig = async (openHour, openMinute) => {
+  await db.execute(
+    `UPDATE app_config SET config_value = ? WHERE config_key = 'booking_open_hour'`,
+    [String(openHour)]
+  );
+  await db.execute(
+    `UPDATE app_config SET config_value = ? WHERE config_key = 'booking_open_minute'`,
+    [String(openMinute)]
+  );
+};
+
 export const isSlotTimingInFuture = async (slotId, conn = null) => {
   const exec = getExec(conn);
   const [rows] = await exec.execute(

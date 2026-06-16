@@ -7,16 +7,18 @@ const normalizeStr = (v) => {
 };
 
 // ── Time-based booking window (all times IST) ─────────────────────────────────
-// Rule: each day at 19:45 IST the NEXT working day's slots open (Sunday is a
-// holiday and is skipped). A slot for date D is bookable while
-// 19:45-on-the-working-day-before-D <= now < D@slot.start_time.
-const BOOKING_OPEN_HOUR = 19;
-const BOOKING_OPEN_MINUTE = 45;
+// Rule: each day at the configured open time (default 19:45) IST the NEXT
+// working day's slots open (Sunday is a holiday and is skipped). A slot for
+// date D is bookable while open-time-on-the-working-day-before-D <= now <
+// D@slot.start_time. The open hour/minute are admin-configurable (app_config).
+const DEFAULT_OPEN_HOUR = 19;
+const DEFAULT_OPEN_MINUTE = 45;
 
-// Pure: given the current IST wall-clock ('YYYY-MM-DD HH:MM:SS'), returns the
-// currently-open booking day and (for the same-day case) the start-time cutoff.
+// Pure: given the current IST wall-clock ('YYYY-MM-DD HH:MM:SS') and the
+// configured open time, returns the currently-open booking day and (for the
+// same-day case) the start-time cutoff.
 // { bookingDate: 'YYYY-MM-DD'|null, startAfterTime: 'HH:MM:SS'|null, isToday }
-export const computeBookingWindow = (istNowStr) => {
+export const computeBookingWindow = (istNowStr, { openHour = DEFAULT_OPEN_HOUR, openMinute = DEFAULT_OPEN_MINUTE } = {}) => {
   if (!istNowStr) return { bookingDate: null, startAfterTime: null, isToday: false };
   const [datePart, timePart = '00:00:00'] = String(istNowStr).trim().split(' ');
   const [y, mo, d] = datePart.split('-').map(Number);
@@ -31,7 +33,7 @@ export const computeBookingWindow = (istNowStr) => {
   const isSunday = (dt) => dt.getUTCDay() === 0;
 
   const minutesNow = hh * 60 + mi;
-  const openMinutes = BOOKING_OPEN_HOUR * 60 + BOOKING_OPEN_MINUTE;
+  const openMinutes = openHour * 60 + openMinute;
 
   if (minutesNow >= openMinutes) {
     // 19:45 passed → next working day's slots have opened (skip Sunday).
@@ -50,9 +52,31 @@ export const computeBookingWindow = (istNowStr) => {
   return { bookingDate: fmt(today), startAfterTime, isToday: true };
 };
 
+// Short in-memory cache for the booking-open config so we don't hit the DB on
+// every booking request. Invalidated immediately when an admin updates it.
+let _bookingCfgCache = null;
+let _bookingCfgExpiry = 0;
+const BOOKING_CFG_TTL_MS = 60 * 1000;
+
+const getBookingOpenConfigCached = async (conn = null) => {
+  const now = Date.now();
+  if (_bookingCfgCache && now < _bookingCfgExpiry) return _bookingCfgCache;
+  const cfg = await trainingModel.getBookingOpenConfig(conn);
+  _bookingCfgCache = cfg;
+  _bookingCfgExpiry = now + BOOKING_CFG_TTL_MS;
+  return cfg;
+};
+
+// Called by the admin config update so the new open time takes effect at once.
+export const invalidateBookingWindowCache = () => {
+  _bookingCfgCache = null;
+  _bookingCfgExpiry = 0;
+};
+
 const getCurrentBookingWindow = async (conn = null) => {
   const istNow = await trainingModel.getIstNow(conn);
-  return computeBookingWindow(istNow);
+  const cfg = await getBookingOpenConfigCached(conn);
+  return computeBookingWindow(istNow, cfg);
 };
 
 export const getCategories = async () => {

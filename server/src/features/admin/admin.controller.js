@@ -231,6 +231,27 @@ export const removeVenueSkill = async (req, res, next) => {
     }
 };
 
+// ── Booking-open time config ─────────────────────────────────
+
+export const getBookingWindowConfig = async (req, res, next) => {
+    try {
+        const data = await adminService.getBookingWindowConfig();
+        return successResponse(res, 'Booking window config retrieved successfully', data);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const updateBookingWindowConfig = async (req, res, next) => {
+    try {
+        const { openHour, openMinute } = req.body;
+        const data = await adminService.updateBookingWindowConfig(openHour, openMinute);
+        return successResponse(res, 'Booking open time updated successfully', data);
+    } catch (error) {
+        next(error);
+    }
+};
+
 // ── Attendance ───────────────────────────────────────────────
 
 export const getAttendanceMappings = async (req, res, next) => {

@@ -24,6 +24,8 @@ export function DataProvider({ children }) {
   // Admin management list — includes inactive slots (active-only `slotTimings`
   // stays the source for assign/booking pickers).
   const [allSlotTimings, setAllSlotTimings] = useState([])
+  // Admin-configurable booking-open time { openHour, openMinute }
+  const [bookingWindow, setBookingWindow] = useState(null)
   
   // Mock approvals
   const [labApprovals, setLabApprovals] = useState(initialLabApprovals)
@@ -104,6 +106,15 @@ export function DataProvider({ children }) {
     }
   }, [])
 
+  const fetchBookingWindow = useCallback(async () => {
+    try {
+      const res = await adminService.getBookingWindowConfig()
+      setBookingWindow(res.data || null)
+    } catch (err) {
+      console.error(err)
+    }
+  }, [])
+
   const refreshAll = useCallback(async () => {
     setLoading(true)
     await Promise.all([
@@ -114,10 +125,11 @@ export function DataProvider({ children }) {
       fetchStudents(),
       fetchTrainingSkills(),
       fetchSlotTimings(),
-      fetchAllSlotTimings()
+      fetchAllSlotTimings(),
+      fetchBookingWindow()
     ])
     setLoading(false)
-  }, [fetchDashboardKPI, fetchVenues, fetchAllVenues, fetchFaculty, fetchStudents, fetchTrainingSkills, fetchSlotTimings, fetchAllSlotTimings])
+  }, [fetchDashboardKPI, fetchVenues, fetchAllVenues, fetchFaculty, fetchStudents, fetchTrainingSkills, fetchSlotTimings, fetchAllSlotTimings, fetchBookingWindow])
 
   useEffect(() => {
     refreshAll()
@@ -305,6 +317,30 @@ export function DataProvider({ children }) {
     }
   }
 
+  // ── Booking-open time config ────────────────────────────────
+  const getBookingWindowConfig = async () => {
+    try {
+      const res = await adminService.getBookingWindowConfig()
+      const data = res.data || null
+      setBookingWindow(data)
+      return data
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to load booking open time', true)
+      return null
+    }
+  }
+
+  const updateBookingWindowConfig = async (openHour, openMinute) => {
+    try {
+      const res = await adminService.updateBookingWindowConfig(openHour, openMinute)
+      setBookingWindow(res.data || { openHour, openMinute })
+      return true
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to update booking open time', true)
+      return false
+    }
+  }
+
   const handleLabApproval = (id, action) => {
     setLabApprovals((prev) =>
       prev.map((l) => (l.id === id ? { ...l, status: action } : l))
@@ -329,6 +365,7 @@ export function DataProvider({ children }) {
         trainingSkills,
         slotTimings,
         allSlotTimings,
+        bookingWindow,
         labApprovals,
         apApprovals,
         refreshAll,
@@ -350,6 +387,9 @@ export function DataProvider({ children }) {
         getVenueSkills,
         addVenueSkill,
         removeVenueSkill,
+        // booking-open time config
+        getBookingWindowConfig,
+        updateBookingWindowConfig,
         handleLabApproval,
         handleApApproval,
       }}

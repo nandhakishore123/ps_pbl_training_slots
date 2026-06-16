@@ -1,7 +1,29 @@
 import * as adminModel from './admin.model.js';
+import * as trainingModel from '../training/training.model.js';
+import { invalidateBookingWindowCache } from '../training/training.services.js';
 
 export const getDashboardKPI = async () => {
     return await adminModel.getDashboardKPI();
+};
+
+// ── Booking-open time config (app_config) ────────────────────
+export const getBookingWindowConfig = async () => {
+    return await trainingModel.getBookingOpenConfig();
+};
+
+export const updateBookingWindowConfig = async (openHour, openMinute) => {
+    const h = Number(openHour);
+    const m = Number(openMinute);
+    if (!Number.isInteger(h) || h < 0 || h > 23) {
+        throw new Error('openHour must be an integer between 0 and 23');
+    }
+    if (!Number.isInteger(m) || m < 0 || m > 59) {
+        throw new Error('openMinute must be an integer between 0 and 59');
+    }
+    await trainingModel.updateBookingOpenConfig(h, m);
+    // New time takes effect immediately for students + booking re-validation.
+    invalidateBookingWindowCache();
+    return { openHour: h, openMinute: m };
 };
 
 export const getVenues = async () => {
