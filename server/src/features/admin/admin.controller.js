@@ -118,6 +118,15 @@ export const deleteSlotTiming = async (req, res, next) => {
 
 // ── Venue management ─────────────────────────────────────────
 
+export const getAllVenues = async (req, res, next) => {
+    try {
+        const data = await adminService.getAllVenues();
+        return successResponse(res, 'Venues retrieved successfully', data);
+    } catch (error) {
+        next(error);
+    }
+};
+
 export const createVenue = async (req, res, next) => {
     try {
         const { venueName, location, capacity } = req.body;

@@ -11,10 +11,11 @@ import { useData } from '../context/DataContext'
 import { useApp } from '../context/AppContext'
 
 export default function VenueAllocation() {
-  const { venues, loading, setVenueActive } = useData()
+  const { venues, allVenues, loading, setVenueActive } = useData()
   const { showToast } = useApp()
 
   const [statusFilter, setStatusFilter] = useState('all')
+  const [showInactive, setShowInactive] = useState(false)
   const [openMenuId, setOpenMenuId] = useState(null)
   const [swapOpen, setSwapOpen] = useState(false)
   const [swapMapping, setSwapMapping] = useState(null)
@@ -43,10 +44,20 @@ export default function VenueAllocation() {
     if (res === true) showToast('Venue deactivated')
   }
 
+  const handleReactivate = async (v) => {
+    closeMenu()
+    const res = await setVenueActive(v.venue_id, true)
+    if (res === true) showToast('Venue reactivated')
+  }
+
   // ── FILTERED DATA ────────────────────────────────────────────
+  // Source: active-only `venues` by default; full `allVenues` (incl. inactive)
+  // when the admin toggles "Show inactive". The Venue Map stays active-only.
+  const sourceVenues = showInactive ? allVenues : venues
+
   // Deduplicate by venue_id (keep latest entry per venue) as safety net
   const uniqueVenues = Array.from(
-    venues.reduce((map, v) => {
+    sourceVenues.reduce((map, v) => {
       map.set(v.venue_id, v)
       return map
     }, new Map()).values()
@@ -54,7 +65,9 @@ export default function VenueAllocation() {
 
   const processedVenues = uniqueVenues.map(v => ({
     ...v,
-    status: v.faculty_id ? 'occupied' : 'free'
+    status: Number(v.is_active) === 0
+      ? 'inactive'
+      : (v.faculty_id ? 'occupied' : 'free')
   }))
 
   const filtered = processedVenues
@@ -62,6 +75,14 @@ export default function VenueAllocation() {
 
   const occupied = processedVenues.filter((v) => v.status === 'occupied').length
   const free = processedVenues.filter((v) => v.status === 'free').length
+
+  // Venue Map always shows active venues only (independent of the inactive toggle).
+  const mapVenues = Array.from(
+    venues.reduce((map, v) => {
+      map.set(v.venue_id, v)
+      return map
+    }, new Map()).values()
+  ).map(v => ({ ...v, status: v.faculty_id ? 'occupied' : 'free' }))
 
   // ── MENU HANDLERS ────────────────────────────────────────────
   // Use mapping_id as the toggle key (unique per row)
@@ -125,7 +146,7 @@ export default function VenueAllocation() {
         {/* TABLE CARD */}
         <SectionCard title="All Venues">
           {/* FILTERS */}
-          <div className={styles.filterRow}>
+          <div className={styles.filterRow} style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
             <select
               className={styles.select}
               value={statusFilter}
@@ -134,7 +155,16 @@ export default function VenueAllocation() {
               <option value="all">All Venues</option>
               <option value="occupied">Occupied</option>
               <option value="free">Free</option>
+              {showInactive && <option value="inactive">Inactive</option>}
             </select>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 600, color: 'var(--text2, #6b7280)', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={showInactive}
+                onChange={(e) => { setShowInactive(e.target.checked); if (!e.target.checked && statusFilter === 'inactive') setStatusFilter('all') }}
+              />
+              Show inactive
+            </label>
           </div>
 
           {/* TABLE */}
@@ -154,8 +184,10 @@ export default function VenueAllocation() {
                   <tr>
                     <td colSpan={5} className={styles.empty}>Loading venues...</td>
                   </tr>
-                ) : filtered.length > 0 ? filtered.map((v) => (
-                  <tr key={v.venue_id}>
+                ) : filtered.length > 0 ? filtered.map((v) => {
+                  const inactive = v.status === 'inactive'
+                  return (
+                  <tr key={v.venue_id} style={inactive ? { opacity: 0.6 } : undefined}>
                     <td>
                       <b>{v.venue_name}</b>
                       <div className={styles.capacityText}>Capacity: {v.capacity}</div>
@@ -173,7 +205,18 @@ export default function VenueAllocation() {
                         <span className={styles.unassigned}>— Unassigned</span>
                       )}
                     </td>
-                    <td><Badge status={v.status} /></td>
+                    <td>
+                      {inactive ? (
+                        <span style={{
+                          display: 'inline-block', padding: '3px 10px', borderRadius: 20,
+                          fontSize: 11, fontWeight: 700, color: '#6b7280', background: 'rgba(107,114,128,0.15)',
+                        }}>
+                          Inactive
+                        </span>
+                      ) : (
+                        <Badge status={v.status} />
+                      )}
+                    </td>
                     <td>
                       <div
                         className={styles.menuWrap}
@@ -193,28 +236,44 @@ export default function VenueAllocation() {
                             <div className={styles.dropItem} onClick={() => openSkills(v)}>
                               ⚙ Manage Skills
                             </div>
-                            {v.faculty_id && v.mapping_id && (
-                              <div
-                                className={`${styles.dropItem} ${styles.dropSwap}`}
-                                onClick={() => openSwap(v)}
-                              >
-                                ⇄ Swap Faculty
-                              </div>
+                            {inactive ? (
+                              <>
+                                <div className={styles.dropDivider} />
+                                <div
+                                  className={styles.dropItem}
+                                  style={{ color: '#059669' }}
+                                  onClick={() => handleReactivate(v)}
+                                >
+                                  ↻ Reactivate
+                                </div>
+                              </>
+                            ) : (
+                              <>
+                                {v.faculty_id && v.mapping_id && (
+                                  <div
+                                    className={`${styles.dropItem} ${styles.dropSwap}`}
+                                    onClick={() => openSwap(v)}
+                                  >
+                                    ⇄ Swap Faculty
+                                  </div>
+                                )}
+                                <div className={styles.dropDivider} />
+                                <div
+                                  className={styles.dropItem}
+                                  style={{ color: '#ef4444' }}
+                                  onClick={() => handleDeactivate(v)}
+                                >
+                                  ⨯ Deactivate
+                                </div>
+                              </>
                             )}
-                            <div className={styles.dropDivider} />
-                            <div
-                              className={styles.dropItem}
-                              style={{ color: '#ef4444' }}
-                              onClick={() => handleDeactivate(v)}
-                            >
-                              ⨯ Deactivate
-                            </div>
                           </div>
                         )}
                       </div>
                     </td>
                   </tr>
-                )) : (
+                  )
+                }) : (
                   <tr>
                     <td colSpan={5}>
                       <div className={styles.empty}>No venues match filter</div>
@@ -238,7 +297,7 @@ export default function VenueAllocation() {
       <VenueMapModal
         isOpen={mapOpen}
         onClose={() => setMapOpen(false)}
-        venues={processedVenues}
+        venues={mapVenues}
       />
 
       <VenueFormModal

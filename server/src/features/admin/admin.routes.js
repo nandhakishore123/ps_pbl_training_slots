@@ -24,6 +24,7 @@ router.put('/slot-timings/:slotId', requireRole(3), adminController.updateSlotTi
 router.patch('/slot-timings/:slotId/active', requireRole(3), adminController.setSlotActive);
 
 // ── Venue management (Admin only — role_id 3) ────────────────
+router.get('/venues/all', requireRole(3), adminController.getAllVenues);
 router.post('/venues', requireRole(3), adminController.createVenue);
 router.put('/venues/:venueId', requireRole(3), adminController.updateVenue);
 router.patch('/venues/:venueId/active', requireRole(3), adminController.setVenueActive);

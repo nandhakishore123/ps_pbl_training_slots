@@ -44,6 +44,10 @@ export const deleteSlotTiming = async (slotId) => {
 };
 
 // ── Venue management ─────────────────────────────────────────
+export const getAllVenues = async () => {
+    return await adminModel.listAllVenues();
+};
+
 export const createVenue = async ({ venueName, location, capacity }) => {
     if (!venueName || !String(venueName).trim()) {
         throw new Error('Venue name is required');

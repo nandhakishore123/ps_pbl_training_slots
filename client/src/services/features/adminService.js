@@ -51,6 +51,10 @@ export const adminService = {
   },
 
   // ── Venue management (admin-only) ───────────────────────────
+  getAllVenues() {
+    return api.get('/admin/venues/all');
+  },
+
   createVenue(payload) {
     // payload: { venueName, location, capacity }
     return api.post('/admin/venues', payload);

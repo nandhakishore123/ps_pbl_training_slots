@@ -55,6 +55,31 @@ export const listVenues = async () => {
   return rows;
 };
 
+// Admin management list — returns ALL venues (incl. inactive) with is_active so
+// inactive venues can be reactivated. Active-only listVenues still feeds the
+// booking pickers and the Venue Map. Derived-table JOIN with equality ON only
+// (TiDB-safe — no correlated subquery in JOIN ON).
+export const listAllVenues = async () => {
+  const [rows] = await db.execute(`
+    SELECT
+      v.venue_id, v.venue_name, v.location, v.capacity, v.is_active,
+      vm.mapping_id,
+      f.faculty_id, f.name as faculty_name, f.reg_num,
+      st.slot_id, st.start_time, st.end_time
+    FROM venues v
+    LEFT JOIN (
+      SELECT * FROM venue_mapping
+      WHERE mapping_id IN (
+        SELECT MAX(mapping_id) FROM venue_mapping GROUP BY venue_id
+      )
+    ) vm ON v.venue_id = vm.venue_id
+    LEFT JOIN faculties f ON vm.faculty_id = f.faculty_id
+    LEFT JOIN slot_timings st ON vm.slot_id = st.slot_id
+    ORDER BY v.venue_name ASC
+  `);
+  return rows;
+};
+
 // ── Venue management (create / edit / activate) ──────────────
 export const createVenue = async ({ venueName, location, capacity }) => {
   const [result] = await db.execute(

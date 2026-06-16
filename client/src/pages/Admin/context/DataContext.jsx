@@ -14,6 +14,9 @@ export function DataProvider({ children }) {
   // ── STATE ───────────────────────────────────────────────────
   const [dashboardKPI, setDashboardKPI] = useState(null)
   const [venues, setVenues] = useState([])
+  // Admin management list — includes inactive venues (active-only `venues`
+  // stays the source for assign/booking pickers and the Venue Map).
+  const [allVenues, setAllVenues] = useState([])
   const [faculty, setFaculty] = useState([])
   const [students, setStudents] = useState([])
   const [trainingSkills, setTrainingSkills] = useState([])
@@ -42,6 +45,15 @@ export function DataProvider({ children }) {
     try {
       const res = await adminService.getVenues()
       setVenues(Array.isArray(res.data) ? res.data : [])
+    } catch (err) {
+      console.error(err)
+    }
+  }, [])
+
+  const fetchAllVenues = useCallback(async () => {
+    try {
+      const res = await adminService.getAllVenues()
+      setAllVenues(Array.isArray(res.data) ? res.data : [])
     } catch (err) {
       console.error(err)
     }
@@ -97,6 +109,7 @@ export function DataProvider({ children }) {
     await Promise.all([
       fetchDashboardKPI(),
       fetchVenues(),
+      fetchAllVenues(),
       fetchFaculty(),
       fetchStudents(),
       fetchTrainingSkills(),
@@ -104,7 +117,7 @@ export function DataProvider({ children }) {
       fetchAllSlotTimings()
     ])
     setLoading(false)
-  }, [fetchDashboardKPI, fetchVenues, fetchFaculty, fetchStudents, fetchTrainingSkills, fetchSlotTimings, fetchAllSlotTimings])
+  }, [fetchDashboardKPI, fetchVenues, fetchAllVenues, fetchFaculty, fetchStudents, fetchTrainingSkills, fetchSlotTimings, fetchAllSlotTimings])
 
   useEffect(() => {
     refreshAll()
@@ -185,10 +198,15 @@ export function DataProvider({ children }) {
   }
 
   // ── Venue management ────────────────────────────────────────
+  const refreshVenues = async () => {
+    await fetchVenues()
+    await fetchAllVenues()
+  }
+
   const createVenue = async (payload) => {
     try {
       await adminService.createVenue(payload)
-      await fetchVenues()
+      await refreshVenues()
       return true
     } catch (err) {
       showToast(err.response?.data?.message || 'Failed to create venue', true)
@@ -199,7 +217,7 @@ export function DataProvider({ children }) {
   const updateVenue = async (venueId, payload) => {
     try {
       await adminService.updateVenue(venueId, payload)
-      await fetchVenues()
+      await refreshVenues()
       return true
     } catch (err) {
       showToast(err.response?.data?.message || 'Failed to update venue', true)
@@ -212,7 +230,7 @@ export function DataProvider({ children }) {
   const setVenueActive = async (venueId, isActive, force = false) => {
     try {
       await adminService.setVenueActive(venueId, isActive, force)
-      await fetchVenues()
+      await refreshVenues()
       return true
     } catch (err) {
       const data = err.response?.data
@@ -305,6 +323,7 @@ export function DataProvider({ children }) {
         loading,
         dashboardKPI,
         venues,
+        allVenues,
         faculty,
         students,
         trainingSkills,
