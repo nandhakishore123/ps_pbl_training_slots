@@ -34,6 +34,10 @@ import FacultyDashboard from '../pages/Faculty/FacultyDashboard.jsx';
 import RequestTransfer from '../pages/Faculty/RequestTransfer.jsx';
 import MyVenues from '../pages/Faculty/MyVenues.jsx';
 
+//superadmin
+import SuperAdminDashboard from '../pages/SuperAdmin/Dashboard/Dashboard.jsx';
+import SuperAdminComingSoon from '../pages/SuperAdmin/ComingSoon/ComingSoon.jsx';
+
 
 function useBootstrapAuth() {
     const accessToken = useAuthStore((s) => s.accessToken);
@@ -77,6 +81,10 @@ function HomeRedirect() {
 
     if (roleId === 2) {
         return <Navigate to="/faculty-dashboard" replace />;
+    }
+
+    if (roleId === 4) {
+        return <Navigate to="/superadmin-dashboard" replace />;
     }
 
     return <Navigate to="/auth/login" replace />;
@@ -147,6 +155,10 @@ function AppNavigator() {
                 <Route path="/venue-allocation" element={<RequireAuth><RequireRole allowedRoles={[3]}><AdminProviders><VenueAllocation/></AdminProviders></RequireRole></RequireAuth>} />
                 <Route path="/admin-attendance" element={<RequireAuth><RequireRole allowedRoles={[3]}><AdminProviders><AdminAttendance/></AdminProviders></RequireRole></RequireAuth>} />
                 <Route path="/admin-bookings" element={<RequireAuth><RequireRole allowedRoles={[3]}><AdminProviders><AdminBookings/></AdminProviders></RequireRole></RequireAuth>} />
+
+                {/* Super Admin routes */}
+                <Route path="/superadmin-dashboard" element={<RequireAuth><RequireRole allowedRoles={[4]}><SuperAdminDashboard/></RequireRole></RequireAuth>} />
+                <Route path="/superadmin/coming-soon" element={<RequireAuth><RequireRole allowedRoles={[4]}><SuperAdminComingSoon/></RequireRole></RequireAuth>} />
 
                 {/* faculty  routes*/}
                 <Route path="/faculty-dashboard" element={<RequireAuth><RequireRole allowedRoles={[2]}><FacultyDashboard/></RequireRole></RequireAuth>} />

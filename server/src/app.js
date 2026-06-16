@@ -9,6 +9,7 @@ import pointsRoutes from './features/points/points.routes.js';
 import trainingRoutes from './features/training/training.routes.js';
 import adminRoutes from './features/admin/admin.routes.js';
 import facultyRoutes from './features/faculty/faculty.routes.js';
+import superAdminRoutes from './features/superadmin/superadmin.routes.js';
 
 const app = express();
 
@@ -60,6 +61,7 @@ app.use('/api/points', pointsRoutes);
 app.use('/api/training', trainingRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/faculty', facultyRoutes);
+app.use('/api/superadmin', superAdminRoutes);
 
 // Global error handler
 app.use((err, req, res, next) => {
