@@ -159,6 +159,42 @@ export const removeVenueSkill = async (venueId, trainingSkillId) => {
     return { success: true };
 };
 
+// ── Per-venue + per-date slots (venue_slots) — Stage 3a (ADDITIVE) ───────────
+export const getVenueSlotsByDate = async (venueId, slotDate = null) => {
+    if (!venueId) throw new Error('Venue ID is required');
+    const [slots, mappings] = await Promise.all([
+        adminModel.listVenueSlots(venueId, slotDate || null),
+        adminModel.listMappingsByVenue(venueId),
+    ]);
+    return { slots, mappings };
+};
+
+export const createVenueSlot = async ({ mappingId, slotDate, startTime, endTime }) => {
+    if (!mappingId) throw new Error('A faculty mapping is required');
+    if (!slotDate) throw new Error('Slot date is required');
+    if (!startTime || !endTime) throw new Error('Start time and End time are required');
+    if (String(startTime) >= String(endTime)) {
+        throw new Error('End time must be after start time');
+    }
+    const venueSlotId = await adminModel.createVenueSlot({ mappingId, slotDate, startTime, endTime });
+    return { venueSlotId };
+};
+
+export const updateVenueSlot = async (venueSlotId, { slotDate, startTime, endTime }) => {
+    if (!venueSlotId) throw new Error('Venue slot ID is required');
+    if (!slotDate) throw new Error('Slot date is required');
+    if (!startTime || !endTime) throw new Error('Start time and End time are required');
+    if (String(startTime) >= String(endTime)) {
+        throw new Error('End time must be after start time');
+    }
+    return await adminModel.updateVenueSlot(venueSlotId, { slotDate, startTime, endTime });
+};
+
+export const setVenueSlotActive = async (venueSlotId, isActive) => {
+    if (!venueSlotId) throw new Error('Venue slot ID is required');
+    return await adminModel.setVenueSlotActive(venueSlotId, isActive);
+};
+
 export const swapFaculty = async (mappingId, newFacultyId, reason) => {
     if (!mappingId || !newFacultyId || !reason) {
         throw new Error('Mapping ID, New Faculty ID, and Reason are required');

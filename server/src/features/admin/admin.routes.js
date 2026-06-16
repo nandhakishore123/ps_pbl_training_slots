@@ -34,6 +34,13 @@ router.get('/venues/:venueId/skills', requireRole(3), adminController.getVenueSk
 router.post('/venues/:venueId/skills', requireRole(3), adminController.addVenueSkill);
 router.delete('/venues/:venueId/skills/:trainingSkillId', requireRole(3), adminController.removeVenueSkill);
 
+// ── Per-venue + per-date slots (venue_slots) — Stage 3a, ADMIN-ONLY, ADDITIVE.
+// Distinct from the global /slot-timings routes; not read by booking/assessment.
+router.get('/venues/:venueId/slots-by-date', requireRole(3), adminController.getVenueSlotsByDate);
+router.post('/venues/:venueId/slots-by-date', requireRole(3), adminController.createVenueSlot);
+router.put('/venue-slots/:venueSlotId', requireRole(3), adminController.updateVenueSlot);
+router.patch('/venue-slots/:venueSlotId/active', requireRole(3), adminController.setVenueSlotActive);
+
 router.post('/venues/:mappingId/swap-faculty', adminController.swapFaculty);
 router.post('/faculty/transfer-individual', adminController.transferIndividualVenue);
 router.post('/faculty/transfer-all', adminController.transferAllVenues);

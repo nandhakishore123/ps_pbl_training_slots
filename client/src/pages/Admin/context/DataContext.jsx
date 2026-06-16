@@ -317,6 +317,47 @@ export function DataProvider({ children }) {
     }
   }
 
+  // ── Per-venue + per-date slots (admin-only, Stage 3a) ───────
+  const getVenueSlots = async (venueId, slotDate = null) => {
+    try {
+      const res = await adminService.getVenueSlotsByDate(venueId, slotDate)
+      return res.data || { slots: [], mappings: [] }
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to load venue slots', true)
+      return { slots: [], mappings: [] }
+    }
+  }
+
+  const createVenueSlot = async (venueId, payload) => {
+    try {
+      await adminService.createVenueSlot(venueId, payload)
+      return true
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to add slot', true)
+      return false
+    }
+  }
+
+  const updateVenueSlot = async (venueSlotId, payload) => {
+    try {
+      await adminService.updateVenueSlot(venueSlotId, payload)
+      return true
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to update slot', true)
+      return false
+    }
+  }
+
+  const setVenueSlotActive = async (venueSlotId, isActive) => {
+    try {
+      await adminService.setVenueSlotActive(venueSlotId, isActive)
+      return true
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to update slot status', true)
+      return false
+    }
+  }
+
   // ── Booking-open time config ────────────────────────────────
   const getBookingWindowConfig = async () => {
     try {
@@ -387,6 +428,11 @@ export function DataProvider({ children }) {
         getVenueSkills,
         addVenueSkill,
         removeVenueSkill,
+        // per-venue + per-date slots (Stage 3a)
+        getVenueSlots,
+        createVenueSlot,
+        updateVenueSlot,
+        setVenueSlotActive,
         // booking-open time config
         getBookingWindowConfig,
         updateBookingWindowConfig,

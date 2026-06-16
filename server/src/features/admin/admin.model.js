@@ -469,3 +469,90 @@ export const removeVenueSkill = async (venueId, trainingSkillId) => {
   );
   return result.affectedRows ?? 0;
 };
+
+// ── Per-venue + per-date slots (venue_slots) — Stage 3a (ADDITIVE) ────────────
+// Admin-only authoring/display. NOT read by booking/assessment/seat code in 3a.
+// All equality JOINs (TiDB-safe; no subquery in JOIN ON).
+
+// Venue's faculty-mappings, for the slot-entry picker. Reads slot_timings only
+// to label each mapping (admin display) — not a booking read.
+export const listMappingsByVenue = async (venueId) => {
+  const [rows] = await db.execute(
+    `SELECT vm.mapping_id, vm.faculty_id,
+            f.name AS faculty_name, f.reg_num AS faculty_reg_num,
+            st.slot_id, st.start_time, st.end_time
+     FROM venue_mapping vm
+     LEFT JOIN faculties f ON f.faculty_id = vm.faculty_id
+     LEFT JOIN slot_timings st ON st.slot_id = vm.slot_id
+     WHERE vm.venue_id = ?
+     ORDER BY f.name ASC, st.start_time ASC`,
+    [Number(venueId)]
+  );
+  return rows ?? [];
+};
+
+export const listVenueSlots = async (venueId, slotDate = null) => {
+  const params = [Number(venueId)];
+  let dateFilter = '';
+  if (slotDate) {
+    dateFilter = ' AND vs.slot_date = ?';
+    params.push(slotDate);
+  }
+  const [rows] = await db.execute(
+    `SELECT vs.venue_slot_id, vs.mapping_id,
+            DATE_FORMAT(vs.slot_date, '%Y-%m-%d') AS slot_date,
+            vs.start_time, vs.end_time, vs.current_bookings, vs.is_active,
+            vm.venue_id, vm.faculty_id,
+            f.name AS faculty_name, f.reg_num AS faculty_reg_num
+     FROM venue_slots vs
+     JOIN venue_mapping vm ON vm.mapping_id = vs.mapping_id
+     LEFT JOIN faculties f ON f.faculty_id = vm.faculty_id
+     WHERE vm.venue_id = ?${dateFilter}
+     ORDER BY vs.slot_date ASC, vs.start_time ASC`,
+    params
+  );
+  return rows ?? [];
+};
+
+export const createVenueSlot = async ({ mappingId, slotDate, startTime, endTime }) => {
+  try {
+    const [result] = await db.execute(
+      `INSERT INTO venue_slots (mapping_id, slot_date, start_time, end_time, current_bookings, is_active)
+       VALUES (?, ?, ?, ?, 0, 1)`,
+      [Number(mappingId), slotDate, startTime, endTime]
+    );
+    return result.insertId;
+  } catch (err) {
+    if (err?.code === 'ER_DUP_ENTRY') {
+      const e = new Error('A slot with this date and time already exists for this lab.');
+      e.status = 409;
+      throw e;
+    }
+    throw err;
+  }
+};
+
+export const updateVenueSlot = async (venueSlotId, { slotDate, startTime, endTime }) => {
+  try {
+    const [result] = await db.execute(
+      `UPDATE venue_slots SET slot_date = ?, start_time = ?, end_time = ? WHERE venue_slot_id = ?`,
+      [slotDate, startTime, endTime, Number(venueSlotId)]
+    );
+    return result.affectedRows ?? 0;
+  } catch (err) {
+    if (err?.code === 'ER_DUP_ENTRY') {
+      const e = new Error('A slot with this date and time already exists for this lab.');
+      e.status = 409;
+      throw e;
+    }
+    throw err;
+  }
+};
+
+export const setVenueSlotActive = async (venueSlotId, isActive) => {
+  const [result] = await db.execute(
+    `UPDATE venue_slots SET is_active = ? WHERE venue_slot_id = ?`,
+    [isActive ? 1 : 0, Number(venueSlotId)]
+  );
+  return result.affectedRows ?? 0;
+};

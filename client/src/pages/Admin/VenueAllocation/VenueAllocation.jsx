@@ -7,6 +7,7 @@ import SwapFacultyModal from '../../../components/modals/SwapFacultyModal'
 import VenueMapModal from '../../../components/modals/VenueMapModal'
 import VenueFormModal from '../../../components/modals/VenueFormModal'
 import VenueSkillsModal from '../../../components/modals/VenueSkillsModal'
+import VenueDateSlotsModal from '../../../components/modals/VenueDateSlotsModal'
 import { useData } from '../context/DataContext'
 import { useApp } from '../context/AppContext'
 
@@ -26,10 +27,13 @@ export default function VenueAllocation() {
   const [editingVenue, setEditingVenue] = useState(null)
   const [skillsOpen, setSkillsOpen] = useState(false)
   const [skillsVenue, setSkillsVenue] = useState(null)
+  const [dateSlotsOpen, setDateSlotsOpen] = useState(false)
+  const [dateSlotsVenue, setDateSlotsVenue] = useState(null)
 
   const openCreateVenue = () => { setEditingVenue(null); setVenueFormOpen(true) }
   const openEditVenue = (v) => { setEditingVenue(v); setVenueFormOpen(true); closeMenu() }
   const openSkills = (v) => { setSkillsVenue(v); setSkillsOpen(true); closeMenu() }
+  const openDateSlots = (v) => { setDateSlotsVenue(v); setDateSlotsOpen(true); closeMenu() }
 
   const handleDeactivate = async (v) => {
     closeMenu()
@@ -236,6 +240,9 @@ export default function VenueAllocation() {
                             <div className={styles.dropItem} onClick={() => openSkills(v)}>
                               ⚙ Manage Skills
                             </div>
+                            <div className={styles.dropItem} onClick={() => openDateSlots(v)}>
+                              🗓 Manage Slots
+                            </div>
                             {inactive ? (
                               <>
                                 <div className={styles.dropDivider} />
@@ -311,6 +318,14 @@ export default function VenueAllocation() {
           isOpen={skillsOpen}
           onClose={() => setSkillsOpen(false)}
           venue={skillsVenue}
+        />
+      )}
+
+      {dateSlotsOpen && dateSlotsVenue && (
+        <VenueDateSlotsModal
+          isOpen={dateSlotsOpen}
+          onClose={() => setDateSlotsOpen(false)}
+          venue={dateSlotsVenue}
         />
       )}
     </div>

@@ -231,6 +231,51 @@ export const removeVenueSkill = async (req, res, next) => {
     }
 };
 
+// ── Per-venue + per-date slots (venue_slots) — Stage 3a (ADDITIVE) ───────────
+
+export const getVenueSlotsByDate = async (req, res, next) => {
+    try {
+        const { venueId } = req.params;
+        const { date } = req.query;
+        const data = await adminService.getVenueSlotsByDate(venueId, date || null);
+        return successResponse(res, 'Venue slots retrieved successfully', data);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const createVenueSlot = async (req, res, next) => {
+    try {
+        const { mappingId, slotDate, startTime, endTime } = req.body;
+        const data = await adminService.createVenueSlot({ mappingId, slotDate, startTime, endTime });
+        return successResponse(res, 'Venue slot created successfully', data);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const updateVenueSlot = async (req, res, next) => {
+    try {
+        const { venueSlotId } = req.params;
+        const { slotDate, startTime, endTime } = req.body;
+        await adminService.updateVenueSlot(venueSlotId, { slotDate, startTime, endTime });
+        return successResponse(res, 'Venue slot updated successfully', null);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const setVenueSlotActive = async (req, res, next) => {
+    try {
+        const { venueSlotId } = req.params;
+        const { isActive } = req.body;
+        await adminService.setVenueSlotActive(venueSlotId, !!isActive);
+        return successResponse(res, `Venue slot ${isActive ? 'opened' : 'closed'} successfully`, null);
+    } catch (error) {
+        next(error);
+    }
+};
+
 // ── Booking-open time config ─────────────────────────────────
 
 export const getBookingWindowConfig = async (req, res, next) => {

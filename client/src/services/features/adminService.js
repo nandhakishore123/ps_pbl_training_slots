@@ -82,6 +82,25 @@ export const adminService = {
     return api.delete(`/admin/venues/${venueId}/skills/${trainingSkillId}`);
   },
 
+  // ── Per-venue + per-date slots (admin-only, Stage 3a) ───────
+  getVenueSlotsByDate(venueId, slotDate = null) {
+    return api.get(`/admin/venues/${venueId}/slots-by-date`, { params: slotDate ? { date: slotDate } : {} });
+  },
+
+  createVenueSlot(venueId, payload) {
+    // payload: { mappingId, slotDate, startTime, endTime }
+    return api.post(`/admin/venues/${venueId}/slots-by-date`, payload);
+  },
+
+  updateVenueSlot(venueSlotId, payload) {
+    // payload: { slotDate, startTime, endTime }
+    return api.put(`/admin/venue-slots/${venueSlotId}`, payload);
+  },
+
+  setVenueSlotActive(venueSlotId, isActive) {
+    return api.patch(`/admin/venue-slots/${venueSlotId}/active`, { isActive });
+  },
+
   swapFaculty(mappingId, toFacultyId, reason) {
     return api.post(`/admin/venues/${mappingId}/swap-faculty`, { toFacultyId, reason });
   },
