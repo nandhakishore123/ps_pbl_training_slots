@@ -41,6 +41,36 @@ const IcoScore= () => <svg width="20" height="20" fill="none" stroke="currentCol
 
 const P = "#6c47ff";
 
+// ── IST-safe time helpers (production may run in UTC; never trust device TZ) ──
+// Current wall-clock in Asia/Kolkata as fixed-width 'YYYY-MM-DD HH:MM:SS'.
+function getIstNowStr() {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
+  }).formatToParts(new Date());
+  const get = (t) => parts.find((p) => p.type === t)?.value || "";
+  let hour = get("hour");
+  if (hour === "24") hour = "00"; // some engines emit 24 at midnight
+  return `${get("year")}-${get("month")}-${get("day")} ${hour}:${get("minute")}:${get("second")}`;
+}
+
+// Normalize a booking_date that may arrive as 'YYYY-MM-DD' or an ISO string.
+function normalizeDate(d) {
+  if (!d) return null;
+  const s = String(d);
+  return s.length >= 10 ? s.slice(0, 10) : s;
+}
+
+// '09:00:00' → '9:00 AM'
+function fmtTime12(t) {
+  if (!t) return "";
+  const [h, m] = String(t).split(":");
+  const hh = parseInt(h, 10);
+  if (Number.isNaN(hh)) return String(t);
+  return `${hh % 12 || 12}:${m} ${hh >= 12 ? "PM" : "AM"}`;
+}
+
 // ── Sidebar ───────────────────────────────────────────────────
 function Sidebar({ active, setActive, isMobile, disabled }) {
   const items = [
@@ -105,7 +135,18 @@ export default function MCQAssessment() {
   const isMobile = useIsNarrow(640);
   const location = useLocation();
   const navigate = useNavigate();
-  const { trainingSkillId, levelId, bookingId, levelName } = location.state || {};
+  const { trainingSkillId, levelId, bookingId, levelName, startTime, endTime, bookingDate } = location.state || {};
+
+  // ── Slot start gate state ────────────────────────────────────
+  const [slotGate, setSlotGate] = useState({
+    startTime: startTime || null,
+    endTime: endTime || null,
+    bookingDate: normalizeDate(bookingDate),
+    isPresent: null,
+    loaded: false,
+  });
+  const [nowIst, setNowIst] = useState(() => getIstNowStr());
+  const [gateMsg, setGateMsg] = useState("");
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -161,6 +202,68 @@ export default function MCQAssessment() {
 
     fetchDetails();
   }, [trainingSkillId, levelId]);
+
+  // ── Fetch the booking's slot window + freshest attendance ────
+  useEffect(() => {
+    if (!bookingId) {
+      setSlotGate((g) => ({ ...g, loaded: true }));
+      return;
+    }
+    let ignore = false;
+    (async () => {
+      try {
+        const res = await trainingService.getBookings();
+        const list = res?.data || [];
+        const match = list.find((b) => Number(b.booking_id) === Number(bookingId));
+        if (ignore) return;
+        if (match) {
+          setSlotGate({
+            startTime: match.start_time || startTime || null,
+            endTime: match.end_time || endTime || null,
+            bookingDate: normalizeDate(match.booking_date) || normalizeDate(bookingDate),
+            isPresent: Number(match.is_present) === 1 ? 1 : 0,
+            loaded: true,
+          });
+        } else {
+          setSlotGate((g) => ({ ...g, loaded: true }));
+        }
+      } catch {
+        if (!ignore) setSlotGate((g) => ({ ...g, loaded: true }));
+      }
+    })();
+    return () => { ignore = true; };
+  }, [bookingId, startTime, endTime, bookingDate]);
+
+  // ── Tick IST clock while on the intro screen so the gate opens live ──
+  useEffect(() => {
+    if (phase !== "intro") return;
+    const id = setInterval(() => setNowIst(getIstNowStr()), 1000);
+    return () => clearInterval(id);
+  }, [phase]);
+
+  // ── Gated start: enforce slot window + attendance before starting ──
+  const handleStartClick = async () => {
+    setGateMsg("");
+    // Re-check the freshest attendance — faculty may have just marked it.
+    let present = slotGate.isPresent;
+    if (bookingId) {
+      try {
+        const res = await trainingService.getBookings();
+        const match = (res?.data || []).find((b) => Number(b.booking_id) === Number(bookingId));
+        if (match) {
+          present = Number(match.is_present) === 1 ? 1 : 0;
+          setSlotGate((g) => ({ ...g, isPresent: present }));
+        }
+      } catch { /* fall back to last known value + server-side enforcement */ }
+    }
+
+    // Only block client-side when we positively know the student is not present.
+    if (present === 0) {
+      setGateMsg("You haven't been marked present yet. Please wait for the faculty to mark your attendance.");
+      return;
+    }
+    startTest();
+  };
 
   // ── Start Test ──────────────────────────────────────────────
   const startTest = async () => {
@@ -372,6 +475,13 @@ export default function MCQAssessment() {
     );
   }
 
+  // ── Start gate (IST-safe, fixed-width 'YYYY-MM-DD HH:MM:SS' string compare) ──
+  const slotStartDT = slotGate.bookingDate && slotGate.startTime ? `${slotGate.bookingDate} ${slotGate.startTime}` : null;
+  const slotEndDT = slotGate.bookingDate && slotGate.endTime ? `${slotGate.bookingDate} ${slotGate.endTime}` : null;
+  const beforeStart = !!slotStartDT && nowIst < slotStartDT;
+  const afterEnd = !!slotEndDT && nowIst > slotEndDT;
+  const startDisabled = beforeStart || afterEnd; // only disable when we KNOW it's outside the window
+
   const q = questions[current];
   const prog = questions.length ? (current / questions.length) * 100 : 0;
   const uniqueCategories = Array.from(new Set(questions.map(item => item.mcq_type_name)));
@@ -457,10 +567,25 @@ export default function MCQAssessment() {
                   <div style={{ background: "rgba(239,68,68,.06)", border: "1px solid rgba(239,68,68,.2)", borderRadius: 10, padding: "10px 14px", marginBottom: 24, fontSize: 11, color: "#dc2626", lineHeight: 1.6, textAlign: "left" }}>
                     <strong>Anti-cheat active:</strong> You get <strong>2 warnings</strong>. Leaving the assessment tab a <strong>3rd time</strong> will instantly flag <strong>MALPRACTICE</strong> and auto-submit with current answers. You will <strong>not</strong> be able to retake the assessment.
                   </div>
-                  <button onClick={startTest}
-                    style={{ width: "100%", padding: 14, background: P, border: "none", borderRadius: 12, color: "#fff", fontSize: 15, fontWeight: 800, cursor: "pointer", boxShadow: "0 4px 20px rgba(108,71,255,.35)", fontFamily: "inherit" }}>
+                  <button onClick={handleStartClick} disabled={startDisabled}
+                    style={{ width: "100%", padding: 14, background: startDisabled ? "#c7c3e6" : P, border: "none", borderRadius: 12, color: "#fff", fontSize: 15, fontWeight: 800, cursor: startDisabled ? "not-allowed" : "pointer", boxShadow: startDisabled ? "none" : "0 4px 20px rgba(108,71,255,.35)", fontFamily: "inherit", opacity: startDisabled ? 0.9 : 1 }}>
                     Start Assessment
                   </button>
+                  {beforeStart && (
+                    <div style={{ marginTop: 10, fontSize: 12, fontWeight: 700, color: "#6b7280" }}>
+                      ⏳ Available at {fmtTime12(slotGate.startTime)}
+                    </div>
+                  )}
+                  {afterEnd && (
+                    <div style={{ marginTop: 10, fontSize: 12, fontWeight: 700, color: "#6b7280" }}>
+                      This slot has ended.
+                    </div>
+                  )}
+                  {gateMsg && (
+                    <div style={{ marginTop: 12, background: "rgba(239,68,68,.06)", border: "1px solid rgba(239,68,68,.25)", borderRadius: 10, padding: "10px 14px", fontSize: 12.5, fontWeight: 600, color: "#dc2626", lineHeight: 1.5, textAlign: "left" }}>
+                      {gateMsg}
+                    </div>
+                  )}
                 </div>
               </div>
             )}

@@ -1473,6 +1473,9 @@ function PSDetail({ course, onBack, onBookSlot, activeBooking, finishedBooking }
                     levelId: lvlId,
                     bookingId: bkId,
                     levelName: lvlName || course.name,
+                    startTime: activeBooking?.info?.start_time,
+                    endTime: activeBooking?.info?.end_time,
+                    bookingDate: activeBooking?.info?.booking_date,
                   }
                 })
               }}
@@ -1571,6 +1574,9 @@ function PBLDetail({ lab, onBack, onBookSlot, activeBooking, finishedBooking, on
                     levelId: lvlId,
                     bookingId: bkId,
                     levelName: lvlName || lab.name,
+                    startTime: activeBooking?.info?.start_time,
+                    endTime: activeBooking?.info?.end_time,
+                    bookingDate: activeBooking?.info?.booking_date,
                   }
                 })
               }}

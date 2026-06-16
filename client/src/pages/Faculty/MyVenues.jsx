@@ -945,17 +945,22 @@ function VenueDetail({ venue, onBack }) {
   return (
     <div className="space-y-5">
       {/* Back */}
-      <button onClick={onBack} className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-800 transition-colors group">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="group-hover:-translate-x-0.5 transition-transform">
-          <path d="M15 18l-6-6 6-6"/>
-        </svg>
+      <button
+        onClick={onBack}
+        className="group inline-flex items-center gap-2 self-start rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-bold text-gray-600 shadow-sm transition-all hover:border-[#6c47ff] hover:bg-[#6c47ff]/[0.06] hover:text-[#6c47ff] hover:shadow-md"
+      >
+        <span className="grid h-5 w-5 place-items-center rounded-md bg-[#6c47ff]/10 text-[#6c47ff] transition-transform group-hover:-translate-x-0.5">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M15 18l-6-6 6-6"/>
+          </svg>
+        </span>
         Back to My Venues
       </button>
 
       {/* Venue card */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <div className="px-5 py-4 border-b border-gray-100 flex items-start gap-4">
-          <div className="w-11 h-11 rounded-xl bg-indigo-600 flex items-center justify-center flex-shrink-0">
+      <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
+        <div className="px-5 py-4 border-b border-gray-100 flex items-start gap-4 bg-gradient-to-r from-[#6c47ff]/[0.05] to-transparent">
+          <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-[#6c47ff] to-[#8b6dff] flex items-center justify-center flex-shrink-0 shadow-md shadow-[#6c47ff]/30">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
               <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/>
             </svg>
@@ -964,7 +969,7 @@ function VenueDetail({ venue, onBack }) {
             <h2 className="text-sm font-bold text-gray-900">{venue.venue_name}</h2>
             <p className="text-xs text-gray-400 mt-0.5">{venue.location}</p>
             <div className="flex flex-wrap gap-2 mt-2">
-              <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700">{venue.skill_type}</span>
+              <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-[#6c47ff]/10 text-[#6c47ff]">{venue.skill_type}</span>
               <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 font-mono">Cap: {venue.capacity}</span>
             </div>
           </div>
@@ -993,7 +998,7 @@ function VenueDetail({ venue, onBack }) {
           { label: "Present", value: attendedCount, dot: "bg-emerald-500" },
           { label: "Absent", value: absentCount, dot: "bg-red-500" },
         ].map((s) => (
-          <div key={s.label} className="bg-white rounded-xl border border-gray-200 px-4 py-3">
+          <div key={s.label} className="bg-white rounded-xl border border-gray-200 px-4 py-3 shadow-sm transition-all hover:border-[#6c47ff]/40 hover:shadow-md">
             <p className="text-xs text-gray-400 mb-1">{s.label}</p>
             <div className="flex items-center gap-2">
               <span className={`w-2 h-2 rounded-full flex-shrink-0 ${s.dot}`} />

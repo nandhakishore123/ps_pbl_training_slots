@@ -228,22 +228,31 @@ export default function AdminAttendance() {
 
       <div style={{ maxWidth: 1200, margin: '0 auto', padding: '24px 24px 48px' }}>
         {/* Title */}
-        <div style={{ marginBottom: 20 }}>
-          <h1 style={{ fontSize: 22, fontWeight: 800, color: '#1a1a2e', fontFamily: "'Outfit', sans-serif" }}>
-            Attendance Management
-          </h1>
-          <p style={{ fontSize: 13, color: '#6b7280', marginTop: 2 }}>
-            View any lab/slot and mark student attendance as Present or Absent.
-          </p>
+        <div style={{ marginBottom: 20, display: 'flex', alignItems: 'center', gap: 14 }}>
+          <div style={{ width: 44, height: 44, borderRadius: 14, flexShrink: 0, display: 'grid', placeItems: 'center', background: `linear-gradient(135deg, ${P}, #8b6dff)`, boxShadow: '0 6px 18px rgba(108,71,255,0.32)' }}>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+            </svg>
+          </div>
+          <div>
+            <h1 style={{ fontSize: 22, fontWeight: 800, color: '#1a1a2e', fontFamily: "'Outfit', sans-serif" }}>
+              Attendance Management
+            </h1>
+            <p style={{ fontSize: 13, color: '#6b7280', marginTop: 2 }}>
+              View any lab/slot and mark student attendance as Present or Absent.
+            </p>
+          </div>
         </div>
 
         <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
           {/* Left — Venue list */}
           <div style={{
             width: 320, flexShrink: 0, background: '#fff', border: '1px solid #e5e4eb',
-            borderRadius: 16, padding: 16, maxHeight: 'calc(100vh - 160px)', overflowY: 'auto'
+            borderRadius: 16, padding: 16, maxHeight: 'calc(100vh - 160px)', overflowY: 'auto',
+            boxShadow: '0 1px 3px rgba(16,24,40,0.04)'
           }}>
-            <div style={{ fontSize: 14, fontWeight: 800, color: '#1a1a2e', marginBottom: 12 }}>
+            <div style={{ fontSize: 14, fontWeight: 800, color: '#1a1a2e', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ width: 4, height: 16, borderRadius: 4, background: P, display: 'inline-block' }} />
               Venues & Slots
             </div>
 
@@ -268,9 +277,14 @@ export default function AdminAttendance() {
             {!selected ? (
               <div style={{
                 background: '#fff', border: '1px solid #e5e4eb', borderRadius: 16,
-                padding: '60px 20px', textAlign: 'center', color: '#9ca3af'
+                padding: '60px 20px', textAlign: 'center', color: '#9ca3af',
+                boxShadow: '0 1px 3px rgba(16,24,40,0.04)'
               }}>
-                <div style={{ fontSize: 40, marginBottom: 12 }}>📋</div>
+                <div style={{ width: 64, height: 64, borderRadius: 18, margin: '0 auto 16px', display: 'grid', placeItems: 'center', background: 'rgba(108,71,255,0.08)' }}>
+                  <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke={P} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+                  </svg>
+                </div>
                 <div style={{ fontSize: 15, fontWeight: 700, color: '#1a1a2e', marginBottom: 4 }}>Select a Venue</div>
                 <div style={{ fontSize: 13 }}>Pick a venue/slot from the left to view booked students.</div>
               </div>
