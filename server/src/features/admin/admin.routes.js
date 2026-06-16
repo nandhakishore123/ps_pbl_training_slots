@@ -18,6 +18,21 @@ router.get('/slot-timings', adminController.getSlotTimings);
 router.post('/slot-timings', adminController.addSlotTiming);
 router.delete('/slot-timings/:slotId', adminController.deleteSlotTiming);
 
+// ── Slot timing edit / open-close (Admin only — role_id 3) ───
+router.get('/slot-timings/all', requireRole(3), adminController.getAllSlotTimings);
+router.put('/slot-timings/:slotId', requireRole(3), adminController.updateSlotTiming);
+router.patch('/slot-timings/:slotId/active', requireRole(3), adminController.setSlotActive);
+
+// ── Venue management (Admin only — role_id 3) ────────────────
+router.post('/venues', requireRole(3), adminController.createVenue);
+router.put('/venues/:venueId', requireRole(3), adminController.updateVenue);
+router.patch('/venues/:venueId/active', requireRole(3), adminController.setVenueActive);
+
+// ── Venue ↔ Skill management (Admin only — role_id 3) ────────
+router.get('/venues/:venueId/skills', requireRole(3), adminController.getVenueSkills);
+router.post('/venues/:venueId/skills', requireRole(3), adminController.addVenueSkill);
+router.delete('/venues/:venueId/skills/:trainingSkillId', requireRole(3), adminController.removeVenueSkill);
+
 router.post('/venues/:mappingId/swap-faculty', adminController.swapFaculty);
 router.post('/faculty/transfer-individual', adminController.transferIndividualVenue);
 router.post('/faculty/transfer-all', adminController.transferAllVenues);

@@ -37,6 +37,47 @@ export const adminService = {
     return api.delete(`/admin/slot-timings/${slotId}`);
   },
 
+  // ── Slot timing edit / open-close (admin-only) ──────────────
+  getAllSlotTimings() {
+    return api.get('/admin/slot-timings/all');
+  },
+
+  updateSlotTiming(slotId, startTime, endTime, force = false) {
+    return api.put(`/admin/slot-timings/${slotId}`, { startTime, endTime, force });
+  },
+
+  setSlotActive(slotId, isActive) {
+    return api.patch(`/admin/slot-timings/${slotId}/active`, { isActive });
+  },
+
+  // ── Venue management (admin-only) ───────────────────────────
+  createVenue(payload) {
+    // payload: { venueName, location, capacity }
+    return api.post('/admin/venues', payload);
+  },
+
+  updateVenue(venueId, payload) {
+    // payload: { venueName, location, capacity }
+    return api.put(`/admin/venues/${venueId}`, payload);
+  },
+
+  setVenueActive(venueId, isActive, force = false) {
+    return api.patch(`/admin/venues/${venueId}/active`, { isActive, force });
+  },
+
+  // ── Venue ↔ Skill management (admin-only) ───────────────────
+  getVenueSkills(venueId) {
+    return api.get(`/admin/venues/${venueId}/skills`);
+  },
+
+  addVenueSkill(venueId, trainingSkillId) {
+    return api.post(`/admin/venues/${venueId}/skills`, { trainingSkillId });
+  },
+
+  removeVenueSkill(venueId, trainingSkillId) {
+    return api.delete(`/admin/venues/${venueId}/skills/${trainingSkillId}`);
+  },
+
   swapFaculty(mappingId, toFacultyId, reason) {
     return api.post(`/admin/venues/${mappingId}/swap-faculty`, { toFacultyId, reason });
   },

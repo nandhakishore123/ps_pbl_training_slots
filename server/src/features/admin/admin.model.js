@@ -55,6 +55,39 @@ export const listVenues = async () => {
   return rows;
 };
 
+// ── Venue management (create / edit / activate) ──────────────
+export const createVenue = async ({ venueName, location, capacity }) => {
+  const [result] = await db.execute(
+    `INSERT INTO venues (venue_name, location, capacity, is_active) VALUES (?, ?, ?, 1)`,
+    [venueName, location ?? null, capacity ?? null]
+  );
+  return result.insertId;
+};
+
+export const updateVenue = async (venueId, { venueName, location, capacity }) => {
+  const [result] = await db.execute(
+    `UPDATE venues SET venue_name = ?, location = ?, capacity = ?, updated_at = NOW() WHERE venue_id = ?`,
+    [venueName, location ?? null, capacity ?? null, Number(venueId)]
+  );
+  return result.affectedRows ?? 0;
+};
+
+export const setVenueActive = async (venueId, isActive) => {
+  const [result] = await db.execute(
+    `UPDATE venues SET is_active = ?, updated_at = NOW() WHERE venue_id = ?`,
+    [isActive ? 1 : 0, Number(venueId)]
+  );
+  return result.affectedRows ?? 0;
+};
+
+export const countMappingsByVenue = async (venueId) => {
+  const [rows] = await db.execute(
+    `SELECT COUNT(*) AS cnt FROM venue_mapping WHERE venue_id = ?`,
+    [Number(venueId)]
+  );
+  return Number(rows?.[0]?.cnt ?? 0);
+};
+
 
 export const listFaculty = async () => {
   // Faculty with their assigned venues and slots
@@ -145,10 +178,45 @@ export const addSlotTiming = async (startTime, endTime) => {
 
 export const deleteSlotTiming = async (slotId) => {
   await db.execute(`
-    UPDATE slot_timings 
-    SET is_active = 0 
+    UPDATE slot_timings
+    SET is_active = 0
     WHERE slot_id = ?
   `, [slotId]);
+};
+
+// Admin management list — returns ALL slots (incl. inactive) so closed slots
+// can be reopened. Student/faculty booking reads keep their own is_active=1 filter.
+export const listAllSlotTimings = async () => {
+  const [rows] = await db.execute(`
+    SELECT slot_id, start_time, end_time, is_active
+    FROM slot_timings
+    ORDER BY start_time ASC
+  `);
+  return rows;
+};
+
+export const updateSlotTiming = async (slotId, startTime, endTime) => {
+  const [result] = await db.execute(
+    `UPDATE slot_timings SET start_time = ?, end_time = ? WHERE slot_id = ?`,
+    [startTime, endTime, Number(slotId)]
+  );
+  return result.affectedRows ?? 0;
+};
+
+export const setSlotActive = async (slotId, isActive) => {
+  const [result] = await db.execute(
+    `UPDATE slot_timings SET is_active = ? WHERE slot_id = ?`,
+    [isActive ? 1 : 0, Number(slotId)]
+  );
+  return result.affectedRows ?? 0;
+};
+
+export const countBookingsBySlot = async (slotId) => {
+  const [rows] = await db.execute(
+    `SELECT COUNT(*) AS cnt FROM student_booking WHERE slot_id = ?`,
+    [Number(slotId)]
+  );
+  return Number(rows?.[0]?.cnt ?? 0);
 };
 
 export const getMappingById = async (mappingId) => {
@@ -340,4 +408,39 @@ export const listAllBookings = async ({ venueId, date, slotId } = {}) => {
     params
   );
   return rows ?? [];
+};
+
+// ── Venue ↔ Skill management (venue_alloted_skills) ──────────
+// Equality JOIN only (TiDB-safe: no subquery in JOIN ON).
+export const listVenueSkills = async (venueId) => {
+  const [rows] = await db.execute(
+    `SELECT vas.venue_alloted_skill_id, vas.training_skill_id, vas.is_active,
+            ts.skill_name, ts.skill_type
+     FROM venue_alloted_skills vas
+     JOIN training_skills ts ON ts.training_skill_id = vas.training_skill_id
+     WHERE vas.venue_id = ?
+     ORDER BY ts.skill_name ASC`,
+    [Number(venueId)]
+  );
+  return rows ?? [];
+};
+
+// Upsert: re-activates a soft-removed link. UNIQUE(venue_id, training_skill_id)
+// = uq_venue_skill makes ON DUPLICATE KEY UPDATE safe.
+export const addVenueSkill = async (venueId, trainingSkillId) => {
+  await db.execute(
+    `INSERT INTO venue_alloted_skills (venue_id, training_skill_id, is_active)
+     VALUES (?, ?, 1)
+     ON DUPLICATE KEY UPDATE is_active = 1`,
+    [Number(venueId), Number(trainingSkillId)]
+  );
+};
+
+export const removeVenueSkill = async (venueId, trainingSkillId) => {
+  const [result] = await db.execute(
+    `UPDATE venue_alloted_skills SET is_active = 0
+     WHERE venue_id = ? AND training_skill_id = ?`,
+    [Number(venueId), Number(trainingSkillId)]
+  );
+  return result.affectedRows ?? 0;
 };

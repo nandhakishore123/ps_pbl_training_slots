@@ -116,6 +116,112 @@ export const deleteSlotTiming = async (req, res, next) => {
     }
 };
 
+// ── Venue management ─────────────────────────────────────────
+
+export const createVenue = async (req, res, next) => {
+    try {
+        const { venueName, location, capacity } = req.body;
+        const venueId = await adminService.createVenue({ venueName, location, capacity });
+        return successResponse(res, 'Venue created successfully', { venueId });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const updateVenue = async (req, res, next) => {
+    try {
+        const { venueId } = req.params;
+        const { venueName, location, capacity } = req.body;
+        await adminService.updateVenue(venueId, { venueName, location, capacity });
+        return successResponse(res, 'Venue updated successfully', null);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const setVenueActive = async (req, res, next) => {
+    try {
+        const { venueId } = req.params;
+        const { isActive, force } = req.body;
+        await adminService.setVenueActive(venueId, !!isActive, !!force);
+        return successResponse(res, `Venue ${isActive ? 'activated' : 'deactivated'} successfully`, null);
+    } catch (error) {
+        if (error.requiresConfirmation) {
+            return res.status(409).json({ success: false, requiresConfirmation: true, count: error.count, message: error.message });
+        }
+        next(error);
+    }
+};
+
+// ── Slot timing edit / open-close ────────────────────────────
+
+export const getAllSlotTimings = async (req, res, next) => {
+    try {
+        const data = await adminService.getAllSlotTimings();
+        return successResponse(res, 'Slot timings retrieved successfully', data);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const updateSlotTiming = async (req, res, next) => {
+    try {
+        const { slotId } = req.params;
+        const { startTime, endTime, force } = req.body;
+        await adminService.updateSlotTiming(slotId, startTime, endTime, !!force);
+        return successResponse(res, 'Slot timing updated successfully', null);
+    } catch (error) {
+        if (error.requiresConfirmation) {
+            return res.status(409).json({ success: false, requiresConfirmation: true, count: error.count, message: error.message });
+        }
+        next(error);
+    }
+};
+
+export const setSlotActive = async (req, res, next) => {
+    try {
+        const { slotId } = req.params;
+        const { isActive } = req.body;
+        await adminService.setSlotActive(slotId, !!isActive);
+        return successResponse(res, `Slot ${isActive ? 'opened' : 'closed'} successfully`, null);
+    } catch (error) {
+        next(error);
+    }
+};
+
+// ── Venue ↔ Skill management ─────────────────────────────────
+
+export const getVenueSkills = async (req, res, next) => {
+    try {
+        const { venueId } = req.params;
+        const data = await adminService.getVenueSkills(venueId);
+        return successResponse(res, 'Venue skills retrieved successfully', data);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const addVenueSkill = async (req, res, next) => {
+    try {
+        const { venueId } = req.params;
+        const { trainingSkillId } = req.body;
+        await adminService.addVenueSkill(venueId, trainingSkillId);
+        return successResponse(res, 'Skill linked to venue successfully', null);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const removeVenueSkill = async (req, res, next) => {
+    try {
+        const { venueId, trainingSkillId } = req.params;
+        await adminService.removeVenueSkill(venueId, trainingSkillId);
+        return successResponse(res, 'Skill removed from venue successfully', null);
+    } catch (error) {
+        next(error);
+    }
+};
+
 // ── Attendance ───────────────────────────────────────────────
 
 export const getAttendanceMappings = async (req, res, next) => {
