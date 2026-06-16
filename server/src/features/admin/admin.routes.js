@@ -19,7 +19,6 @@ router.post('/slot-timings', adminController.addSlotTiming);
 router.delete('/slot-timings/:slotId', adminController.deleteSlotTiming);
 
 router.post('/venues/:mappingId/swap-faculty', adminController.swapFaculty);
-router.post('/faculty/:facultyId/add-venue', adminController.addVenueToFaculty);
 router.post('/faculty/transfer-individual', adminController.transferIndividualVenue);
 router.post('/faculty/transfer-all', adminController.transferAllVenues);
 

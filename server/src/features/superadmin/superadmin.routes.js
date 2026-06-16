@@ -5,8 +5,8 @@ import { requireRole } from '../../middleware/role.middleware.js';
 
 const router = Router();
 
-// All super-admin routes require a valid token and SUPER_ADMIN role (role_id = 4).
-router.use(authMiddleware, requireRole(4));
+// Faculty-management routes require a valid token and Admin role (role_id = 3).
+router.use(authMiddleware, requireRole(3));
 
 // ── Phase 0 ───────────────────────────────────────────────────────────────────
 router.get('/ping', superAdminController.ping);

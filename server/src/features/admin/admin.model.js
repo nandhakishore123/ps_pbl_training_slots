@@ -189,14 +189,6 @@ export const swapFaculty = async (mappingId, newFacultyId, reason, adminId) => {
   }
 };
 
-export const addVenueToFaculty = async (facultyId, venueId, skillType, slotId) => {
-  const [result] = await db.execute(`
-    INSERT INTO venue_mapping (faculty_id, venue_id, slot_id)
-    VALUES (?, ?, ?)
-  `, [facultyId, venueId, slotId]);
-  return result.insertId;
-};
-
 export const transferIndividualVenue = async (mappingId, toFacultyId, reason) => {
   return swapFaculty(mappingId, toFacultyId, reason, null); // Reuse swap logic
 };

@@ -5,14 +5,14 @@ import { useData } from '../../pages/Admin/context/DataContext'
 import { useApp } from '../../pages/Admin/context/AppContext'
 
 export default function FacultyActionModal({ isOpen, onClose, context }) {
-  const { addVenueToFaculty, transferAllVenues, transferIndividualVenue, venues, slotTimings } = useData()
+  const { addVenueToFaculty, transferAllVenues, transferIndividualVenue, venues, slotTimings, trainingSkills } = useData()
   const { showToast } = useApp()
 
   const [search, setSearch] = useState('')
   const [results, setResults] = useState([])
   const [selectedItem, setSelectedItem] = useState(null)
   const [reason, setReason] = useState('')
-  const [skillType, setSkillType] = useState('PBL')
+  const [trainingSkillId, setTrainingSkillId] = useState('')
   const [slotId, setSlotId] = useState('')
   const [loading, setLoading] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -25,7 +25,7 @@ export default function FacultyActionModal({ isOpen, onClose, context }) {
       setResults([])
       setSelectedItem(null)
       setReason('')
-      setSkillType('PBL')
+      setTrainingSkillId('')
       setSlotId(slotTimings?.length > 0 ? slotTimings[0].slot_id : '')
       
       if (type === 'transfer_all' || type === 'transfer_individual') {
@@ -62,14 +62,14 @@ export default function FacultyActionModal({ isOpen, onClose, context }) {
     let success = false
 
     if (type === 'add_venue') {
-      if (!selectedItem || !slotId) {
-        showToast('Please select a venue and a slot', true)
+      if (!selectedItem || !slotId || !trainingSkillId) {
+        showToast('Please select a venue, a training skill and a slot', true)
         setIsSubmitting(false)
         return
       }
-      success = await addVenueToFaculty(faculty.id, selectedItem.venue_id, skillType, slotId)
+      success = await addVenueToFaculty(faculty.id, selectedItem.venue_id, trainingSkillId, slotId)
       if (success) showToast('Venue added successfully')
-    } 
+    }
     else if (type === 'transfer_all') {
       if (!selectedItem || !reason.trim()) {
         showToast('Please select a faculty and provide a reason', true)
@@ -187,14 +187,18 @@ export default function FacultyActionModal({ isOpen, onClose, context }) {
             <div className={styles.extraFields}>
               <div className={styles.fieldRow}>
                 <div className={styles.fieldGroup}>
-                  <label>Skill Type</label>
-                  <select 
-                    className={styles.select} 
-                    value={skillType} 
-                    onChange={(e) => setSkillType(e.target.value)}
+                  <label>Training Skill</label>
+                  <select
+                    className={styles.select}
+                    value={trainingSkillId}
+                    onChange={(e) => setTrainingSkillId(e.target.value)}
                   >
-                    <option value="PBL">PBL</option>
-                    <option value="PS">PS</option>
+                    <option value="">Select Skill</option>
+                    {trainingSkills?.map(ts => (
+                      <option key={ts.training_skill_id} value={ts.training_skill_id}>
+                        {ts.skill_name}{ts.skill_type ? ` (${ts.skill_type})` : ''}
+                      </option>
+                    ))}
                   </select>
                 </div>
                 <div className={styles.fieldGroup}>
@@ -237,9 +241,9 @@ export default function FacultyActionModal({ isOpen, onClose, context }) {
               className={styles.btnSubmit} 
               onClick={handleSubmit} 
               disabled={
-                isSubmitting || 
-                !selectedItem || 
-                (type === 'add_venue' && !slotId) ||
+                isSubmitting ||
+                !selectedItem ||
+                (type === 'add_venue' && (!slotId || !trainingSkillId)) ||
                 ((type === 'transfer_all' || type === 'transfer_individual') && !reason.trim())
               }
             >

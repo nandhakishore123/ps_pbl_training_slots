@@ -26,6 +26,7 @@ import Students from '../pages/Admin/StudentManagement/StudentManagement.jsx'
 import VenueAllocation from '../pages/Admin/VenueAllocation/VenueAllocation.jsx'
 import AdminAttendance from '../pages/Admin/Attendance/AdminAttendance.jsx'
 import AdminBookings from '../pages/Admin/Bookings/AdminBookings.jsx'
+import FacultyManagement from '../pages/Admin/FacultyManagement/FacultyManagement.jsx'
 
 import { AppProvider } from '../pages/Admin/context/AppContext.jsx'
 import { DataProvider } from '../pages/Admin/context/DataContext.jsx'
@@ -33,11 +34,6 @@ import FileNotFound from '../pages/404/FileNotFound.jsx';
 import FacultyDashboard from '../pages/Faculty/FacultyDashboard.jsx';
 import RequestTransfer from '../pages/Faculty/RequestTransfer.jsx';
 import MyVenues from '../pages/Faculty/MyVenues.jsx';
-
-//superadmin
-import SuperAdminDashboard from '../pages/SuperAdmin/Dashboard/Dashboard.jsx';
-import SuperAdminComingSoon from '../pages/SuperAdmin/ComingSoon/ComingSoon.jsx';
-import SuperAdminFaculty from '../pages/SuperAdmin/Faculty/FacultyManagement.jsx';
 
 
 function useBootstrapAuth() {
@@ -82,10 +78,6 @@ function HomeRedirect() {
 
     if (roleId === 2) {
         return <Navigate to="/faculty-dashboard" replace />;
-    }
-
-    if (roleId === 4) {
-        return <Navigate to="/superadmin-dashboard" replace />;
     }
 
     return <Navigate to="/auth/login" replace />;
@@ -156,11 +148,7 @@ function AppNavigator() {
                 <Route path="/venue-allocation" element={<RequireAuth><RequireRole allowedRoles={[3]}><AdminProviders><VenueAllocation/></AdminProviders></RequireRole></RequireAuth>} />
                 <Route path="/admin-attendance" element={<RequireAuth><RequireRole allowedRoles={[3]}><AdminProviders><AdminAttendance/></AdminProviders></RequireRole></RequireAuth>} />
                 <Route path="/admin-bookings" element={<RequireAuth><RequireRole allowedRoles={[3]}><AdminProviders><AdminBookings/></AdminProviders></RequireRole></RequireAuth>} />
-
-                {/* Super Admin routes */}
-                <Route path="/superadmin-dashboard" element={<RequireAuth><RequireRole allowedRoles={[4]}><SuperAdminDashboard/></RequireRole></RequireAuth>} />
-                <Route path="/superadmin/faculty" element={<RequireAuth><RequireRole allowedRoles={[4]}><SuperAdminFaculty/></RequireRole></RequireAuth>} />
-                <Route path="/superadmin/coming-soon" element={<RequireAuth><RequireRole allowedRoles={[4]}><SuperAdminComingSoon/></RequireRole></RequireAuth>} />
+                <Route path="/faculty-management" element={<RequireAuth><RequireRole allowedRoles={[3]}><FacultyManagement/></RequireRole></RequireAuth>} />
 
                 {/* faculty  routes*/}
                 <Route path="/faculty-dashboard" element={<RequireAuth><RequireRole allowedRoles={[2]}><FacultyDashboard/></RequireRole></RequireAuth>} />

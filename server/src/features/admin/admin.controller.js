@@ -76,17 +76,6 @@ export const swapFaculty = async (req, res, next) => {
     }
 };
 
-export const addVenueToFaculty = async (req, res, next) => {
-    try {
-        const { facultyId } = req.params;
-        const { venueId, skillType, slotId } = req.body;
-        await adminService.addVenueToFaculty(facultyId, venueId, skillType, slotId);
-        return successResponse(res, null, 'Venue added successfully');
-    } catch (error) {
-        next(error);
-    }
-};
-
 export const transferIndividualVenue = async (req, res, next) => {
     try {
         const { mappingId, toFacultyId, reason } = req.body;

@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react'
 import { adminService } from '../../../services/features/adminService'
+import { superAdminService } from '../../../services/features/superAdminService'
 import { useApp } from './AppContext'
 
 // Mock approvals since they are not fully migrated yet
@@ -110,9 +111,11 @@ export function DataProvider({ children }) {
     }
   }
 
-  const addVenueToFaculty = async (facultyId, venueId, skillType, slotId) => {
+  const addVenueToFaculty = async (facultyId, venueId, trainingSkillId, slotId) => {
     try {
-      await adminService.addVenueToFaculty(facultyId, venueId, skillType, slotId)
+      // Routed through the assign endpoint, which writes BOTH venue_mapping
+      // AND venue_alloted_skills (so the venue becomes bookable for the skill).
+      await superAdminService.assignFacultyToLab(facultyId, { venueId, slotId, trainingSkillId })
       await fetchFaculty()
       await fetchVenues()
       return true

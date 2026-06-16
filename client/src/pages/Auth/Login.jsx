@@ -73,10 +73,6 @@ export default function PCDPLogin() {
       return '/admin-dashboard';
     }
 
-    if (numericRoleId === 4) {
-      return '/superadmin-dashboard';
-    }
-
     return '/auth/login';
   };
 

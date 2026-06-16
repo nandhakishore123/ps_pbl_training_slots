@@ -41,10 +41,6 @@ export const adminService = {
     return api.post(`/admin/venues/${mappingId}/swap-faculty`, { toFacultyId, reason });
   },
 
-  addVenueToFaculty(facultyId, venueId, skillType, slotId) {
-    return api.post(`/admin/faculty/${facultyId}/add-venue`, { venueId, skillType, slotId });
-  },
-
   transferIndividualVenue(mappingId, toFacultyId, reason) {
     return api.post('/admin/faculty/transfer-individual', { mappingId, toFacultyId, reason });
   },

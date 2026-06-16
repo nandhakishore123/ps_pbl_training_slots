@@ -50,13 +50,6 @@ export const swapFaculty = async (mappingId, newFacultyId, reason) => {
     await adminModel.swapFaculty(mappingId, newFacultyId, reason);
 };
 
-export const addVenueToFaculty = async (facultyId, venueId, skillType, slotId) => {
-    if (!facultyId || !venueId || !skillType || !slotId) {
-        throw new Error('All fields are required');
-    }
-    return await adminModel.addVenueToFaculty(facultyId, venueId, skillType, slotId);
-};
-
 export const transferIndividualVenue = async (mappingId, toFacultyId, reason) => {
     if (!mappingId || !toFacultyId || !reason) {
         throw new Error('Mapping ID, New Faculty ID, and Reason are required');
