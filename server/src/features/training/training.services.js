@@ -348,15 +348,46 @@ export const startAssessment = async ({ userId, assessmentId, totalMarks }) => {
     }
   }
   if (skillId && levelId) {
+    // Pull the booking together with its slot window so we can enforce the
+    // start gate server-side (production may run in UTC — never trust the
+    // server's local clock; compare against DB IST instead).
     const [bookingRows] = await db.execute(
-      `SELECT booking_id FROM student_booking
-       WHERE student_id = ? AND training_skill_id = ? AND level_id = ? AND status = 'ONGOING'
+      `SELECT sb.booking_id,
+              DATE_FORMAT(sb.booking_date, '%Y-%m-%d') AS booking_date,
+              sb.is_present,
+              TIME_FORMAT(st.start_time, '%H:%i:%s') AS start_time,
+              TIME_FORMAT(st.end_time, '%H:%i:%s') AS end_time
+       FROM student_booking sb
+       JOIN slot_timings st ON st.slot_id = sb.slot_id
+       WHERE sb.student_id = ? AND sb.training_skill_id = ? AND sb.level_id = ? AND sb.status = 'ONGOING'
        LIMIT 1`,
       [Number(studentId), Number(skillId), Number(levelId)]
     );
-    if (!bookingRows?.length) {
+    const booking = bookingRows?.[0];
+    if (!booking) {
       const err = new Error('No active ongoing booking found for this assessment');
       err.status = 400;
+      throw err;
+    }
+
+    // IST wall-clock 'YYYY-MM-DD HH:MM:SS' from the DB (CONVERT_TZ to +05:30).
+    const istNow = await trainingModel.getIstNow();
+    const slotStart = `${booking.booking_date} ${booking.start_time}`;
+    const slotEnd = `${booking.booking_date} ${booking.end_time}`;
+
+    if (istNow && istNow < slotStart) {
+      const err = new Error('Assessment is not available yet. It opens at your slot start time.');
+      err.status = 403;
+      throw err;
+    }
+    if (istNow && istNow > slotEnd) {
+      const err = new Error('This slot has ended. The assessment window is closed.');
+      err.status = 403;
+      throw err;
+    }
+    if (Number(booking.is_present) !== 1) {
+      const err = new Error("You haven't been marked present yet. Please wait for the faculty to mark your attendance.");
+      err.status = 403;
       throw err;
     }
   }

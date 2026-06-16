@@ -167,17 +167,24 @@ export default function AdminBookings() {
 
       <div style={{ maxWidth: 1280, margin: '0 auto', padding: '24px 24px 48px' }}>
         {/* Title */}
-        <div style={{ marginBottom: 20 }}>
-          <h1 style={{ fontSize: 22, fontWeight: 800, color: '#1a1a2e', fontFamily: "'Outfit', sans-serif" }}>
-            All Bookings
-          </h1>
-          <p style={{ fontSize: 13, color: '#6b7280', marginTop: 2 }}>
-            Every student booking across all labs — with attendance, assessment result, and CSV export.
-          </p>
+        <div style={{ marginBottom: 20, display: 'flex', alignItems: 'center', gap: 14 }}>
+          <div style={{ width: 44, height: 44, borderRadius: 14, flexShrink: 0, display: 'grid', placeItems: 'center', background: `linear-gradient(135deg, ${P}, #8b6dff)`, boxShadow: '0 6px 18px rgba(108,71,255,0.32)' }}>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+            </svg>
+          </div>
+          <div>
+            <h1 style={{ fontSize: 22, fontWeight: 800, color: '#1a1a2e', fontFamily: "'Outfit', sans-serif" }}>
+              All Bookings
+            </h1>
+            <p style={{ fontSize: 13, color: '#6b7280', marginTop: 2 }}>
+              Every student booking across all labs — with attendance, assessment result, and CSV export.
+            </p>
+          </div>
         </div>
 
         {/* Filter bar */}
-        <div style={{ background: '#fff', border: '1px solid #e5e4eb', borderRadius: 16, padding: 16, marginBottom: 16 }}>
+        <div style={{ background: '#fff', border: '1px solid #e5e4eb', borderRadius: 16, padding: 16, marginBottom: 16, boxShadow: '0 1px 3px rgba(16,24,40,0.04)' }}>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
             <select value={venueId} onChange={e => setVenueId(e.target.value)} style={selectStyle}>
               <option value="">All Labs</option>
@@ -245,7 +252,7 @@ export default function AdminBookings() {
         </div>
 
         {/* Table */}
-        <div style={{ background: '#fff', border: '1px solid #e5e4eb', borderRadius: 16, overflow: 'hidden' }}>
+        <div style={{ background: '#fff', border: '1px solid #e5e4eb', borderRadius: 16, overflow: 'hidden', boxShadow: '0 1px 3px rgba(16,24,40,0.04)' }}>
           {loading ? (
             <div style={{ padding: '48px 20px', textAlign: 'center', color: '#9ca3af', fontSize: 13 }}>Loading bookings...</div>
           ) : error ? (
@@ -271,8 +278,8 @@ export default function AdminBookings() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map(b => (
-                    <tr key={b.booking_id}>
+                  {filtered.map((b, i) => (
+                    <tr key={b.booking_id} style={{ background: i % 2 ? '#fbfaff' : '#fff' }}>
                       <td style={{ ...td, fontWeight: 700 }}>{b.student_name}</td>
                       <td style={{ ...td, fontFamily: 'monospace', color: '#6b7280' }}>{b.reg_num}</td>
                       <td style={td}>{b.venue_name}</td>
