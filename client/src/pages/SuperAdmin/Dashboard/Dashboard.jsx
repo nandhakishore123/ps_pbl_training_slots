@@ -23,8 +23,9 @@ const AREAS = [
   },
   {
     label: 'Faculty',
-    desc: 'Create faculty & venue mappings (coming soon)',
+    desc: 'Create, edit, assign labs & revoke faculty',
     iconColor: 'orange',
+    to: '/superadmin/faculty',
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
         <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
@@ -148,7 +149,7 @@ export default function SuperAdminDashboard() {
               icon={a.icon}
               label={a.label}
               desc={a.desc}
-              onClick={() => openComingSoon(a.label)}
+              onClick={() => (a.to ? navigate(a.to) : openComingSoon(a.label))}
             />
           ))}
         </div>

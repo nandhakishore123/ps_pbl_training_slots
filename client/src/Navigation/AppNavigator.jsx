@@ -37,6 +37,7 @@ import MyVenues from '../pages/Faculty/MyVenues.jsx';
 //superadmin
 import SuperAdminDashboard from '../pages/SuperAdmin/Dashboard/Dashboard.jsx';
 import SuperAdminComingSoon from '../pages/SuperAdmin/ComingSoon/ComingSoon.jsx';
+import SuperAdminFaculty from '../pages/SuperAdmin/Faculty/FacultyManagement.jsx';
 
 
 function useBootstrapAuth() {
@@ -158,6 +159,7 @@ function AppNavigator() {
 
                 {/* Super Admin routes */}
                 <Route path="/superadmin-dashboard" element={<RequireAuth><RequireRole allowedRoles={[4]}><SuperAdminDashboard/></RequireRole></RequireAuth>} />
+                <Route path="/superadmin/faculty" element={<RequireAuth><RequireRole allowedRoles={[4]}><SuperAdminFaculty/></RequireRole></RequireAuth>} />
                 <Route path="/superadmin/coming-soon" element={<RequireAuth><RequireRole allowedRoles={[4]}><SuperAdminComingSoon/></RequireRole></RequireAuth>} />
 
                 {/* faculty  routes*/}
