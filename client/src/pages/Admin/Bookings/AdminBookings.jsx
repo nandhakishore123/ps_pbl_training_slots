@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { adminService } from '../../../services/features/adminService'
 import Header from '../layout/Header'
+import { useApp } from '../context/AppContext'
 
 const P = '#6c47ff'
 const font = "'Plus Jakarta Sans', 'Outfit', system-ui, sans-serif"
@@ -94,6 +95,8 @@ const buildCsv = (rows) => {
 
 // ── Main Page ──────────────────────────────────────────────────
 export default function AdminBookings() {
+  const { showToast } = useApp()
+
   const [venues, setVenues] = useState([])
   const [slots, setSlots] = useState([])
 
@@ -105,6 +108,7 @@ export default function AdminBookings() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [search, setSearch] = useState('')
+  const [cancellingId, setCancellingId] = useState(null)
 
   // Filter dropdown sources (reuse existing admin endpoints)
   useEffect(() => {
@@ -126,6 +130,23 @@ export default function AdminBookings() {
   }, [venueId, date, slotId])
 
   useEffect(() => { fetchBookings() }, [fetchBookings])
+
+  // Cancel a booking — only ONGOING bookings can be cancelled (the seat is freed
+  // server-side, decrementing venue_slots only because it was ONGOING).
+  const handleCancel = async (b) => {
+    if (b.booking_status !== 'ONGOING') return
+    if (!window.confirm('Cancel this booking and free the seat?')) return
+    setCancellingId(b.booking_id)
+    try {
+      await adminService.cancelBooking(b.booking_id)
+      showToast('Booking cancelled — seat freed')
+      fetchBookings()
+    } catch (err) {
+      showToast(err?.response?.data?.message || 'Failed to cancel booking', true)
+    } finally {
+      setCancellingId(null)
+    }
+  }
 
   // Client-side name / reg-number search on top of the server-filtered set
   const filtered = useMemo(() => {
@@ -275,6 +296,7 @@ export default function AdminBookings() {
                     <th style={th}>Status</th>
                     <th style={th}>Attendance</th>
                     <th style={th}>Result</th>
+                    <th style={th}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -289,6 +311,34 @@ export default function AdminBookings() {
                       <td style={td}><StatusBadge status={b.booking_status} /></td>
                       <td style={td}><AttendanceBadge b={b} /></td>
                       <td style={td}><ResultBadge b={b} /></td>
+                      <td style={td}>
+                        {b.booking_status === 'ONGOING' ? (
+                          <button
+                            onClick={() => handleCancel(b)}
+                            disabled={cancellingId === b.booking_id}
+                            style={{
+                              padding: '6px 12px', borderRadius: 8, border: '1.5px solid rgba(239,68,68,0.4)',
+                              background: 'rgba(239,68,68,0.08)', color: '#ef4444', fontSize: 12, fontWeight: 700,
+                              cursor: cancellingId === b.booking_id ? 'not-allowed' : 'pointer',
+                              opacity: cancellingId === b.booking_id ? 0.6 : 1, fontFamily: font, whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {cancellingId === b.booking_id ? 'Cancelling…' : 'Cancel'}
+                          </button>
+                        ) : (
+                          <button
+                            disabled
+                            title="Only ongoing bookings can be cancelled"
+                            style={{
+                              padding: '6px 12px', borderRadius: 8, border: '1.5px solid #e5e4eb',
+                              background: '#f9fafb', color: '#c7c3d4', fontSize: 12, fontWeight: 700,
+                              cursor: 'not-allowed', fontFamily: font, whiteSpace: 'nowrap',
+                            }}
+                          >
+                            Cancel
+                          </button>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

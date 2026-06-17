@@ -371,6 +371,21 @@ export const decrementVenueSlotBooking = async (venueSlotId, conn = null) => {
   return result?.affectedRows ?? 0;
 };
 
+// Hard-delete a booking and its dependents (Stage 4a admin cancel). Order
+// respects FKs: only attendance has an enforced FK to student_booking; end_survey
+// has no FK (cleared for cleanliness). Single-table deletes by key — TiDB-safe.
+// The seat release (decrement) is handled by the caller, ONLY for ONGOING.
+export const deleteBookingCascade = async (bookingId, conn = null) => {
+  const exec = getExec(conn);
+  await exec.execute(`DELETE FROM attendance WHERE booking_id = ?`, [Number(bookingId)]);
+  await exec.execute(`DELETE FROM end_survey WHERE booking_id = ?`, [Number(bookingId)]);
+  const [result] = await exec.execute(
+    `DELETE FROM student_booking WHERE booking_id = ?`,
+    [Number(bookingId)]
+  );
+  return result?.affectedRows ?? 0;
+};
+
 export const insertStudentBooking = async ({ studentId, trainingSkillId, levelId, mappingId, venueSlotId, bookingDate }, conn = null) => {
   const exec = getExec(conn);
   // Stage 3b: slot_id intentionally written NULL (kept nullable for rollback).

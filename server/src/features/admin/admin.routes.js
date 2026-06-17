@@ -59,5 +59,7 @@ router.put('/config/booking-window', requireRole(3), adminController.updateBooki
 
 // ── All Bookings dashboard (Admin only — role_id 3) ──────────
 router.get('/bookings', requireRole(3), adminController.getAllBookings);
+// ── Admin cancel a booking (Stage 4a) — hard delete + seat release ──
+router.delete('/bookings/:bookingId', requireRole(3), adminController.cancelBooking);
 
 export default router;

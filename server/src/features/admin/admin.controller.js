@@ -356,3 +356,13 @@ export const getAllBookings = async (req, res, next) => {
         next(error);
     }
 };
+
+export const cancelBooking = async (req, res, next) => {
+    try {
+        const { bookingId } = req.params;
+        const data = await adminService.cancelBooking(bookingId);
+        return successResponse(res, 'Booking cancelled successfully', data);
+    } catch (error) {
+        next(error);
+    }
+};

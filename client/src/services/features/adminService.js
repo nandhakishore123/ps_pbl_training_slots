@@ -144,5 +144,10 @@ export const adminService = {
   // ── All Bookings dashboard ───────────────────────────────────
   getAllBookings(params = {}) {
     return api.get('/admin/bookings', { params });
+  },
+
+  // ── Admin cancel a booking (Stage 4a) ────────────────────────
+  cancelBooking(bookingId) {
+    return api.delete(`/admin/bookings/${bookingId}`);
   }
 };

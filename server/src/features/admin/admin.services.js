@@ -1,9 +1,60 @@
+import db from '../../config/db.js';
 import * as adminModel from './admin.model.js';
 import * as trainingModel from '../training/training.model.js';
 import { invalidateBookingWindowCache, computeBookingWindow } from '../training/training.services.js';
 
 export const getDashboardKPI = async () => {
     return await adminModel.getDashboardKPI();
+};
+
+// ── Admin cancel a booking (Stage 4a) — hard delete, no DB schema change ──────
+// Seat invariant: venue_slots.current_bookings holds a seat ONLY while the
+// booking is ONGOING. So we decrement ONLY for ONGOING; terminal/malpractice
+// bookings already released their seat. Reuses the existing student/seat helpers
+// — the student booking flow and assessment engine are NOT modified.
+export const cancelBooking = async (bookingId) => {
+    const id = Number(bookingId);
+    if (!id) {
+        const err = new Error('Booking id is required');
+        err.status = 400;
+        throw err;
+    }
+
+    const conn = await db.getConnection();
+    try {
+        await conn.beginTransaction();
+
+        const booking = await trainingModel.getBookingById(id, conn);
+        if (!booking) {
+            const err = new Error('Booking not found');
+            err.status = 404;
+            throw err;
+        }
+
+        if (booking.status === 'MALPRACTICE') {
+            const err = new Error('Use revoke-malpractice, not cancel.');
+            err.status = 409;
+            throw err;
+        }
+        if (booking.status !== 'ONGOING') {
+            // PASS / FAIL / COMPLETED — already finished, seat already released.
+            const err = new Error('This booking is already finished.');
+            err.status = 409;
+            throw err;
+        }
+
+        // ONGOING only: release the seat it currently holds.
+        await trainingModel.decrementVenueSlotBooking(booking.venue_slot_id, conn);
+        await trainingModel.deleteBookingCascade(id, conn);
+
+        await conn.commit();
+        return { success: true, bookingId: id };
+    } catch (error) {
+        await conn.rollback();
+        throw error;
+    } finally {
+        conn.release();
+    }
 };
 
 // ── Booking-open time config (app_config) ────────────────────
