@@ -406,6 +406,69 @@ export const setTrainingSkillActive = async (id, isActive, force = false) => {
     return await adminModel.setTrainingSkillActive(id, isActive);
 };
 
+// ── Skill level (Course/Lab level) management — Stage 5b ─────
+// Create/Edit are trivial. Delete is GUARD-DELETE: blocked when the level is in
+// use or still owns content (no soft-delete column on skill_levels).
+export const createLevel = async (skillId, { level_name, core_concept, max_attempts }) => {
+    if (!skillId) throw new Error('Training skill ID is required');
+    if (!level_name || !String(level_name).trim()) {
+        throw new Error('Level name is required');
+    }
+    return await adminModel.createLevel({
+        training_skill_id: skillId,
+        level_name: String(level_name).trim(),
+        core_concept: core_concept != null && String(core_concept).trim() !== '' ? String(core_concept).trim() : null,
+        max_attempts: max_attempts != null && max_attempts !== '' ? Number(max_attempts) : null,
+    });
+};
+
+export const updateLevel = async (levelId, { level_name, core_concept, max_attempts }) => {
+    if (!levelId) throw new Error('Level ID is required');
+    if (!level_name || !String(level_name).trim()) {
+        throw new Error('Level name is required');
+    }
+    return await adminModel.updateLevel(levelId, {
+        level_name: String(level_name).trim(),
+        core_concept: core_concept != null && String(core_concept).trim() !== '' ? String(core_concept).trim() : null,
+        max_attempts: max_attempts != null && max_attempts !== '' ? Number(max_attempts) : null,
+    });
+};
+
+// GUARD-DELETE. Order: in-use checks first (bookings, then assessment attempts),
+// then the "not empty" check. Each throws a 409 the controller surfaces verbatim.
+export const deleteLevelGuarded = async (levelId) => {
+    if (!levelId) throw new Error('Level ID is required');
+
+    const bookingCount = await adminModel.countBookingsByLevel(levelId);
+    if (bookingCount > 0) {
+        const err = new Error("Can't delete — this level has bookings.");
+        err.status = 409;
+        throw err;
+    }
+
+    const attemptCount = await adminModel.countAssessmentAttemptsByLevel(levelId);
+    if (attemptCount > 0) {
+        const err = new Error("Can't delete — this level has assessment attempts.");
+        err.status = 409;
+        throw err;
+    }
+
+    // No student data is attached; if the level still owns content, block rather
+    // than cascade into the assessment domain — admin must clear it first.
+    const contents = await adminModel.countLevelContents(levelId);
+    if (contents.syllabus + contents.points + contents.assessments > 0) {
+        const parts = [];
+        if (contents.syllabus > 0) parts.push(`${contents.syllabus} syllabus topic(s)`);
+        if (contents.points > 0) parts.push(`${contents.points} point rule(s)`);
+        if (contents.assessments > 0) parts.push(`${contents.assessments} assessment(s)`);
+        const err = new Error(`Can't delete — this level isn't empty (${parts.join(', ')}). Remove its contents first.`);
+        err.status = 409;
+        throw err;
+    }
+
+    return await adminModel.deleteLevel(levelId);
+};
+
 // ── Slot timing edit / open-close ────────────────────────────
 export const updateSlotTiming = async (slotId, startTime, endTime, force = false) => {
     if (!slotId) throw new Error('Slot ID is required');

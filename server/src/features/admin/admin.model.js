@@ -249,6 +249,72 @@ export const countVenueSkillsBySkill = async (id) => {
   return Number(rows?.[0]?.cnt ?? 0);
 };
 
+// ── Skill level (Course/Lab level) management — Stage 5b ─────
+// skill_levels has NO is_active column → delete is a HARD delete, guarded.
+// Listing reuses trainingModel.getSkillLevels (student read path, unchanged).
+// Create/Edit are single-table writes by key. Delete is blocked whenever the
+// level is in use (bookings / assessment attempts) OR still owns content
+// (syllabus / points / assessments) — the safe "remove its contents first"
+// path, so we never cascade into the assessment/booking domain.
+export const createLevel = async ({ training_skill_id, level_name, core_concept, max_attempts }) => {
+  const [result] = await db.execute(
+    `INSERT INTO skill_levels (training_skill_id, level_name, core_concept, max_attempts) VALUES (?, ?, ?, ?)`,
+    [Number(training_skill_id), level_name, core_concept ?? null, max_attempts ?? null]
+  );
+  return result.insertId;
+};
+
+export const updateLevel = async (levelId, { level_name, core_concept, max_attempts }) => {
+  const [result] = await db.execute(
+    `UPDATE skill_levels SET level_name = ?, core_concept = ?, max_attempts = ? WHERE level_id = ?`,
+    [level_name, core_concept ?? null, max_attempts ?? null, Number(levelId)]
+  );
+  return result.affectedRows ?? 0;
+};
+
+// Block if any student has a booking pinned to this level.
+export const countBookingsByLevel = async (levelId) => {
+  const [rows] = await db.execute(
+    `SELECT COUNT(*) AS cnt FROM student_booking WHERE level_id = ?`,
+    [Number(levelId)]
+  );
+  return Number(rows?.[0]?.cnt ?? 0);
+};
+
+// Block if any assessment of this level has student attempts. Equality JOIN only.
+export const countAssessmentAttemptsByLevel = async (levelId) => {
+  const [rows] = await db.execute(
+    `SELECT COUNT(*) AS cnt
+     FROM student_assessments sa
+     JOIN assessments a ON a.assessment_id = sa.assessment_id
+     WHERE a.level_id = ?`,
+    [Number(levelId)]
+  );
+  return Number(rows?.[0]?.cnt ?? 0);
+};
+
+// Owned content (syllabus / points / assessments). Non-zero → "not empty".
+export const countLevelContents = async (levelId) => {
+  const id = Number(levelId);
+  const [[syl]] = await db.execute(`SELECT COUNT(*) AS cnt FROM skill_syllabus WHERE level_id = ?`, [id]);
+  const [[pts]] = await db.execute(`SELECT COUNT(*) AS cnt FROM skill_points WHERE level_id = ?`, [id]);
+  const [[asm]] = await db.execute(`SELECT COUNT(*) AS cnt FROM assessments WHERE level_id = ?`, [id]);
+  return {
+    syllabus: Number(syl?.cnt ?? 0),
+    points: Number(pts?.cnt ?? 0),
+    assessments: Number(asm?.cnt ?? 0),
+  };
+};
+
+// Single-table hard delete by key — callers MUST run the guards first.
+export const deleteLevel = async (levelId) => {
+  const [result] = await db.execute(
+    `DELETE FROM skill_levels WHERE level_id = ?`,
+    [Number(levelId)]
+  );
+  return result.affectedRows ?? 0;
+};
+
 export const listSlotTimings = async () => {
   const [rows] = await db.execute(`
     SELECT slot_id, start_time, end_time 

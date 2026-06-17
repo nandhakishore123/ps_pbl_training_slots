@@ -217,6 +217,43 @@ export const setTrainingSkillActive = async (req, res, next) => {
     }
 };
 
+// ── Skill level (Course/Lab level) management — Stage 5b ─────
+// Listing reuses getSkillLevels above (GET /admin/training-skills/:skillId/levels).
+
+export const createLevel = async (req, res, next) => {
+    try {
+        const { skillId } = req.params;
+        const { level_name, core_concept, max_attempts } = req.body;
+        const levelId = await adminService.createLevel(skillId, { level_name, core_concept, max_attempts });
+        return successResponse(res, 'Level created successfully', { levelId });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const updateLevel = async (req, res, next) => {
+    try {
+        const { levelId } = req.params;
+        const { level_name, core_concept, max_attempts } = req.body;
+        await adminService.updateLevel(levelId, { level_name, core_concept, max_attempts });
+        return successResponse(res, 'Level updated successfully', null);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const deleteLevel = async (req, res, next) => {
+    try {
+        const { levelId } = req.params;
+        await adminService.deleteLevelGuarded(levelId);
+        return successResponse(res, 'Level deleted successfully', null);
+    } catch (error) {
+        // Guard rejections carry status 409 + a human message; the global error
+        // handler surfaces both so the client can toast the reason.
+        next(error);
+    }
+};
+
 // ── Slot timing edit / open-close ────────────────────────────
 
 export const getAllSlotTimings = async (req, res, next) => {

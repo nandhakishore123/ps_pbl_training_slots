@@ -36,6 +36,13 @@ router.post('/training-skills', requireRole(3), adminController.createTrainingSk
 router.put('/training-skills/:id', requireRole(3), adminController.updateTrainingSkill);
 router.patch('/training-skills/:id/active', requireRole(3), adminController.setTrainingSkillActive);
 
+// ── Skill level (Course/Lab level) management (Admin only — role_id 3) — Stage 5b ─
+// List reuses getSkillLevels (also exposed at /skills/:skillId/levels for Stage 4b).
+router.get('/training-skills/:skillId/levels', requireRole(3), adminController.getSkillLevels);
+router.post('/training-skills/:skillId/levels', requireRole(3), adminController.createLevel);
+router.put('/levels/:levelId', requireRole(3), adminController.updateLevel);
+router.delete('/levels/:levelId', requireRole(3), adminController.deleteLevel);
+
 // ── Venue ↔ Skill management (Admin only — role_id 3) ────────
 router.get('/venues/:venueId/skills', requireRole(3), adminController.getVenueSkills);
 router.post('/venues/:venueId/skills', requireRole(3), adminController.addVenueSkill);

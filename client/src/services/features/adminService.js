@@ -92,6 +92,25 @@ export const adminService = {
     return api.patch(`/admin/training-skills/${id}/active`, { isActive, force });
   },
 
+  // ── Skill level management (admin-only) — Stage 5b ──────────
+  getLevels(skillId) {
+    return api.get(`/admin/training-skills/${skillId}/levels`);
+  },
+
+  createLevel(skillId, payload) {
+    // payload: { level_name, core_concept, max_attempts }
+    return api.post(`/admin/training-skills/${skillId}/levels`, payload);
+  },
+
+  updateLevel(levelId, payload) {
+    // payload: { level_name, core_concept, max_attempts }
+    return api.put(`/admin/levels/${levelId}`, payload);
+  },
+
+  deleteLevel(levelId) {
+    return api.delete(`/admin/levels/${levelId}`);
+  },
+
   // ── Venue ↔ Skill management (admin-only) ───────────────────
   getVenueSkills(venueId) {
     return api.get(`/admin/venues/${venueId}/skills`);

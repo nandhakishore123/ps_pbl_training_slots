@@ -329,6 +329,53 @@ export function DataProvider({ children }) {
     }
   }
 
+  // ── Skill level (Course/Lab level) management — Stage 5b ────
+  // Levels are loaded on demand per course (like venue skills/slots), not held
+  // in global state. Mutations refresh the skill lists so levels_count updates.
+  const getLevels = async (skillId) => {
+    try {
+      const res = await adminService.getLevels(skillId)
+      return Array.isArray(res.data) ? res.data : []
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to load levels', true)
+      return []
+    }
+  }
+
+  const createLevel = async (skillId, payload) => {
+    try {
+      await adminService.createLevel(skillId, payload)
+      await refreshTrainingSkills()
+      return true
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to create level', true)
+      return false
+    }
+  }
+
+  const updateLevel = async (levelId, payload) => {
+    try {
+      await adminService.updateLevel(levelId, payload)
+      await refreshTrainingSkills()
+      return true
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to update level', true)
+      return false
+    }
+  }
+
+  // Guard-delete: a 409 carries the block reason — surface it via toast.
+  const deleteLevel = async (levelId) => {
+    try {
+      await adminService.deleteLevel(levelId)
+      await refreshTrainingSkills()
+      return true
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to delete level', true)
+      return false
+    }
+  }
+
   // ── Slot timing edit / open-close ───────────────────────────
   const refreshSlots = async () => {
     await fetchAllSlotTimings()
@@ -514,6 +561,11 @@ export function DataProvider({ children }) {
         createTrainingSkill,
         updateTrainingSkill,
         setTrainingSkillActive,
+        // skill level management (Stage 5b)
+        getLevels,
+        createLevel,
+        updateLevel,
+        deleteLevel,
         // slot edit / open-close
         updateSlotTiming,
         setSlotActive,

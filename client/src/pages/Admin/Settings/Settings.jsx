@@ -5,6 +5,7 @@ import { useData } from '../context/DataContext'
 import { useApp } from '../context/AppContext'
 import BookingOpenTimeCard from '../../../components/admin/BookingOpenTimeCard'
 import SkillFormModal from '../../../components/modals/SkillFormModal'
+import LevelsModal from '../../../components/modals/LevelsModal'
 
 export default function Settings() {
   const { showToast } = useApp()
@@ -17,9 +18,12 @@ export default function Settings() {
   const [showInactiveSkills, setShowInactiveSkills] = useState(false)
   const [skillFormOpen, setSkillFormOpen] = useState(false)
   const [editingSkill, setEditingSkill] = useState(null)
+  const [levelsOpen, setLevelsOpen] = useState(false)
+  const [levelsSkill, setLevelsSkill] = useState(null)
 
   const openCreateSkill = () => { setEditingSkill(null); setSkillFormOpen(true) }
   const openEditSkill = (ts) => { setEditingSkill(ts); setSkillFormOpen(true) }
+  const openLevels = (ts) => { setLevelsSkill(ts); setLevelsOpen(true) }
 
   const handleDeactivateSkill = async (ts) => {
     if (!window.confirm(`Deactivate "${ts.skill_name}"? It will be hidden from students and booking. Existing bookings keep working.`)) return
@@ -207,6 +211,7 @@ export default function Settings() {
                       <td>
                         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                           <button onClick={() => openEditSkill(ts)}>Edit</button>
+                          <button onClick={() => openLevels(ts)}>Manage Levels</button>
                           {inactive ? (
                             <button style={{ color: '#059669' }} onClick={() => handleReactivateSkill(ts)}>Reactivate</button>
                           ) : (
@@ -345,6 +350,14 @@ export default function Settings() {
         onClose={() => setSkillFormOpen(false)}
         skill={editingSkill}
       />
+
+      {levelsOpen && levelsSkill && (
+        <LevelsModal
+          isOpen={levelsOpen}
+          onClose={() => setLevelsOpen(false)}
+          skill={levelsSkill}
+        />
+      )}
     </div>
   )
 }
