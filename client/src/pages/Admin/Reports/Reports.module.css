@@ -120,6 +120,105 @@
   flex-shrink: 0;
 }
 
+/* Wider name column for skill/course bars (vs the short dept code) */
+.barName {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  width: 150px;
+  flex-shrink: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Booking-status breakdown chips */
+.statusRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.statusChip {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 14px;
+  border: 1.5px solid var(--border);
+  border-radius: 10px;
+  min-width: 96px;
+}
+
+.statusChipVal {
+  font-size: 22px;
+  font-weight: 800;
+  font-family: var(--font-head);
+  color: var(--text);
+}
+
+.statusChipLabel {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text2);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Simple report table (by skill) */
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.table th,
+.table td {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.table th {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text2);
+}
+
+.table td.numCell,
+.table th.numCell {
+  text-align: right;
+}
+
+/* Placeholder badge for metrics with no real source yet (e.g. AP claims) */
+.placeholderVal {
+  font-size: 22px;
+  font-weight: 800;
+  font-family: var(--font-head);
+  color: var(--text2);
+  margin-bottom: 6px;
+}
+
+.placeholderBadge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #b45309;
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  border-radius: 20px;
+  padding: 2px 8px;
+}
+
+.muted {
+  color: var(--text2);
+  font-size: 13px;
+  padding: 8px 0;
+}
+
 @media (max-width: 768px) {
   .grid {
     grid-template-columns: 1fr;

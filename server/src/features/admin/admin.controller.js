@@ -10,6 +10,44 @@ export const getDashboardKPI = async (req, res, next) => {
     }
 };
 
+// ── Reports & Analytics (READ-ONLY) — Stage 6b ───────────────
+
+export const getReportsSummary = async (req, res, next) => {
+    try {
+        const data = await adminService.getReportsSummary();
+        return successResponse(res, 'Reports summary retrieved successfully', data);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const getReportsBySkill = async (req, res, next) => {
+    try {
+        const data = await adminService.getReportsBySkill();
+        return successResponse(res, 'Reports by skill retrieved successfully', data);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const getReportsByCourse = async (req, res, next) => {
+    try {
+        const data = await adminService.getReportsByCourse();
+        return successResponse(res, 'Reports by course retrieved successfully', data);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const getReportsTimeline = async (req, res, next) => {
+    try {
+        const data = await adminService.getReportsTimeline();
+        return successResponse(res, 'Reports timeline retrieved successfully', data);
+    } catch (error) {
+        next(error);
+    }
+};
+
 export const getVenues = async (req, res, next) => {
     try {
         const data = await adminService.getVenues();

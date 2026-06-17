@@ -7,6 +7,23 @@ export const getDashboardKPI = async () => {
     return await adminModel.getDashboardKPI();
 };
 
+// ── Reports & Analytics (READ-ONLY) — Stage 6b ───────────────
+export const getReportsSummary = async () => {
+    return await adminModel.getReportsSummary();
+};
+
+export const getReportsBySkill = async () => {
+    return await adminModel.getReportsBySkill();
+};
+
+export const getReportsByCourse = async () => {
+    return await adminModel.getReportsByCourse();
+};
+
+export const getReportsTimeline = async () => {
+    return await adminModel.getReportsTimeline();
+};
+
 // ── Admin cancel a booking (Stage 4a) — hard delete, no DB schema change ──────
 // Seat invariant: venue_slots.current_bookings holds a seat ONLY while the
 // booking is ONGOING. So we decrement ONLY for ONGOING; terminal/malpractice

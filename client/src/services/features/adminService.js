@@ -5,6 +5,23 @@ export const adminService = {
     return api.get('/admin/dashboard-kpi');
   },
 
+  // ── Reports & Analytics (admin-only, read-only) — Stage 6b ──
+  getReportsSummary() {
+    return api.get('/admin/reports/summary');
+  },
+
+  getReportsBySkill() {
+    return api.get('/admin/reports/by-skill');
+  },
+
+  getReportsByCourse() {
+    return api.get('/admin/reports/by-course');
+  },
+
+  getReportsTimeline() {
+    return api.get('/admin/reports/timeline');
+  },
+
   getVenues() {
     return api.get('/admin/venues');
   },

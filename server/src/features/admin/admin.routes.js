@@ -9,6 +9,12 @@ const router = Router();
 router.use(authMiddleware, requireRole(2, 3));
 
 router.get('/dashboard-kpi', adminController.getDashboardKPI);
+
+// ── Reports & Analytics (Admin only — role_id 3, READ-ONLY) — Stage 6b ──
+router.get('/reports/summary', requireRole(3), adminController.getReportsSummary);
+router.get('/reports/by-skill', requireRole(3), adminController.getReportsBySkill);
+router.get('/reports/by-course', requireRole(3), adminController.getReportsByCourse);
+router.get('/reports/timeline', requireRole(3), adminController.getReportsTimeline);
 router.get('/venues', adminController.getVenues);
 router.get('/faculty', adminController.getFaculty);
 router.get('/faculty/search', adminController.searchFaculty);
