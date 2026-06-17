@@ -1674,7 +1674,7 @@ function BookingModal({ isOpen, onClose, onConfirm, courseName, type, trainingSk
   if (!isOpen) return null
   const hasSlots = Array.isArray(slots) && slots.length > 0
   const info = hasSlots
-    ? (slots.find((s) => String(s.mapping_id) === String(selectedSlot)) || null)
+    ? (slots.find((s) => String(s.venue_slot_id) === String(selectedSlot)) || null)
     : null
   const sub = type === 'ps' ? 'Practical Skill Training Session' : 'PBL Lab Session'
   const seatsAvailable = Number(info?.seats_available ?? 0)
@@ -1707,8 +1707,8 @@ function BookingModal({ isOpen, onClose, onConfirm, courseName, type, trainingSk
             <option value="">Select a slot...</option>
             {hasSlots &&
               slots.map((s) => (
-                <option key={s.mapping_id} value={String(s.mapping_id)}>
-                  {String(s.start_time || '')} – {String(s.end_time || '')} · {s.venue_name || 'Venue'}
+                <option key={s.venue_slot_id} value={String(s.venue_slot_id)}>
+                  {String(s.slot_date || '')} · {String(s.start_time || '')} – {String(s.end_time || '')} · {s.venue_name || 'Venue'}
                 </option>
               ))}
           </select>
@@ -1720,7 +1720,7 @@ function BookingModal({ isOpen, onClose, onConfirm, courseName, type, trainingSk
           )}
           {!loading && !hasSlots && (
             <div className="pt-empty" style={{ padding: '12px 0' }}>
-              Booking opens daily at 7:45 PM for the next day. Please check back then.
+              No slots scheduled for this day. Booking opens daily at 7:45 PM for the next day — please check back then.
             </div>
           )}
           {info && (
@@ -2469,16 +2469,17 @@ export default function TrainingSlots({ onBack }) {
     try {
       const payload = await trainingService.bookSlot({
         trainingSkillId: modalCourse.id,
-        slotId: info.slot_id,
-        mappingId: info.mapping_id,
+        venueSlotId: info.venue_slot_id,
         levelId: modalCourse.selectedLevel?.level_id || null,
       })
       const row = payload?.data
       const normalized = normalizeBookingRow(row, {
         training_skill_id: modalCourse.id,
-        slot_id: info.slot_id,
+        venue_slot_id: info.venue_slot_id,
         start_time: info?.start_time,
         end_time: info?.end_time,
+        venue_name: info?.venue_name,
+        booking_date: info?.slot_date,
         courseName,
         skill_type: type === 'pbl' ? 'PBL' : 'PS',
         levelId: modalCourse.selectedLevel?.level_id || null,

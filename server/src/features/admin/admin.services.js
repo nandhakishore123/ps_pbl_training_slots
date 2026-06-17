@@ -241,6 +241,6 @@ export const markAttendance = async (bookingId, status) => {
 
 // ── All-Bookings dashboard ───────────────────────────────────
 
-export const getAllBookings = async ({ venueId, date, slotId } = {}) => {
-    return await adminModel.listAllBookings({ venueId, date, slotId });
+export const getAllBookings = async ({ venueId, date, venueSlotId } = {}) => {
+    return await adminModel.listAllBookings({ venueId, date, venueSlotId });
 };

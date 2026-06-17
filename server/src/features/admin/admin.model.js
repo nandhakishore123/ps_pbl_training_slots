@@ -377,12 +377,12 @@ export const markAttendanceAdmin = async (bookingId, status) => {
 // ── Admin All-Bookings dashboard ─────────────────────────────
 // Every booking joined with student, venue/lab, slot time, faculty, attendance
 // and the student's LATEST assessment result for that skill+level.
-export const listAllBookings = async ({ venueId, date, slotId } = {}) => {
+export const listAllBookings = async ({ venueId, date, venueSlotId } = {}) => {
   const where = [];
   const params = [];
   if (venueId) { where.push('vm.venue_id = ?'); params.push(Number(venueId)); }
   if (date)    { where.push('sb.booking_date = ?'); params.push(date); }
-  if (slotId)  { where.push('sb.slot_id = ?'); params.push(Number(slotId)); }
+  if (venueSlotId) { where.push('sb.venue_slot_id = ?'); params.push(Number(venueSlotId)); }
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
   const [rows] = await db.execute(
@@ -397,9 +397,9 @@ export const listAllBookings = async ({ venueId, date, slotId } = {}) => {
         s.year_of_study,
         v.venue_id,
         v.venue_name,
-        st.slot_id,
-        st.start_time,
-        st.end_time,
+        sb.venue_slot_id,
+        vs.start_time,
+        vs.end_time,
         f.faculty_id,
         f.name AS faculty_name,
         att.attendance_status,
@@ -425,11 +425,11 @@ export const listAllBookings = async ({ venueId, date, slotId } = {}) => {
       JOIN students s ON s.student_id = sb.student_id
       JOIN venue_mapping vm ON vm.mapping_id = sb.mapping_id
       JOIN venues v ON v.venue_id = vm.venue_id
-      JOIN slot_timings st ON st.slot_id = sb.slot_id
+      JOIN venue_slots vs ON vs.venue_slot_id = sb.venue_slot_id
       LEFT JOIN faculties f ON f.faculty_id = vm.faculty_id
       LEFT JOIN attendance att ON att.booking_id = sb.booking_id
       ${whereSql}
-      ORDER BY sb.booking_date DESC, st.start_time ASC, s.name ASC`,
+      ORDER BY sb.booking_date DESC, vs.start_time ASC, s.name ASC`,
     params
   );
   return rows ?? [];

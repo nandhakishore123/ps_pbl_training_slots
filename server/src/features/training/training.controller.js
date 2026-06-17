@@ -47,12 +47,11 @@ export const getSkillSlots = async (req, res) => {
 export const createBooking = async (req, res) => {
   try {
     const userId = req.user.user_id;
-    const { slotId, mappingId, trainingSkillId, levelId } = req.body;
+    const { venueSlotId, trainingSkillId, levelId } = req.body;
 
     const data = await trainingServices.createBooking({
       userId,
-      slotId,
-      mappingId,
+      venueSlotId,
       trainingSkillId,
       levelId: levelId || null,
     });

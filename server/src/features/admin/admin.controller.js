@@ -339,8 +339,8 @@ export const markAttendance = async (req, res, next) => {
 
 export const getAllBookings = async (req, res, next) => {
     try {
-        const { venueId, date, slotId } = req.query;
-        const data = await adminService.getAllBookings({ venueId, date, slotId });
+        const { venueId, date, venueSlotId } = req.query;
+        const data = await adminService.getAllBookings({ venueId, date, venueSlotId });
         return successResponse(res, 'Bookings retrieved successfully', data);
     } catch (error) {
         next(error);

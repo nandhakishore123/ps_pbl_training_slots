@@ -156,7 +156,7 @@ export const markAllAttendance = async (mappingId, facultyId, status = 'PRESENT'
 // ── Mark malpractice ─────────────────────────────────────────
 export const markMalpractice = async (bookingId, facultyId, reason) => {
   const [rows] = await db.execute(
-    `SELECT sb.booking_id, sb.mapping_id, sb.status FROM student_booking sb
+    `SELECT sb.booking_id, sb.venue_slot_id, sb.status FROM student_booking sb
      JOIN venue_mapping vm ON sb.mapping_id = vm.mapping_id
      WHERE sb.booking_id = ? AND vm.faculty_id = ?`,
     [bookingId, facultyId]
@@ -171,11 +171,12 @@ export const markMalpractice = async (bookingId, facultyId, reason) => {
        WHERE booking_id = ?`,
       [reason, bookingId]
     );
+    // Stage 3b: release the seat on venue_slots.
     await db.execute(
-      `UPDATE venue_mapping
+      `UPDATE venue_slots
        SET current_bookings = GREATEST(0, COALESCE(current_bookings, 1) - 1)
-       WHERE mapping_id = ?`,
-      [booking.mapping_id]
+       WHERE venue_slot_id = ?`,
+      [booking.venue_slot_id]
     );
   }
 };
@@ -183,7 +184,7 @@ export const markMalpractice = async (bookingId, facultyId, reason) => {
 // ── Revoke malpractice ───────────────────────────────────────
 export const revokeMalpractice = async (bookingId, facultyId) => {
   const [rows] = await db.execute(
-    `SELECT sb.booking_id, sb.mapping_id, sb.status FROM student_booking sb
+    `SELECT sb.booking_id, sb.venue_slot_id, sb.status FROM student_booking sb
      JOIN venue_mapping vm ON sb.mapping_id = vm.mapping_id
      WHERE sb.booking_id = ? AND vm.faculty_id = ?`,
     [bookingId, facultyId]
@@ -198,11 +199,16 @@ export const revokeMalpractice = async (bookingId, facultyId) => {
        WHERE booking_id = ?`,
       [bookingId]
     );
+    // Stage 3b: re-claim the seat on venue_slots — atomic guarded increment so
+    // we never push current_bookings past capacity (capacity lives on venues).
     await db.execute(
-      `UPDATE venue_mapping
-       SET current_bookings = COALESCE(current_bookings, 0) + 1
-       WHERE mapping_id = ?`,
-      [booking.mapping_id]
+      `UPDATE venue_slots vs
+       JOIN venue_mapping vm ON vm.mapping_id = vs.mapping_id
+       JOIN venues v ON v.venue_id = vm.venue_id
+       SET vs.current_bookings = COALESCE(vs.current_bookings, 0) + 1
+       WHERE vs.venue_slot_id = ?
+         AND COALESCE(v.capacity, 0) > COALESCE(vs.current_bookings, 0)`,
+      [booking.venue_slot_id]
     );
   }
 };
@@ -259,12 +265,12 @@ export const getStudentReviewData = async (bookingId, facultyId) => {
             s.course as student_course,
             ts.skill_name, sl.level_name,
             v.venue_name,
-            st.start_time, st.end_time
+            vs.start_time, vs.end_time
      FROM student_booking sb
      JOIN students s ON sb.student_id = s.student_id
      JOIN venue_mapping vm ON sb.mapping_id = vm.mapping_id
      JOIN venues v ON vm.venue_id = v.venue_id
-     JOIN slot_timings st ON vm.slot_id = st.slot_id
+     JOIN venue_slots vs ON vs.venue_slot_id = sb.venue_slot_id
      JOIN training_skills ts ON sb.training_skill_id = ts.training_skill_id
      LEFT JOIN skill_levels sl ON sb.level_id = sl.level_id
      WHERE sb.booking_id = ? AND vm.faculty_id = ?`,
