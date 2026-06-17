@@ -40,6 +40,34 @@ export const getMyVenues = async (req, res, next) => {
     }
 };
 
+// GET /faculty/my-venue-slots
+export const getMyVenueSlots = async (req, res, next) => {
+    try {
+        const facultyId = await resolveFacultyId(req, res);
+        if (!facultyId) return;
+        const data = await facultyModel.getMyVenueSlots(facultyId);
+        return successResponse(res, 'Venue slots retrieved successfully', data);
+    } catch (error) {
+        next(error);
+    }
+};
+
+// GET /faculty/venue-slots/:venueSlotId/students
+export const getStudentsByVenueSlot = async (req, res, next) => {
+    try {
+        const facultyId = await resolveFacultyId(req, res);
+        if (!facultyId) return;
+        const { venueSlotId } = req.params;
+        const data = await facultyModel.getStudentsByVenueSlot(venueSlotId, facultyId);
+        return successResponse(res, 'Students retrieved successfully', data);
+    } catch (error) {
+        if (error.message?.includes('Forbidden')) {
+            return errorResponse(res, error.message, 403);
+        }
+        next(error);
+    }
+};
+
 // GET /faculty/mappings/:mappingId/students
 export const getStudentsByMapping = async (req, res, next) => {
     try {
@@ -76,17 +104,17 @@ export const markAttendance = async (req, res, next) => {
     }
 };
 
-// POST /faculty/mappings/:mappingId/attendance/all
+// POST /faculty/venue-slots/:venueSlotId/attendance/all
 export const markAllAttendance = async (req, res, next) => {
     try {
         const facultyId = await resolveFacultyId(req, res);
         if (!facultyId) return;
-        const { mappingId } = req.params;
+        const { venueSlotId } = req.params;
         const status = (req.body.status || 'PRESENT').toUpperCase();
         if (status !== 'PRESENT' && status !== 'ABSENT') {
             return errorResponse(res, 'Status must be PRESENT or ABSENT', 400);
         }
-        const marked = await facultyModel.markAllAttendance(mappingId, facultyId, status);
+        const marked = await facultyModel.markAllAttendance(venueSlotId, facultyId, status);
         return successResponse(res, `${marked} students marked as ${status.toLowerCase()}`, { marked });
     } catch (error) {
         if (error.message?.includes('Forbidden')) {

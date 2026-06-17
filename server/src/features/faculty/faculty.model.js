@@ -63,6 +63,65 @@ export const getMyVenues = async (facultyId) => {
   return rows;
 };
 
+// ── My Venue Slots (venue_slots authored for this faculty's mappings) ────────
+// Faculty read-path migration: per-date slots come from venue_slots (admin
+// Stage 3a/3b), not the old slot_timings/venue_mapping. Ownership flows
+// venue_slots.mapping_id → venue_mapping.faculty_id. Seat count is the REAL
+// vs.current_bookings. Equality JOINs only (TiDB-safe).
+export const getMyVenueSlots = async (facultyId) => {
+  const [rows] = await db.execute(
+    `SELECT
+       vs.venue_slot_id,
+       vs.mapping_id,
+       DATE_FORMAT(vs.slot_date, '%Y-%m-%d') AS slot_date,
+       vs.start_time, vs.end_time,
+       COALESCE(vs.current_bookings, 0) AS current_bookings,
+       vs.is_active,
+       v.venue_id, v.venue_name, v.location, v.capacity,
+       COALESCE(MAX(ts.skill_type), 'PS') AS skill_type
+     FROM venue_slots vs
+     JOIN venue_mapping vm ON vm.mapping_id = vs.mapping_id
+     JOIN venues v ON v.venue_id = vm.venue_id
+     LEFT JOIN venue_alloted_skills vas ON vas.venue_id = v.venue_id
+     LEFT JOIN training_skills ts ON ts.training_skill_id = vas.training_skill_id
+     WHERE vm.faculty_id = ?
+     GROUP BY vs.venue_slot_id, vs.mapping_id, vs.slot_date, vs.start_time, vs.end_time,
+              vs.current_bookings, vs.is_active, v.venue_id, v.venue_name, v.location, v.capacity
+     ORDER BY v.venue_name ASC, vs.slot_date ASC, vs.start_time ASC`,
+    [facultyId]
+  );
+  return rows;
+};
+
+// ── Students for a venue_slot (per-date roster) ──────────────
+// Keyed by student_booking.venue_slot_id, ownership verified through the slot's
+// mapping. Replaces the mapping-keyed roster that mixed all dates together.
+export const getStudentsByVenueSlot = async (venueSlotId, facultyId) => {
+  const [own] = await db.execute(
+    `SELECT vs.venue_slot_id
+     FROM venue_slots vs
+     JOIN venue_mapping vm ON vm.mapping_id = vs.mapping_id
+     WHERE vs.venue_slot_id = ? AND vm.faculty_id = ?`,
+    [venueSlotId, facultyId]
+  );
+  if (own.length === 0) throw new Error('Forbidden: slot not yours');
+
+  const [rows] = await db.execute(
+    `SELECT
+       sb.booking_id, sb.status, sb.is_present, sb.remarks,
+       DATE_FORMAT(sb.booking_date, '%Y-%m-%d') AS booking_date,
+       s.student_id, s.name, s.reg_num, s.course, s.year_of_study,
+       a.attendance_status
+     FROM student_booking sb
+     JOIN students s ON sb.student_id = s.student_id
+     LEFT JOIN attendance a ON sb.booking_id = a.booking_id
+     WHERE sb.venue_slot_id = ?
+     ORDER BY s.name ASC`,
+    [venueSlotId]
+  );
+  return rows;
+};
+
 // ── Students for a mapping ───────────────────────────────────
 export const getStudentsByMapping = async (mappingId, facultyId) => {
   // Verify the mapping belongs to this faculty first
@@ -116,24 +175,29 @@ export const markAttendance = async (bookingId, facultyId, status = 'PRESENT') =
   );
 };
 
-// ── Mark ALL ongoing students in a mapping as present ────────
-export const markAllAttendance = async (mappingId, facultyId, status = 'PRESENT') => {
-  // Verify ownership
-  const [mappingRows] = await db.execute(
-    `SELECT mapping_id FROM venue_mapping WHERE mapping_id = ? AND faculty_id = ?`,
-    [mappingId, facultyId]
+// ── Mark ALL ongoing students in a venue_slot as present ─────
+// Keyed by venue_slot_id (per-date), NOT mapping_id — a mapping can span
+// multiple dates, so mapping-keyed mark-all would wrongly mark other days.
+export const markAllAttendance = async (venueSlotId, facultyId, status = 'PRESENT') => {
+  // Verify ownership via the slot's mapping
+  const [own] = await db.execute(
+    `SELECT vs.venue_slot_id
+     FROM venue_slots vs
+     JOIN venue_mapping vm ON vm.mapping_id = vs.mapping_id
+     WHERE vs.venue_slot_id = ? AND vm.faculty_id = ?`,
+    [venueSlotId, facultyId]
   );
-  if (mappingRows.length === 0) throw new Error('Forbidden: mapping not yours');
+  if (own.length === 0) throw new Error('Forbidden: slot not yours');
 
-  // Get all ONGOING bookings that don't already have this status
+  // Get all ONGOING bookings for THIS slot that don't already have this status
   const [bookings] = await db.execute(
     `SELECT sb.booking_id, sb.student_id
      FROM student_booking sb
      LEFT JOIN attendance a ON sb.booking_id = a.booking_id
-     WHERE sb.mapping_id = ?
+     WHERE sb.venue_slot_id = ?
        AND sb.status = 'ONGOING'
        AND (a.attendance_id IS NULL OR a.attendance_status != ?)`,
-    [mappingId, status]
+    [venueSlotId, status]
   );
 
   const isPresent = status === 'PRESENT' ? 1 : 0;

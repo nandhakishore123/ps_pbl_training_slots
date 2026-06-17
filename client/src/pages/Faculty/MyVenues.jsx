@@ -32,6 +32,17 @@ const formatTime = (timeStr) => {
   return `${h12}:${m} ${ampm}`;
 };
 
+// 'YYYY-MM-DD' → 'Wed, Jun 18' (UTC accessors — no timezone drift)
+const WD_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const MO_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const formatDate = (ymd) => {
+  if (!ymd) return '';
+  const [y, m, d] = String(ymd).split('-').map(Number);
+  if (!y || !m || !d) return String(ymd);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return `${WD_SHORT[dt.getUTCDay()]}, ${MO_SHORT[m - 1]} ${d}`;
+};
+
 // ── Shared Primitives ──────────────────────────────────────────────────────
 
 function StatusBadge({ status }) {
@@ -871,7 +882,7 @@ function VenueDetail({ venue, onBack }) {
   useEffect(() => {
     let cancelled = false;
     setLoadingStudents(true);
-    facultyService.getStudentsByMapping(venue.mapping_id)
+    facultyService.getStudentsByVenueSlot(venue.venue_slot_id)
       .then(res => {
         if (!cancelled) setStudents(res.data || []);
       })
@@ -881,7 +892,7 @@ function VenueDetail({ venue, onBack }) {
       })
       .finally(() => { if (!cancelled) setLoadingStudents(false); });
     return () => { cancelled = true; };
-  }, [venue.mapping_id]);
+  }, [venue.venue_slot_id]);
 
   const ongoingCount = students.filter((s) => s.status === "ONGOING").length;
   const malpracticeCount = students.filter((s) => s.status === "MALPRACTICE").length;
@@ -932,7 +943,7 @@ function VenueDetail({ venue, onBack }) {
 
   const handleMarkAll = async () => {
     try {
-      const res = await facultyService.markAllAttendance(venue.mapping_id);
+      const res = await facultyService.markAllAttendance(venue.venue_slot_id);
       setStudents(prev => prev.map(s => s.status === "ONGOING" ? { ...s, is_present: 1 } : s));
       showToast(`${res.data?.marked ?? 'All'} students marked as present.`, "success");
     } catch {
@@ -976,8 +987,8 @@ function VenueDetail({ venue, onBack }) {
         </div>
         <div className="grid sm:grid-cols-2 gap-px bg-gray-100">
           {[
+            { label: "Date", value: formatDate(venue.slot_date) || '—' },
             { label: "Slot", value: `${formatTime(venue.start_time)} – ${formatTime(venue.end_time)}` },
-            { label: "Skill Type", value: venue.skill_type },
             { label: "Capacity", value: `${venue.capacity} seats` },
             { label: "Current Bookings", value: venue.current_bookings ?? 0 },
           ].map((item) => (
@@ -1133,7 +1144,7 @@ export default function MyVenues() {
   const loadVenues = useCallback(() => {
     setLoading(true);
     setError(null);
-    facultyService.getMyVenues()
+    facultyService.getMyVenueSlots()
       .then(res => setVenues(res.data || []))
       .catch(err => {
         console.error(err);
@@ -1164,7 +1175,7 @@ export default function MyVenues() {
 
   let crumbTitle = 'My Venues';
   if (selectedMapping) {
-    crumbTitle = `${selectedMapping.venue_name} - ${formatTime(selectedMapping.start_time)}`;
+    crumbTitle = `${selectedMapping.venue_name} · ${formatDate(selectedMapping.slot_date)} ${formatTime(selectedMapping.start_time)}`;
   } else if (selectedVenueId) {
     const v = venues.find(x => x.venue_id === selectedVenueId);
     crumbTitle = v ? v.venue_name : 'Select Slot';
@@ -1222,7 +1233,7 @@ export default function MyVenues() {
                 <div className={pageStyles.venuesList}>
                   {venues.filter(x => x.venue_id === selectedVenueId).map((slot) => (
                     <button
-                      key={slot.mapping_id}
+                      key={slot.venue_slot_id}
                       onClick={() => setSelectedMapping(slot)}
                       className="w-full bg-white rounded-xl border border-gray-200 px-5 py-4 flex items-center gap-4 hover:shadow-sm hover:border-gray-300 transition-all text-left group"
                     >
@@ -1232,6 +1243,7 @@ export default function MyVenues() {
                         </svg>
                       </div>
                       <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold text-emerald-600 mb-0.5">{formatDate(slot.slot_date)}</p>
                         <p className="text-sm font-bold text-gray-900 mb-0.5">
                           {formatTime(slot.start_time)} – {formatTime(slot.end_time)}
                         </p>
@@ -1239,6 +1251,11 @@ export default function MyVenues() {
                           <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700">
                             {slot.current_bookings ?? 0} Students Booked
                           </span>
+                          {Number(slot.is_active) !== 1 && (
+                            <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-600">
+                              Closed
+                            </span>
+                          )}
                           <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500 font-mono">
                             {slot.skill_type}
                           </span>
