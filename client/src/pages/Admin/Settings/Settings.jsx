@@ -4,10 +4,46 @@ import Header from '../Header/Header'
 import { useData } from '../context/DataContext'
 import { useApp } from '../context/AppContext'
 import BookingOpenTimeCard from '../../../components/admin/BookingOpenTimeCard'
+import SkillFormModal from '../../../components/modals/SkillFormModal'
 
 export default function Settings() {
   const { showToast } = useApp()
-  const { allSlotTimings, addSlotTiming, updateSlotTiming, setSlotActive, trainingSkills, loading } = useData()
+  const {
+    allSlotTimings, addSlotTiming, updateSlotTiming, setSlotActive,
+    trainingSkills, allTrainingSkills, setTrainingSkillActive, loading,
+  } = useData()
+
+  // Training skill (Course/Lab) management — Stage 5a
+  const [showInactiveSkills, setShowInactiveSkills] = useState(false)
+  const [skillFormOpen, setSkillFormOpen] = useState(false)
+  const [editingSkill, setEditingSkill] = useState(null)
+
+  const openCreateSkill = () => { setEditingSkill(null); setSkillFormOpen(true) }
+  const openEditSkill = (ts) => { setEditingSkill(ts); setSkillFormOpen(true) }
+
+  const handleDeactivateSkill = async (ts) => {
+    if (!window.confirm(`Deactivate "${ts.skill_name}"? It will be hidden from students and booking. Existing bookings keep working.`)) return
+    let res = await setTrainingSkillActive(ts.training_skill_id, false, false)
+    if (res && res.requiresConfirmation) {
+      if (window.confirm(`${res.message}\n\nProceed?`)) {
+        res = await setTrainingSkillActive(ts.training_skill_id, false, true)
+        if (res === true) showToast('Course/Lab deactivated')
+      }
+      return
+    }
+    if (res === true) showToast('Course/Lab deactivated')
+  }
+
+  const handleReactivateSkill = async (ts) => {
+    const res = await setTrainingSkillActive(ts.training_skill_id, true)
+    if (res === true) showToast('Course/Lab reactivated')
+  }
+
+  // Drive the management table off allTrainingSkills (it carries is_active +
+  // image_url + category_id needed for editing); active-only `trainingSkills`
+  // is the fallback until that list loads. Filter inactive unless toggled.
+  const sourceSkills = (allTrainingSkills && allTrainingSkills.length) ? allTrainingSkills : trainingSkills
+  const visibleSkills = sourceSkills.filter((ts) => showInactiveSkills || Number(ts.is_active) !== 0)
 
   const [startTime, setStartTime] = useState('')
   const [endTime, setEndTime] = useState('')
@@ -107,40 +143,83 @@ export default function Settings() {
           View training skills points and manage slot timings
         </div>
 
-        {/* POINT RULES / TRAINING SKILLS */}
+        {/* POINT RULES / TRAINING SKILLS (Courses & Labs) — Stage 5a CRUD */}
         <div className={styles.sectionCard}>
-          <div className={styles.sectionTitle}>Training Skills & Points</div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+            <div className={styles.sectionTitle} style={{ margin: 0 }}>Courses & Labs</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 600, color: 'var(--text2, #6b7280)', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={showInactiveSkills}
+                  onChange={(e) => setShowInactiveSkills(e.target.checked)}
+                />
+                Show inactive
+              </label>
+              <button
+                style={{ background: '#6c47ff', color: '#fff', border: 'none', borderRadius: 10, padding: '8px 16px', fontWeight: 700, cursor: 'pointer' }}
+                onClick={openCreateSkill}
+              >
+                ＋ Add Course/Lab
+              </button>
+            </div>
+          </div>
           <div className={styles.tableWrap}>
             <table className={styles.table}>
               <thead>
                 <tr>
-                  <th style={{ width: '25%' }}>Skill Name</th>
-                  <th style={{ width: '20%' }}>Category</th>
-                  <th style={{ width: '15%' }}>Type</th>
-                  <th style={{ width: '15%' }}>Levels</th>
-                  <th style={{ width: '12%' }}>Max Reward Pts</th>
-                  <th style={{ width: '13%' }}>Max Activity Pts</th>
+                  <th style={{ width: '22%' }}>Skill Name</th>
+                  <th style={{ width: '15%' }}>Category</th>
+                  <th style={{ width: '10%' }}>Type</th>
+                  <th style={{ width: '11%' }}>Levels</th>
+                  <th style={{ width: '11%' }}>Max Reward Pts</th>
+                  <th style={{ width: '11%' }}>Max Activity Pts</th>
+                  <th style={{ width: '10%' }}>Status</th>
+                  <th style={{ width: '10%' }}>Action</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={6} className={styles.empty}>Loading skills...</td>
+                    <td colSpan={8} className={styles.empty}>Loading skills...</td>
                   </tr>
-                ) : trainingSkills && trainingSkills.length > 0 ? (
-                  trainingSkills.map((ts) => (
-                    <tr key={ts.training_skill_id}>
+                ) : visibleSkills && visibleSkills.length > 0 ? (
+                  visibleSkills.map((ts) => {
+                    const inactive = Number(ts.is_active) === 0
+                    return (
+                    <tr key={ts.training_skill_id} style={inactive ? { opacity: 0.6 } : undefined}>
                       <td><b>{ts.skill_name}</b></td>
                       <td>{ts.category_name || '—'}</td>
                       <td>{ts.skill_type}</td>
                       <td>{ts.levels_count} Level{ts.levels_count !== 1 ? 's' : ''}</td>
                       <td>{Number(ts.max_reward_points) || 0}</td>
                       <td>{Number(ts.max_activity_points) || 0}</td>
+                      <td>
+                        <span style={{
+                          display: 'inline-block', padding: '3px 10px', borderRadius: 20,
+                          fontSize: 11, fontWeight: 700,
+                          color: inactive ? '#6b7280' : '#059669',
+                          background: inactive ? 'rgba(107,114,128,0.15)' : 'rgba(16,185,129,0.12)',
+                        }}>
+                          {inactive ? 'Inactive' : 'Active'}
+                        </span>
+                      </td>
+                      <td>
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                          <button onClick={() => openEditSkill(ts)}>Edit</button>
+                          {inactive ? (
+                            <button style={{ color: '#059669' }} onClick={() => handleReactivateSkill(ts)}>Reactivate</button>
+                          ) : (
+                            <button style={{ color: '#ef4444' }} onClick={() => handleDeactivateSkill(ts)}>Deactivate</button>
+                          )}
+                        </div>
+                      </td>
                     </tr>
-                  ))
+                    )
+                  })
                 ) : (
                   <tr>
-                    <td colSpan={6} className={styles.empty}>No training skills found.</td>
+                    <td colSpan={8} className={styles.empty}>No courses/labs found.</td>
                   </tr>
                 )}
               </tbody>
@@ -260,6 +339,12 @@ export default function Settings() {
         </div>
 
       </div>
+
+      <SkillFormModal
+        isOpen={skillFormOpen}
+        onClose={() => setSkillFormOpen(false)}
+        skill={editingSkill}
+      />
     </div>
   )
 }

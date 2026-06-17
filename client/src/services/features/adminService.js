@@ -69,6 +69,29 @@ export const adminService = {
     return api.patch(`/admin/venues/${venueId}/active`, { isActive, force });
   },
 
+  // ── Training skill (Course/Lab) management (admin-only) — Stage 5a ─
+  getAllTrainingSkills() {
+    return api.get('/admin/training-skills/all');
+  },
+
+  getSkillCategories() {
+    return api.get('/admin/skill-categories');
+  },
+
+  createTrainingSkill(payload) {
+    // payload: { skill_name, skill_type, category_id, image_url }
+    return api.post('/admin/training-skills', payload);
+  },
+
+  updateTrainingSkill(id, payload) {
+    // payload: { skill_name, skill_type, category_id, image_url }
+    return api.put(`/admin/training-skills/${id}`, payload);
+  },
+
+  setTrainingSkillActive(id, isActive, force = false) {
+    return api.patch(`/admin/training-skills/${id}/active`, { isActive, force });
+  },
+
   // ── Venue ↔ Skill management (admin-only) ───────────────────
   getVenueSkills(venueId) {
     return api.get(`/admin/venues/${venueId}/skills`);

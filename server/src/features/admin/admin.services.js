@@ -339,6 +339,73 @@ export const setVenueActive = async (venueId, isActive, force = false) => {
     return await adminModel.setVenueActive(venueId, isActive);
 };
 
+// ── Training skill (Course/Lab) management — Stage 5a ─────────
+// Mirrors venue management. PS vs PBL = the skill_type column; category via
+// category_id (NOT NULL FK). Soft-deactivate only.
+export const getAllTrainingSkills = async () => {
+    return await adminModel.listAllTrainingSkills();
+};
+
+export const getSkillCategories = async () => {
+    return await adminModel.listSkillCategories();
+};
+
+const VALID_SKILL_TYPES = ['PS', 'PBL'];
+
+export const createTrainingSkill = async ({ skill_name, skill_type, category_id, image_url }) => {
+    if (!skill_name || !String(skill_name).trim()) {
+        throw new Error('Skill name is required');
+    }
+    if (!VALID_SKILL_TYPES.includes(skill_type)) {
+        throw new Error('Skill type must be PS or PBL');
+    }
+    if (!category_id) {
+        throw new Error('Category is required');
+    }
+    return await adminModel.createTrainingSkill({
+        skill_name: String(skill_name).trim(),
+        skill_type,
+        category_id,
+        image_url: image_url != null && String(image_url).trim() !== '' ? String(image_url).trim() : null,
+    });
+};
+
+export const updateTrainingSkill = async (id, { skill_name, skill_type, category_id, image_url }) => {
+    if (!id) throw new Error('Training skill ID is required');
+    if (!skill_name || !String(skill_name).trim()) {
+        throw new Error('Skill name is required');
+    }
+    if (!VALID_SKILL_TYPES.includes(skill_type)) {
+        throw new Error('Skill type must be PS or PBL');
+    }
+    if (!category_id) {
+        throw new Error('Category is required');
+    }
+    return await adminModel.updateTrainingSkill(id, {
+        skill_name: String(skill_name).trim(),
+        skill_type,
+        category_id,
+        image_url: image_url != null && String(image_url).trim() !== '' ? String(image_url).trim() : null,
+    });
+};
+
+export const setTrainingSkillActive = async (id, isActive, force = false) => {
+    if (!id) throw new Error('Training skill ID is required');
+    // Deactivating a course that is still actively offered at venues hides it
+    // from booking pickers — warn (not hard-block) so admins confirm intent.
+    if (!isActive && !force) {
+        const venueCount = await adminModel.countVenueSkillsBySkill(id);
+        if (venueCount > 0) {
+            const err = new Error(`This course/lab is still offered at ${venueCount} venue(s). Deactivating it hides it from booking. Confirm to proceed.`);
+            err.status = 409;
+            err.requiresConfirmation = true;
+            err.count = venueCount;
+            throw err;
+        }
+    }
+    return await adminModel.setTrainingSkillActive(id, isActive);
+};
+
 // ── Slot timing edit / open-close ────────────────────────────
 export const updateSlotTiming = async (slotId, startTime, endTime, force = false) => {
     if (!slotId) throw new Error('Slot ID is required');

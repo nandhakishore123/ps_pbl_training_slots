@@ -20,6 +20,10 @@ export function DataProvider({ children }) {
   const [faculty, setFaculty] = useState([])
   const [students, setStudents] = useState([])
   const [trainingSkills, setTrainingSkills] = useState([])
+  // Admin management list — includes inactive courses/labs (active-only
+  // `trainingSkills` stays the source for the points read & booking pickers).
+  const [allTrainingSkills, setAllTrainingSkills] = useState([])
+  const [skillCategories, setSkillCategories] = useState([])
   const [slotTimings, setSlotTimings] = useState([])
   // Admin management list — includes inactive slots (active-only `slotTimings`
   // stays the source for assign/booking pickers).
@@ -88,6 +92,24 @@ export function DataProvider({ children }) {
     }
   }, [])
 
+  const fetchAllTrainingSkills = useCallback(async () => {
+    try {
+      const res = await adminService.getAllTrainingSkills()
+      setAllTrainingSkills(Array.isArray(res.data) ? res.data : [])
+    } catch (err) {
+      console.error(err)
+    }
+  }, [])
+
+  const fetchSkillCategories = useCallback(async () => {
+    try {
+      const res = await adminService.getSkillCategories()
+      setSkillCategories(Array.isArray(res.data) ? res.data : [])
+    } catch (err) {
+      console.error(err)
+    }
+  }, [])
+
   const fetchSlotTimings = useCallback(async () => {
     try {
       const res = await adminService.getSlotTimings()
@@ -124,12 +146,14 @@ export function DataProvider({ children }) {
       fetchFaculty(),
       fetchStudents(),
       fetchTrainingSkills(),
+      fetchAllTrainingSkills(),
+      fetchSkillCategories(),
       fetchSlotTimings(),
       fetchAllSlotTimings(),
       fetchBookingWindow()
     ])
     setLoading(false)
-  }, [fetchDashboardKPI, fetchVenues, fetchAllVenues, fetchFaculty, fetchStudents, fetchTrainingSkills, fetchSlotTimings, fetchAllSlotTimings, fetchBookingWindow])
+  }, [fetchDashboardKPI, fetchVenues, fetchAllVenues, fetchFaculty, fetchStudents, fetchTrainingSkills, fetchAllTrainingSkills, fetchSkillCategories, fetchSlotTimings, fetchAllSlotTimings, fetchBookingWindow])
 
   useEffect(() => {
     refreshAll()
@@ -250,6 +274,57 @@ export function DataProvider({ children }) {
         return { requiresConfirmation: true, message: data.message }
       }
       showToast(data?.message || 'Failed to update venue status', true)
+      return false
+    }
+  }
+
+  // ── Training skill (Course/Lab) management — Stage 5a ───────
+  const refreshTrainingSkills = async () => {
+    await fetchTrainingSkills()
+    await fetchAllTrainingSkills()
+  }
+
+  const getSkillCategories = async () => {
+    // Categories rarely change; serve cached list but refresh if empty.
+    if (skillCategories.length === 0) await fetchSkillCategories()
+    return skillCategories
+  }
+
+  const createTrainingSkill = async (payload) => {
+    try {
+      await adminService.createTrainingSkill(payload)
+      await refreshTrainingSkills()
+      return true
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to create course/lab', true)
+      return false
+    }
+  }
+
+  const updateTrainingSkill = async (id, payload) => {
+    try {
+      await adminService.updateTrainingSkill(id, payload)
+      await refreshTrainingSkills()
+      return true
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to update course/lab', true)
+      return false
+    }
+  }
+
+  // Returns true on success, { requiresConfirmation, message } if the soft guard
+  // fired (course still offered at venues), or false on a hard error.
+  const setTrainingSkillActive = async (id, isActive, force = false) => {
+    try {
+      await adminService.setTrainingSkillActive(id, isActive, force)
+      await refreshTrainingSkills()
+      return true
+    } catch (err) {
+      const data = err.response?.data
+      if (data?.requiresConfirmation) {
+        return { requiresConfirmation: true, message: data.message }
+      }
+      showToast(data?.message || 'Failed to update course/lab status', true)
       return false
     }
   }
@@ -415,6 +490,8 @@ export function DataProvider({ children }) {
         faculty,
         students,
         trainingSkills,
+        allTrainingSkills,
+        skillCategories,
         slotTimings,
         allSlotTimings,
         bookingWindow,
@@ -432,6 +509,11 @@ export function DataProvider({ children }) {
         createVenue,
         updateVenue,
         setVenueActive,
+        // training skill (course/lab) management
+        getSkillCategories,
+        createTrainingSkill,
+        updateTrainingSkill,
+        setTrainingSkillActive,
         // slot edit / open-close
         updateSlotTiming,
         setSlotActive,

@@ -29,6 +29,13 @@ router.post('/venues', requireRole(3), adminController.createVenue);
 router.put('/venues/:venueId', requireRole(3), adminController.updateVenue);
 router.patch('/venues/:venueId/active', requireRole(3), adminController.setVenueActive);
 
+// ── Training skill (Course/Lab) management (Admin only — role_id 3) — Stage 5a ─
+router.get('/training-skills/all', requireRole(3), adminController.getAllTrainingSkills);
+router.get('/skill-categories', requireRole(3), adminController.getSkillCategories);
+router.post('/training-skills', requireRole(3), adminController.createTrainingSkill);
+router.put('/training-skills/:id', requireRole(3), adminController.updateTrainingSkill);
+router.patch('/training-skills/:id/active', requireRole(3), adminController.setTrainingSkillActive);
+
 // ── Venue ↔ Skill management (Admin only — role_id 3) ────────
 router.get('/venues/:venueId/skills', requireRole(3), adminController.getVenueSkills);
 router.post('/venues/:venueId/skills', requireRole(3), adminController.addVenueSkill);

@@ -162,6 +162,61 @@ export const setVenueActive = async (req, res, next) => {
     }
 };
 
+// ── Training skill (Course/Lab) management — Stage 5a ─────────
+
+export const getAllTrainingSkills = async (req, res, next) => {
+    try {
+        const data = await adminService.getAllTrainingSkills();
+        return successResponse(res, 'Training skills retrieved successfully', data);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const getSkillCategories = async (req, res, next) => {
+    try {
+        const data = await adminService.getSkillCategories();
+        return successResponse(res, 'Skill categories retrieved successfully', data);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const createTrainingSkill = async (req, res, next) => {
+    try {
+        const { skill_name, skill_type, category_id, image_url } = req.body;
+        const trainingSkillId = await adminService.createTrainingSkill({ skill_name, skill_type, category_id, image_url });
+        return successResponse(res, 'Course/Lab created successfully', { trainingSkillId });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const updateTrainingSkill = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const { skill_name, skill_type, category_id, image_url } = req.body;
+        await adminService.updateTrainingSkill(id, { skill_name, skill_type, category_id, image_url });
+        return successResponse(res, 'Course/Lab updated successfully', null);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const setTrainingSkillActive = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const { isActive, force } = req.body;
+        await adminService.setTrainingSkillActive(id, !!isActive, !!force);
+        return successResponse(res, `Course/Lab ${isActive ? 'activated' : 'deactivated'} successfully`, null);
+    } catch (error) {
+        if (error.requiresConfirmation) {
+            return res.status(409).json({ success: false, requiresConfirmation: true, count: error.count, message: error.message });
+        }
+        next(error);
+    }
+};
+
 // ── Slot timing edit / open-close ────────────────────────────
 
 export const getAllSlotTimings = async (req, res, next) => {

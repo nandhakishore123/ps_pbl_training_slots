@@ -183,6 +183,72 @@ export const listTrainingSkills = async () => {
   return rows;
 };
 
+// ── Training skill (Course/Lab) management — Stage 5a ─────────
+// Mirrors the venue CRUD pattern. PS vs PBL = the skill_type column.
+// Active-only listTrainingSkills above still feeds the student/points reads;
+// listAllTrainingSkills returns inactive too so they can be reactivated.
+// Soft-deactivate only (toggles is_active) — never hard delete, which would
+// FK-fail against skill_levels / assessments / venue_alloted_skills / skill_points.
+export const listAllTrainingSkills = async () => {
+  const [rows] = await db.execute(`
+    SELECT
+      ts.training_skill_id, ts.skill_name, ts.skill_type,
+      ts.category_id, c.category_name, ts.image_url, ts.is_active,
+      COUNT(DISTINCT sl.level_id) as levels_count,
+      MAX(CASE WHEN sp.point_type = 'REWARD_POINTS' THEN sp.points_alloted ELSE 0 END) as max_reward_points,
+      MAX(CASE WHEN sp.point_type = 'ACTIVITY_POINTS' THEN sp.points_alloted ELSE 0 END) as max_activity_points
+    FROM training_skills ts
+    LEFT JOIN training_skill_category c ON ts.category_id = c.category_id
+    LEFT JOIN skill_levels sl ON ts.training_skill_id = sl.training_skill_id
+    LEFT JOIN skill_points sp ON ts.training_skill_id = sp.training_skill_id
+    GROUP BY ts.training_skill_id, ts.skill_name, ts.skill_type, ts.category_id, c.category_name, ts.image_url, ts.is_active
+    ORDER BY ts.skill_name ASC
+  `);
+  return rows;
+};
+
+export const listSkillCategories = async () => {
+  const [rows] = await db.execute(
+    `SELECT category_id, category_name FROM training_skill_category ORDER BY category_name ASC`
+  );
+  return rows;
+};
+
+export const createTrainingSkill = async ({ skill_name, skill_type, category_id, image_url }) => {
+  const [result] = await db.execute(
+    `INSERT INTO training_skills (skill_name, skill_type, category_id, image_url, is_active) VALUES (?, ?, ?, ?, 1)`,
+    [skill_name, skill_type, Number(category_id), image_url ?? null]
+  );
+  return result.insertId;
+};
+
+export const updateTrainingSkill = async (id, { skill_name, skill_type, category_id, image_url }) => {
+  // training_skills has no updated_at column — do not set one.
+  const [result] = await db.execute(
+    `UPDATE training_skills SET skill_name = ?, skill_type = ?, category_id = ?, image_url = ? WHERE training_skill_id = ?`,
+    [skill_name, skill_type, Number(category_id), image_url ?? null, Number(id)]
+  );
+  return result.affectedRows ?? 0;
+};
+
+export const setTrainingSkillActive = async (id, isActive) => {
+  const [result] = await db.execute(
+    `UPDATE training_skills SET is_active = ? WHERE training_skill_id = ?`,
+    [isActive ? 1 : 0, Number(id)]
+  );
+  return result.affectedRows ?? 0;
+};
+
+// Count of venues that ACTIVELY offer this skill — for the soft "still mapped"
+// warning when deactivating (mirrors countMappingsByVenue). Not a hard block.
+export const countVenueSkillsBySkill = async (id) => {
+  const [rows] = await db.execute(
+    `SELECT COUNT(*) AS cnt FROM venue_alloted_skills WHERE training_skill_id = ? AND is_active = 1`,
+    [Number(id)]
+  );
+  return Number(rows?.[0]?.cnt ?? 0);
+};
+
 export const listSlotTimings = async () => {
   const [rows] = await db.execute(`
     SELECT slot_id, start_time, end_time 
