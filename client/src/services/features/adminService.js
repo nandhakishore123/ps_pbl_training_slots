@@ -37,12 +37,77 @@ export const adminService = {
     return api.delete(`/admin/slot-timings/${slotId}`);
   },
 
-  swapFaculty(mappingId, toFacultyId, reason) {
-    return api.post(`/admin/venues/${mappingId}/swap-faculty`, { toFacultyId, reason });
+  // ── Slot timing edit / open-close (admin-only) ──────────────
+  getAllSlotTimings() {
+    return api.get('/admin/slot-timings/all');
   },
 
-  addVenueToFaculty(facultyId, venueId, skillType, slotId) {
-    return api.post(`/admin/faculty/${facultyId}/add-venue`, { venueId, skillType, slotId });
+  updateSlotTiming(slotId, startTime, endTime, force = false) {
+    return api.put(`/admin/slot-timings/${slotId}`, { startTime, endTime, force });
+  },
+
+  setSlotActive(slotId, isActive) {
+    return api.patch(`/admin/slot-timings/${slotId}/active`, { isActive });
+  },
+
+  // ── Venue management (admin-only) ───────────────────────────
+  getAllVenues() {
+    return api.get('/admin/venues/all');
+  },
+
+  createVenue(payload) {
+    // payload: { venueName, location, capacity }
+    return api.post('/admin/venues', payload);
+  },
+
+  updateVenue(venueId, payload) {
+    // payload: { venueName, location, capacity }
+    return api.put(`/admin/venues/${venueId}`, payload);
+  },
+
+  setVenueActive(venueId, isActive, force = false) {
+    return api.patch(`/admin/venues/${venueId}/active`, { isActive, force });
+  },
+
+  // ── Venue ↔ Skill management (admin-only) ───────────────────
+  getVenueSkills(venueId) {
+    return api.get(`/admin/venues/${venueId}/skills`);
+  },
+
+  addVenueSkill(venueId, trainingSkillId) {
+    return api.post(`/admin/venues/${venueId}/skills`, { trainingSkillId });
+  },
+
+  removeVenueSkill(venueId, trainingSkillId) {
+    return api.delete(`/admin/venues/${venueId}/skills/${trainingSkillId}`);
+  },
+
+  // ── Per-venue + per-date slots (admin-only, Stage 3a) ───────
+  getVenueSlotsByDate(venueId, slotDate = null) {
+    return api.get(`/admin/venues/${venueId}/slots-by-date`, { params: slotDate ? { date: slotDate } : {} });
+  },
+
+  // Whole-day convenience read for the Slot Scheduling page (READ-ONLY).
+  getAllVenueSlotsByDate(slotDate) {
+    return api.get('/admin/slots-by-date', { params: { date: slotDate } });
+  },
+
+  createVenueSlot(venueId, payload) {
+    // payload: { mappingId, slotDate, startTime, endTime }
+    return api.post(`/admin/venues/${venueId}/slots-by-date`, payload);
+  },
+
+  updateVenueSlot(venueSlotId, payload) {
+    // payload: { slotDate, startTime, endTime }
+    return api.put(`/admin/venue-slots/${venueSlotId}`, payload);
+  },
+
+  setVenueSlotActive(venueSlotId, isActive) {
+    return api.patch(`/admin/venue-slots/${venueSlotId}/active`, { isActive });
+  },
+
+  swapFaculty(mappingId, toFacultyId, reason) {
+    return api.post(`/admin/venues/${mappingId}/swap-faculty`, { toFacultyId, reason });
   },
 
   transferIndividualVenue(mappingId, toFacultyId, reason) {
@@ -67,8 +132,37 @@ export const adminService = {
     return api.post(`/admin/attendance/bookings/${bookingId}`, { status });
   },
 
+  // ── Booking-open time config (admin-only) ───────────────────
+  getBookingWindowConfig() {
+    return api.get('/admin/config/booking-window');
+  },
+
+  updateBookingWindowConfig(openHour, openMinute) {
+    return api.put('/admin/config/booking-window', { openHour, openMinute });
+  },
+
   // ── All Bookings dashboard ───────────────────────────────────
   getAllBookings(params = {}) {
     return api.get('/admin/bookings', { params });
+  },
+
+  // ── Admin cancel a booking (Stage 4a) ────────────────────────
+  cancelBooking(bookingId) {
+    return api.delete(`/admin/bookings/${bookingId}`);
+  },
+
+  // ── Admin book a slot for a student (Stage 4b) ───────────────
+  bookForStudent(payload) {
+    // payload: { studentId, venueSlotId, trainingSkillId, levelId }
+    return api.post('/admin/bookings', payload);
+  },
+
+  bulkBook(payload) {
+    // payload: { studentIds: [...], venueSlotId, trainingSkillId, levelId }
+    return api.post('/admin/bookings/bulk', payload);
+  },
+
+  getSkillLevels(skillId) {
+    return api.get(`/admin/skills/${skillId}/levels`);
   }
 };

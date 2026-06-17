@@ -5,21 +5,63 @@ import SectionCard from '../../../components/ui/SectionCard'
 import Badge from '../../../components/ui/Badge'
 import SwapFacultyModal from '../../../components/modals/SwapFacultyModal'
 import VenueMapModal from '../../../components/modals/VenueMapModal'
+import VenueFormModal from '../../../components/modals/VenueFormModal'
+import VenueSkillsModal from '../../../components/modals/VenueSkillsModal'
+import VenueDateSlotsModal from '../../../components/modals/VenueDateSlotsModal'
 import { useData } from '../context/DataContext'
+import { useApp } from '../context/AppContext'
 
 export default function VenueAllocation() {
-  const { venues, loading } = useData()
+  const { venues, allVenues, loading, setVenueActive } = useData()
+  const { showToast } = useApp()
 
   const [statusFilter, setStatusFilter] = useState('all')
+  const [showInactive, setShowInactive] = useState(false)
   const [openMenuId, setOpenMenuId] = useState(null)
   const [swapOpen, setSwapOpen] = useState(false)
   const [swapMapping, setSwapMapping] = useState(null)
   const [mapOpen, setMapOpen] = useState(false)
 
+  // Venue create/edit + skills management
+  const [venueFormOpen, setVenueFormOpen] = useState(false)
+  const [editingVenue, setEditingVenue] = useState(null)
+  const [skillsOpen, setSkillsOpen] = useState(false)
+  const [skillsVenue, setSkillsVenue] = useState(null)
+  const [dateSlotsOpen, setDateSlotsOpen] = useState(false)
+  const [dateSlotsVenue, setDateSlotsVenue] = useState(null)
+
+  const openCreateVenue = () => { setEditingVenue(null); setVenueFormOpen(true) }
+  const openEditVenue = (v) => { setEditingVenue(v); setVenueFormOpen(true); closeMenu() }
+  const openSkills = (v) => { setSkillsVenue(v); setSkillsOpen(true); closeMenu() }
+  const openDateSlots = (v) => { setDateSlotsVenue(v); setDateSlotsOpen(true); closeMenu() }
+
+  const handleDeactivate = async (v) => {
+    closeMenu()
+    let res = await setVenueActive(v.venue_id, false, false)
+    if (res && res.requiresConfirmation) {
+      if (window.confirm(`${res.message}\n\nProceed?`)) {
+        res = await setVenueActive(v.venue_id, false, true)
+        if (res === true) showToast('Venue deactivated')
+      }
+      return
+    }
+    if (res === true) showToast('Venue deactivated')
+  }
+
+  const handleReactivate = async (v) => {
+    closeMenu()
+    const res = await setVenueActive(v.venue_id, true)
+    if (res === true) showToast('Venue reactivated')
+  }
+
   // ── FILTERED DATA ────────────────────────────────────────────
+  // Source: active-only `venues` by default; full `allVenues` (incl. inactive)
+  // when the admin toggles "Show inactive". The Venue Map stays active-only.
+  const sourceVenues = showInactive ? allVenues : venues
+
   // Deduplicate by venue_id (keep latest entry per venue) as safety net
   const uniqueVenues = Array.from(
-    venues.reduce((map, v) => {
+    sourceVenues.reduce((map, v) => {
       map.set(v.venue_id, v)
       return map
     }, new Map()).values()
@@ -27,7 +69,9 @@ export default function VenueAllocation() {
 
   const processedVenues = uniqueVenues.map(v => ({
     ...v,
-    status: v.faculty_id ? 'occupied' : 'free'
+    status: Number(v.is_active) === 0
+      ? 'inactive'
+      : (v.faculty_id ? 'occupied' : 'free')
   }))
 
   const filtered = processedVenues
@@ -35,6 +79,14 @@ export default function VenueAllocation() {
 
   const occupied = processedVenues.filter((v) => v.status === 'occupied').length
   const free = processedVenues.filter((v) => v.status === 'free').length
+
+  // Venue Map always shows active venues only (independent of the inactive toggle).
+  const mapVenues = Array.from(
+    venues.reduce((map, v) => {
+      map.set(v.venue_id, v)
+      return map
+    }, new Map()).values()
+  ).map(v => ({ ...v, status: v.faculty_id ? 'occupied' : 'free' }))
 
   // ── MENU HANDLERS ────────────────────────────────────────────
   // Use mapping_id as the toggle key (unique per row)
@@ -78,18 +130,27 @@ export default function VenueAllocation() {
               <div className={styles.miniLabel}>Free</div>
             </div>
           </div>
-          <button
-            className={styles.mapBtn}
-            onClick={(e) => { e.stopPropagation(); setMapOpen(true) }}
-          >
-            Venue Map
-          </button>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button
+              className={styles.mapBtn}
+              style={{ background: '#6c47ff', color: '#fff', borderColor: '#6c47ff' }}
+              onClick={(e) => { e.stopPropagation(); openCreateVenue() }}
+            >
+              + Create Venue
+            </button>
+            <button
+              className={styles.mapBtn}
+              onClick={(e) => { e.stopPropagation(); setMapOpen(true) }}
+            >
+              Venue Map
+            </button>
+          </div>
         </div>
 
         {/* TABLE CARD */}
         <SectionCard title="All Venues">
           {/* FILTERS */}
-          <div className={styles.filterRow}>
+          <div className={styles.filterRow} style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
             <select
               className={styles.select}
               value={statusFilter}
@@ -98,7 +159,16 @@ export default function VenueAllocation() {
               <option value="all">All Venues</option>
               <option value="occupied">Occupied</option>
               <option value="free">Free</option>
+              {showInactive && <option value="inactive">Inactive</option>}
             </select>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 600, color: 'var(--text2, #6b7280)', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={showInactive}
+                onChange={(e) => { setShowInactive(e.target.checked); if (!e.target.checked && statusFilter === 'inactive') setStatusFilter('all') }}
+              />
+              Show inactive
+            </label>
           </div>
 
           {/* TABLE */}
@@ -118,8 +188,10 @@ export default function VenueAllocation() {
                   <tr>
                     <td colSpan={5} className={styles.empty}>Loading venues...</td>
                   </tr>
-                ) : filtered.length > 0 ? filtered.map((v) => (
-                  <tr key={v.venue_id}>
+                ) : filtered.length > 0 ? filtered.map((v) => {
+                  const inactive = v.status === 'inactive'
+                  return (
+                  <tr key={v.venue_id} style={inactive ? { opacity: 0.6 } : undefined}>
                     <td>
                       <b>{v.venue_name}</b>
                       <div className={styles.capacityText}>Capacity: {v.capacity}</div>
@@ -137,34 +209,78 @@ export default function VenueAllocation() {
                         <span className={styles.unassigned}>— Unassigned</span>
                       )}
                     </td>
-                    <td><Badge status={v.status} /></td>
                     <td>
-                      {v.faculty_id && v.mapping_id && (
-                        <div
-                          className={styles.menuWrap}
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <button
-                            className={styles.manageBtn}
-                            onClick={(e) => toggleMenu(v.mapping_id, e)}
-                          >
-                            Manage ▾
-                          </button>
-                          {openMenuId === v.mapping_id && (
-                            <div className={styles.dropdown}>
-                              <div
-                                className={`${styles.dropItem} ${styles.dropSwap}`}
-                                onClick={() => openSwap(v)}
-                              >
-                                ⇄ Swap Faculty
-                              </div>
-                            </div>
-                          )}
-                        </div>
+                      {inactive ? (
+                        <span style={{
+                          display: 'inline-block', padding: '3px 10px', borderRadius: 20,
+                          fontSize: 11, fontWeight: 700, color: '#6b7280', background: 'rgba(107,114,128,0.15)',
+                        }}>
+                          Inactive
+                        </span>
+                      ) : (
+                        <Badge status={v.status} />
                       )}
                     </td>
+                    <td>
+                      <div
+                        className={styles.menuWrap}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <button
+                          className={styles.manageBtn}
+                          onClick={(e) => toggleMenu(v.venue_id, e)}
+                        >
+                          Manage ▾
+                        </button>
+                        {openMenuId === v.venue_id && (
+                          <div className={styles.dropdown}>
+                            <div className={styles.dropItem} onClick={() => openEditVenue(v)}>
+                              ✎ Edit Venue
+                            </div>
+                            <div className={styles.dropItem} onClick={() => openSkills(v)}>
+                              ⚙ Manage Skills
+                            </div>
+                            <div className={styles.dropItem} onClick={() => openDateSlots(v)}>
+                              🗓 Manage Slots
+                            </div>
+                            {inactive ? (
+                              <>
+                                <div className={styles.dropDivider} />
+                                <div
+                                  className={styles.dropItem}
+                                  style={{ color: '#059669' }}
+                                  onClick={() => handleReactivate(v)}
+                                >
+                                  ↻ Reactivate
+                                </div>
+                              </>
+                            ) : (
+                              <>
+                                {v.faculty_id && v.mapping_id && (
+                                  <div
+                                    className={`${styles.dropItem} ${styles.dropSwap}`}
+                                    onClick={() => openSwap(v)}
+                                  >
+                                    ⇄ Swap Faculty
+                                  </div>
+                                )}
+                                <div className={styles.dropDivider} />
+                                <div
+                                  className={styles.dropItem}
+                                  style={{ color: '#ef4444' }}
+                                  onClick={() => handleDeactivate(v)}
+                                >
+                                  ⨯ Deactivate
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </td>
                   </tr>
-                )) : (
+                  )
+                }) : (
                   <tr>
                     <td colSpan={5}>
                       <div className={styles.empty}>No venues match filter</div>
@@ -188,8 +304,30 @@ export default function VenueAllocation() {
       <VenueMapModal
         isOpen={mapOpen}
         onClose={() => setMapOpen(false)}
-        venues={processedVenues}
+        venues={mapVenues}
       />
+
+      <VenueFormModal
+        isOpen={venueFormOpen}
+        onClose={() => setVenueFormOpen(false)}
+        venue={editingVenue}
+      />
+
+      {skillsOpen && skillsVenue && (
+        <VenueSkillsModal
+          isOpen={skillsOpen}
+          onClose={() => setSkillsOpen(false)}
+          venue={skillsVenue}
+        />
+      )}
+
+      {dateSlotsOpen && dateSlotsVenue && (
+        <VenueDateSlotsModal
+          isOpen={dateSlotsOpen}
+          onClose={() => setDateSlotsOpen(false)}
+          venue={dateSlotsVenue}
+        />
+      )}
     </div>
   )
 }

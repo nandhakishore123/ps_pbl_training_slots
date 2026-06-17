@@ -25,8 +25,8 @@ export const trainingService = {
     return api.get('/training/bookings');
   },
 
-  bookSlot({ trainingSkillId, slotId, mappingId, levelId }) {
-    return api.post('/training/bookings', { trainingSkillId, slotId, mappingId, levelId });
+  bookSlot({ trainingSkillId, venueSlotId, levelId }) {
+    return api.post('/training/bookings', { trainingSkillId, venueSlotId, levelId });
   },
 
   // ── Assessment ──────────────────────────────────────────────────────────────

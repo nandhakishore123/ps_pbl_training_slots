@@ -3,14 +3,23 @@ import styles from './Settings.module.css'
 import Header from '../Header/Header'
 import { useData } from '../context/DataContext'
 import { useApp } from '../context/AppContext'
+import BookingOpenTimeCard from '../../../components/admin/BookingOpenTimeCard'
 
 export default function Settings() {
   const { showToast } = useApp()
-  const { slotTimings, addSlotTiming, deleteSlotTiming, trainingSkills, loading } = useData()
+  const { allSlotTimings, addSlotTiming, updateSlotTiming, setSlotActive, trainingSkills, loading } = useData()
 
   const [startTime, setStartTime] = useState('')
   const [endTime, setEndTime] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  // Inline slot edit + open/close
+  const [editingSlotId, setEditingSlotId] = useState(null)
+  const [editStart, setEditStart] = useState('')
+  const [editEnd, setEditEnd] = useState('')
+  const [rowBusy, setRowBusy] = useState(false)
+
+  const toHHMM = (t) => (t ? String(t).slice(0, 5) : '')
 
   const handleAddSlot = async () => {
     if (!startTime || !endTime) {
@@ -33,13 +42,50 @@ export default function Settings() {
     }
   }
 
-  const handleDeleteSlot = async (slotId) => {
-    if (window.confirm('Are you sure you want to delete this slot timing?')) {
-      const success = await deleteSlotTiming(slotId)
-      if (success) {
-        showToast('Slot timing deleted successfully')
-      }
+  const startEdit = (st) => {
+    setEditingSlotId(st.slot_id)
+    setEditStart(toHHMM(st.start_time))
+    setEditEnd(toHHMM(st.end_time))
+  }
+
+  const cancelEdit = () => {
+    setEditingSlotId(null)
+    setEditStart('')
+    setEditEnd('')
+  }
+
+  const handleSaveEdit = async (slotId) => {
+    if (!editStart || !editEnd) {
+      showToast('Please set both start and end times', true)
+      return
     }
+    if (editStart >= editEnd) {
+      showToast('End time must be after start time', true)
+      return
+    }
+    setRowBusy(true)
+    let res = await updateSlotTiming(slotId, editStart + ':00', editEnd + ':00')
+    // Slot has existing bookings → backend asks for confirmation; retry with force.
+    if (res && res.requiresConfirmation) {
+      setRowBusy(false)
+      if (window.confirm(`${res.message}\n\nProceed?`)) {
+        setRowBusy(true)
+        res = await updateSlotTiming(slotId, editStart + ':00', editEnd + ':00', true)
+        setRowBusy(false)
+        if (res === true) { showToast('Slot timing updated'); cancelEdit() }
+      }
+      return
+    }
+    setRowBusy(false)
+    if (res === true) { showToast('Slot timing updated'); cancelEdit() }
+  }
+
+  const handleToggleActive = async (st) => {
+    const next = Number(st.is_active) === 1 ? false : true
+    setRowBusy(true)
+    const ok = await setSlotActive(st.slot_id, next)
+    setRowBusy(false)
+    if (ok) showToast(next ? 'Slot opened' : 'Slot closed')
   }
 
   const formatTime = (timeStr) => {
@@ -102,6 +148,11 @@ export default function Settings() {
           </div>
         </div>
 
+        {/* BOOKING OPEN TIME (shared component — also used on Slot Scheduling) */}
+        <div className={styles.sectionCard}>
+          <BookingOpenTimeCard />
+        </div>
+
         {/* SLOT TIMINGS MANAGEMENT */}
         <div className={styles.sectionCard}>
           <div className={styles.sectionTitle}>Training Slot Timings</div>
@@ -133,36 +184,70 @@ export default function Settings() {
             <table className={styles.table}>
               <thead>
                 <tr>
-                  <th style={{ width: '20%' }}>Slot ID</th>
-                  <th style={{ width: '30%' }}>Start Time</th>
-                  <th style={{ width: '30%' }}>End Time</th>
-                  <th style={{ width: '20%' }}>Action</th>
+                  <th style={{ width: '12%' }}>Slot ID</th>
+                  <th style={{ width: '26%' }}>Start Time</th>
+                  <th style={{ width: '26%' }}>End Time</th>
+                  <th style={{ width: '14%' }}>Status</th>
+                  <th style={{ width: '22%' }}>Action</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={4} className={styles.empty}>Loading slots...</td>
+                    <td colSpan={5} className={styles.empty}>Loading slots...</td>
                   </tr>
-                ) : slotTimings && slotTimings.length > 0 ? (
-                  slotTimings.map((st) => (
-                    <tr key={st.slot_id}>
-                      <td><b>#{st.slot_id}</b></td>
-                      <td>{formatTime(st.start_time)}</td>
-                      <td>{formatTime(st.end_time)}</td>
-                      <td>
-                        <button
-                          className={styles.deleteBtn}
-                          onClick={() => handleDeleteSlot(st.slot_id)}
-                        >
-                          Delete
-                        </button>
-                      </td>
-                    </tr>
-                  ))
+                ) : allSlotTimings && allSlotTimings.length > 0 ? (
+                  allSlotTimings.map((st) => {
+                    const active = Number(st.is_active) === 1
+                    const editing = editingSlotId === st.slot_id
+                    return (
+                      <tr key={st.slot_id}>
+                        <td><b>#{st.slot_id}</b></td>
+                        <td>
+                          {editing ? (
+                            <input type="time" value={editStart} onChange={(e) => setEditStart(e.target.value)} />
+                          ) : formatTime(st.start_time)}
+                        </td>
+                        <td>
+                          {editing ? (
+                            <input type="time" value={editEnd} onChange={(e) => setEditEnd(e.target.value)} />
+                          ) : formatTime(st.end_time)}
+                        </td>
+                        <td>
+                          <span style={{
+                            display: 'inline-block', padding: '3px 10px', borderRadius: 20,
+                            fontSize: 11, fontWeight: 700,
+                            color: active ? '#059669' : '#ef4444',
+                            background: active ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)',
+                          }}>
+                            {active ? 'Open' : 'Closed'}
+                          </span>
+                        </td>
+                        <td>
+                          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                            {editing ? (
+                              <>
+                                <button onClick={() => handleSaveEdit(st.slot_id)} disabled={rowBusy}>
+                                  {rowBusy ? 'Saving…' : 'Save'}
+                                </button>
+                                <button onClick={cancelEdit} disabled={rowBusy}>Cancel</button>
+                              </>
+                            ) : (
+                              <>
+                                <button onClick={() => startEdit(st)}>Edit</button>
+                                <button onClick={() => handleToggleActive(st)} disabled={rowBusy}>
+                                  {active ? 'Close' : 'Open'}
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })
                 ) : (
                   <tr>
-                    <td colSpan={4}>
+                    <td colSpan={5}>
                       <div className={styles.empty}>
                         No slot timings configured.
                       </div>

@@ -7,16 +7,18 @@ const normalizeStr = (v) => {
 };
 
 // ── Time-based booking window (all times IST) ─────────────────────────────────
-// Rule: each day at 19:45 IST the NEXT working day's slots open (Sunday is a
-// holiday and is skipped). A slot for date D is bookable while
-// 19:45-on-the-working-day-before-D <= now < D@slot.start_time.
-const BOOKING_OPEN_HOUR = 19;
-const BOOKING_OPEN_MINUTE = 45;
+// Rule: each day at the configured open time (default 19:45) IST the NEXT
+// working day's slots open (Sunday is a holiday and is skipped). A slot for
+// date D is bookable while open-time-on-the-working-day-before-D <= now <
+// D@slot.start_time. The open hour/minute are admin-configurable (app_config).
+const DEFAULT_OPEN_HOUR = 19;
+const DEFAULT_OPEN_MINUTE = 45;
 
-// Pure: given the current IST wall-clock ('YYYY-MM-DD HH:MM:SS'), returns the
-// currently-open booking day and (for the same-day case) the start-time cutoff.
+// Pure: given the current IST wall-clock ('YYYY-MM-DD HH:MM:SS') and the
+// configured open time, returns the currently-open booking day and (for the
+// same-day case) the start-time cutoff.
 // { bookingDate: 'YYYY-MM-DD'|null, startAfterTime: 'HH:MM:SS'|null, isToday }
-export const computeBookingWindow = (istNowStr) => {
+export const computeBookingWindow = (istNowStr, { openHour = DEFAULT_OPEN_HOUR, openMinute = DEFAULT_OPEN_MINUTE } = {}) => {
   if (!istNowStr) return { bookingDate: null, startAfterTime: null, isToday: false };
   const [datePart, timePart = '00:00:00'] = String(istNowStr).trim().split(' ');
   const [y, mo, d] = datePart.split('-').map(Number);
@@ -31,7 +33,7 @@ export const computeBookingWindow = (istNowStr) => {
   const isSunday = (dt) => dt.getUTCDay() === 0;
 
   const minutesNow = hh * 60 + mi;
-  const openMinutes = BOOKING_OPEN_HOUR * 60 + BOOKING_OPEN_MINUTE;
+  const openMinutes = openHour * 60 + openMinute;
 
   if (minutesNow >= openMinutes) {
     // 19:45 passed → next working day's slots have opened (skip Sunday).
@@ -50,9 +52,52 @@ export const computeBookingWindow = (istNowStr) => {
   return { bookingDate: fmt(today), startAfterTime, isToday: true };
 };
 
-const getCurrentBookingWindow = async (conn = null) => {
+// Short in-memory cache for the booking-open config so we don't hit the DB on
+// every booking request. Invalidated immediately when an admin updates it.
+let _bookingCfgCache = null;
+let _bookingCfgExpiry = 0;
+const BOOKING_CFG_TTL_MS = 60 * 1000;
+
+const getBookingOpenConfigCached = async (conn = null) => {
+  const now = Date.now();
+  if (_bookingCfgCache && now < _bookingCfgExpiry) return _bookingCfgCache;
+  const cfg = await trainingModel.getBookingOpenConfig(conn);
+  _bookingCfgCache = cfg;
+  _bookingCfgExpiry = now + BOOKING_CFG_TTL_MS;
+  return cfg;
+};
+
+// Called by the admin config update so the new open time takes effect at once.
+export const invalidateBookingWindowCache = () => {
+  _bookingCfgCache = null;
+  _bookingCfgExpiry = 0;
+};
+
+// Stage B: multi-date booking window. Booking is a simple daily on/off gate —
+// once the IST clock reaches the configured open time, ALL upcoming active slots
+// (today's not-yet-started + future dates) are bookable. No Sunday special-case:
+// visibility is data-driven (admins simply don't author Sunday slots).
+// { isOpen, nowDate: 'YYYY-MM-DD'|null, nowTime: 'HH:MM:SS'|null }
+export const computeBookingOpenState = (istNowStr, { openHour = DEFAULT_OPEN_HOUR, openMinute = DEFAULT_OPEN_MINUTE } = {}) => {
+  if (!istNowStr) return { isOpen: false, nowDate: null, nowTime: null };
+  const [datePart, timePart = '00:00:00'] = String(istNowStr).trim().split(' ');
+  const [hh, mi] = timePart.split(':').map(Number);
+  const minutesNow = hh * 60 + mi;
+  const openMinutes = openHour * 60 + openMinute;
+  return { isOpen: minutesNow >= openMinutes, nowDate: datePart, nowTime: timePart };
+};
+
+const getCurrentBookingOpenState = async (conn = null) => {
   const istNow = await trainingModel.getIstNow(conn);
-  return computeBookingWindow(istNow);
+  const cfg = await getBookingOpenConfigCached(conn);
+  return computeBookingOpenState(istNow, cfg);
+};
+
+// 'open hour/minute' config → friendly '7:45 PM' for user-facing messages.
+const formatOpenTime = ({ openHour = DEFAULT_OPEN_HOUR, openMinute = DEFAULT_OPEN_MINUTE } = {}) => {
+  const ampm = openHour >= 12 ? 'PM' : 'AM';
+  const h12 = openHour % 12 || 12;
+  return `${h12}:${String(openMinute).padStart(2, '0')} ${ampm}`;
 };
 
 export const getCategories = async () => {
@@ -126,23 +171,26 @@ export const getSkillDetails = async (trainingSkillId) => {
 };
 
 export const getSkillSlots = async (trainingSkillId) => {
-  const window = await getCurrentBookingWindow();
-  // Nothing currently open → empty list; the frontend shows the friendly
-  // "booking opens at 7:45 PM" empty state.
-  if (!window.bookingDate) return [];
+  const state = await getCurrentBookingOpenState();
+  // Before the daily open time → empty list; the frontend shows the friendly
+  // "booking opens at <time>" empty state. Once open, return ALL upcoming active
+  // slots from now (today's not-yet-started + future dates). NO fallback to
+  // global slot_timings — a window with zero upcoming slots also returns [].
+  if (!state.isOpen) return [];
   return trainingModel.listSkillSlots(trainingSkillId, {
-    startAfterTime: window.startAfterTime,
+    fromDate: state.nowDate,
+    fromTime: state.nowTime,
   });
 };
 
-export const createBooking = async ({ userId, slotId, mappingId, trainingSkillId, levelId }) => {
+export const createBooking = async ({ userId, venueSlotId, trainingSkillId, levelId }) => {
   if (!userId) {
     const err = new Error('Unauthorized');
     err.status = 401;
     throw err;
   }
-  if (!slotId) {
-    const err = new Error('Slot id is required');
+  if (!venueSlotId) {
+    const err = new Error('Venue slot id is required');
     err.status = 400;
     throw err;
   }
@@ -170,35 +218,67 @@ export const createBooking = async ({ userId, slotId, mappingId, trainingSkillId
   try {
     await conn.beginTransaction();
 
-    const slot = await trainingModel.getSlotTimingById(slotId, conn);
+    // Stage 3b: the chosen venue_slot fully pins venue + date + time + faculty.
+    const slot = await trainingModel.getVenueSlotById(venueSlotId, conn);
     if (!slot) {
-      const err = new Error('Slot timing not found');
+      const err = new Error('Slot not found');
       err.status = 404;
       throw err;
     }
     if (!slot.is_active) {
-      const err = new Error('Slot timing is inactive');
+      const err = new Error('This slot is inactive');
       err.status = 400;
+      throw err;
+    }
+    if (!slot.venue_active) {
+      const err = new Error('This venue is inactive');
+      err.status = 400;
+      throw err;
+    }
+
+    // The slot's venue must actively offer this skill.
+    const allotted = await trainingModel.isSkillAllottedAtVenue(slot.venue_id, trainingSkillId, conn);
+    if (!allotted) {
+      const err = new Error('This venue does not offer the selected skill');
+      err.status = 403;
       throw err;
     }
 
     // Re-validate the booking window server-side (never trust the client).
-    const window = await getCurrentBookingWindow(conn);
-    if (!window.bookingDate) {
-      const err = new Error('Booking is not open right now. Booking opens daily at 7:45 PM for the next day.');
+    // Stage B: multi-date — booking is open/closed by the daily gate, then the
+    // slot must be today-or-future and (if today) not yet started.
+    const state = await getCurrentBookingOpenState(conn);
+    if (!state.isOpen) {
+      const cfg = await getBookingOpenConfigCached(conn);
+      const err = new Error(`Booking is not open right now. It opens daily at ${formatOpenTime(cfg)}.`);
       err.status = 400;
       throw err;
     }
-    // Same-day window: a slot is bookable only until its own start time.
-    if (window.isToday && window.startAfterTime && String(slot.start_time) <= window.startAfterTime) {
-      const err = new Error("This slot's booking window has closed — a slot can only be booked before its start time.");
+    // The slot's date must not be in the past.
+    if (String(slot.slot_date) < String(state.nowDate)) {
+      const err = new Error("This slot's date has already passed.");
+      err.status = 400;
+      throw err;
+    }
+    // Same-day cutoff: a today-slot is bookable only until its own start time.
+    if (String(slot.slot_date) === String(state.nowDate) && String(slot.start_time) <= String(state.nowTime)) {
+      const err = new Error("This slot's booking window has closed — book before its start time.");
       err.status = 400;
       throw err;
     }
 
-    const existing = await trainingModel.getExistingBookingForSlotDate(studentId, slot.slot_id, window.bookingDate, conn);
+    // Duplicate-booking guard (this exact venue_slot).
+    const existing = await trainingModel.getExistingBookingForVenueSlot(studentId, venueSlotId, conn);
     if (existing) {
-      const err = new Error('You have already booked this time slot for that day');
+      const err = new Error('You have already booked this slot');
+      err.status = 409;
+      throw err;
+    }
+
+    // Same-time-same-day cross-venue guard: no two bookings at the same date+time.
+    const sameTime = await trainingModel.getSameTimeBookingForStudent(studentId, slot.slot_date, slot.start_time, conn);
+    if (sameTime) {
+      const err = new Error('You already have a booking at this time on this day');
       err.status = 409;
       throw err;
     }
@@ -210,29 +290,9 @@ export const createBooking = async ({ userId, slotId, mappingId, trainingSkillId
       throw err;
     }
 
-    const candidates = await trainingModel.listAvailableMappingsForSlot({
-      startTime: slot.start_time,
-      endTime: slot.end_time,
-      preferredMappingId: mappingId || 0,
-      trainingSkillId,
-    }, conn);
-
-    if (!candidates.length) {
-      const err = new Error('No seats available for this slot');
-      err.status = 409;
-      throw err;
-    }
-
-    let selectedMappingId = null;
-    for (const candidate of candidates) {
-      const updated = await trainingModel.incrementMappingBooking(candidate.mapping_id, conn);
-      if (updated > 0) {
-        selectedMappingId = candidate.mapping_id;
-        break;
-      }
-    }
-
-    if (!selectedMappingId) {
+    // Atomic guarded seat claim (capacity > current_bookings, on venue_slots).
+    const claimed = await trainingModel.incrementVenueSlotBooking(venueSlotId, conn);
+    if (claimed === 0) {
       const err = new Error('No seats available for this slot');
       err.status = 409;
       throw err;
@@ -242,9 +302,9 @@ export const createBooking = async ({ userId, slotId, mappingId, trainingSkillId
       studentId,
       trainingSkillId: Number(trainingSkillId),
       levelId: levelId ? Number(levelId) : null,
-      mappingId: selectedMappingId,
-      slotId: slot.slot_id,
-      bookingDate: window.bookingDate,
+      mappingId: slot.mapping_id,
+      venueSlotId: Number(venueSlotId),
+      bookingDate: slot.slot_date,
     }, conn);
 
     const booking = await trainingModel.getBookingById(bookingId, conn);
@@ -252,7 +312,7 @@ export const createBooking = async ({ userId, slotId, mappingId, trainingSkillId
 
     return {
       ...booking,
-      requested_slot_id: Number(slot.slot_id),
+      requested_venue_slot_id: Number(venueSlotId),
     };
   } catch (error) {
     await conn.rollback();
@@ -355,10 +415,10 @@ export const startAssessment = async ({ userId, assessmentId, totalMarks }) => {
       `SELECT sb.booking_id,
               DATE_FORMAT(sb.booking_date, '%Y-%m-%d') AS booking_date,
               sb.is_present,
-              TIME_FORMAT(st.start_time, '%H:%i:%s') AS start_time,
-              TIME_FORMAT(st.end_time, '%H:%i:%s') AS end_time
+              TIME_FORMAT(vs.start_time, '%H:%i:%s') AS start_time,
+              TIME_FORMAT(vs.end_time, '%H:%i:%s') AS end_time
        FROM student_booking sb
-       JOIN slot_timings st ON st.slot_id = sb.slot_id
+       JOIN venue_slots vs ON vs.venue_slot_id = sb.venue_slot_id
        WHERE sb.student_id = ? AND sb.training_skill_id = ? AND sb.level_id = ? AND sb.status = 'ONGOING'
        LIMIT 1`,
       [Number(studentId), Number(skillId), Number(levelId)]
@@ -463,7 +523,7 @@ export const submitAssessment = async ({ studentAssessmentId, answers, passingMa
       }
       
       const [bookingRows] = await db.execute(
-        `SELECT booking_id, mapping_id
+        `SELECT booking_id, venue_slot_id
          FROM student_booking
          WHERE student_id = ?
            AND training_skill_id = ?
@@ -480,12 +540,8 @@ export const submitAssessment = async ({ studentAssessmentId, answers, passingMa
            WHERE booking_id = ?`,
           [newBookingStatus, booking.booking_id]
         );
-        await db.execute(
-          `UPDATE venue_mapping
-           SET current_bookings = GREATEST(0, COALESCE(current_bookings, 1) - 1)
-           WHERE mapping_id = ?`,
-          [booking.mapping_id]
-        );
+        // Stage 3b: release the seat on venue_slots.
+        await trainingModel.decrementVenueSlotBooking(booking.venue_slot_id);
       }
     }
   } catch (error) {

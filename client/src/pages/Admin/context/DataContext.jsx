@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react'
 import { adminService } from '../../../services/features/adminService'
+import { superAdminService } from '../../../services/features/superAdminService'
 import { useApp } from './AppContext'
 
 // Mock approvals since they are not fully migrated yet
@@ -13,10 +14,18 @@ export function DataProvider({ children }) {
   // ── STATE ───────────────────────────────────────────────────
   const [dashboardKPI, setDashboardKPI] = useState(null)
   const [venues, setVenues] = useState([])
+  // Admin management list — includes inactive venues (active-only `venues`
+  // stays the source for assign/booking pickers and the Venue Map).
+  const [allVenues, setAllVenues] = useState([])
   const [faculty, setFaculty] = useState([])
   const [students, setStudents] = useState([])
   const [trainingSkills, setTrainingSkills] = useState([])
   const [slotTimings, setSlotTimings] = useState([])
+  // Admin management list — includes inactive slots (active-only `slotTimings`
+  // stays the source for assign/booking pickers).
+  const [allSlotTimings, setAllSlotTimings] = useState([])
+  // Admin-configurable booking-open time { openHour, openMinute }
+  const [bookingWindow, setBookingWindow] = useState(null)
   
   // Mock approvals
   const [labApprovals, setLabApprovals] = useState(initialLabApprovals)
@@ -38,6 +47,15 @@ export function DataProvider({ children }) {
     try {
       const res = await adminService.getVenues()
       setVenues(Array.isArray(res.data) ? res.data : [])
+    } catch (err) {
+      console.error(err)
+    }
+  }, [])
+
+  const fetchAllVenues = useCallback(async () => {
+    try {
+      const res = await adminService.getAllVenues()
+      setAllVenues(Array.isArray(res.data) ? res.data : [])
     } catch (err) {
       console.error(err)
     }
@@ -79,18 +97,39 @@ export function DataProvider({ children }) {
     }
   }, [])
 
+  const fetchAllSlotTimings = useCallback(async () => {
+    try {
+      const res = await adminService.getAllSlotTimings()
+      setAllSlotTimings(Array.isArray(res.data) ? res.data : [])
+    } catch (err) {
+      console.error(err)
+    }
+  }, [])
+
+  const fetchBookingWindow = useCallback(async () => {
+    try {
+      const res = await adminService.getBookingWindowConfig()
+      setBookingWindow(res.data || null)
+    } catch (err) {
+      console.error(err)
+    }
+  }, [])
+
   const refreshAll = useCallback(async () => {
     setLoading(true)
     await Promise.all([
       fetchDashboardKPI(),
       fetchVenues(),
+      fetchAllVenues(),
       fetchFaculty(),
       fetchStudents(),
       fetchTrainingSkills(),
-      fetchSlotTimings()
+      fetchSlotTimings(),
+      fetchAllSlotTimings(),
+      fetchBookingWindow()
     ])
     setLoading(false)
-  }, [fetchDashboardKPI, fetchVenues, fetchFaculty, fetchStudents, fetchTrainingSkills, fetchSlotTimings])
+  }, [fetchDashboardKPI, fetchVenues, fetchAllVenues, fetchFaculty, fetchStudents, fetchTrainingSkills, fetchSlotTimings, fetchAllSlotTimings, fetchBookingWindow])
 
   useEffect(() => {
     refreshAll()
@@ -110,9 +149,11 @@ export function DataProvider({ children }) {
     }
   }
 
-  const addVenueToFaculty = async (facultyId, venueId, skillType, slotId) => {
+  const addVenueToFaculty = async (facultyId, venueId, trainingSkillId, slotId) => {
     try {
-      await adminService.addVenueToFaculty(facultyId, venueId, skillType, slotId)
+      // Routed through the assign endpoint, which writes BOTH venue_mapping
+      // AND venue_alloted_skills (so the venue becomes bookable for the skill).
+      await superAdminService.assignFacultyToLab(facultyId, { venueId, slotId, trainingSkillId })
       await fetchFaculty()
       await fetchVenues()
       return true
@@ -168,6 +209,190 @@ export function DataProvider({ children }) {
     }
   }
 
+  // ── Venue management ────────────────────────────────────────
+  const refreshVenues = async () => {
+    await fetchVenues()
+    await fetchAllVenues()
+  }
+
+  const createVenue = async (payload) => {
+    try {
+      await adminService.createVenue(payload)
+      await refreshVenues()
+      return true
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to create venue', true)
+      return false
+    }
+  }
+
+  const updateVenue = async (venueId, payload) => {
+    try {
+      await adminService.updateVenue(venueId, payload)
+      await refreshVenues()
+      return true
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to update venue', true)
+      return false
+    }
+  }
+
+  // Returns true on success, { requiresConfirmation, message } if a guard blocked
+  // it (venue still mapped), or false on a hard error.
+  const setVenueActive = async (venueId, isActive, force = false) => {
+    try {
+      await adminService.setVenueActive(venueId, isActive, force)
+      await refreshVenues()
+      return true
+    } catch (err) {
+      const data = err.response?.data
+      if (data?.requiresConfirmation) {
+        return { requiresConfirmation: true, message: data.message }
+      }
+      showToast(data?.message || 'Failed to update venue status', true)
+      return false
+    }
+  }
+
+  // ── Slot timing edit / open-close ───────────────────────────
+  const refreshSlots = async () => {
+    await fetchAllSlotTimings()
+    await fetchSlotTimings()
+  }
+
+  const updateSlotTiming = async (slotId, startTime, endTime, force = false) => {
+    try {
+      await adminService.updateSlotTiming(slotId, startTime, endTime, force)
+      await refreshSlots()
+      return true
+    } catch (err) {
+      const data = err.response?.data
+      if (data?.requiresConfirmation) {
+        return { requiresConfirmation: true, message: data.message }
+      }
+      showToast(data?.message || 'Failed to update slot timing', true)
+      return false
+    }
+  }
+
+  const setSlotActive = async (slotId, isActive) => {
+    try {
+      await adminService.setSlotActive(slotId, isActive)
+      await refreshSlots()
+      return true
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to update slot status', true)
+      return false
+    }
+  }
+
+  // ── Venue ↔ Skill management ────────────────────────────────
+  const getVenueSkills = async (venueId) => {
+    try {
+      const res = await adminService.getVenueSkills(venueId)
+      return Array.isArray(res.data) ? res.data : []
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to load venue skills', true)
+      return []
+    }
+  }
+
+  const addVenueSkill = async (venueId, trainingSkillId) => {
+    try {
+      await adminService.addVenueSkill(venueId, trainingSkillId)
+      return true
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to add skill', true)
+      return false
+    }
+  }
+
+  const removeVenueSkill = async (venueId, trainingSkillId) => {
+    try {
+      await adminService.removeVenueSkill(venueId, trainingSkillId)
+      return true
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to remove skill', true)
+      return false
+    }
+  }
+
+  // ── Per-venue + per-date slots (admin-only, Stage 3a) ───────
+  const getVenueSlots = async (venueId, slotDate = null) => {
+    try {
+      const res = await adminService.getVenueSlotsByDate(venueId, slotDate)
+      return res.data || { slots: [], mappings: [] }
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to load venue slots', true)
+      return { slots: [], mappings: [] }
+    }
+  }
+
+  // Whole-day convenience read for the Slot Scheduling page (one call).
+  const getAllVenueSlots = async (slotDate) => {
+    try {
+      const res = await adminService.getAllVenueSlotsByDate(slotDate)
+      return res.data || { slots: [], mappings: [] }
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to load slots for this day', true)
+      return { slots: [], mappings: [] }
+    }
+  }
+
+  const createVenueSlot = async (venueId, payload) => {
+    try {
+      await adminService.createVenueSlot(venueId, payload)
+      return true
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to add slot', true)
+      return false
+    }
+  }
+
+  const updateVenueSlot = async (venueSlotId, payload) => {
+    try {
+      await adminService.updateVenueSlot(venueSlotId, payload)
+      return true
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to update slot', true)
+      return false
+    }
+  }
+
+  const setVenueSlotActive = async (venueSlotId, isActive) => {
+    try {
+      await adminService.setVenueSlotActive(venueSlotId, isActive)
+      return true
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to update slot status', true)
+      return false
+    }
+  }
+
+  // ── Booking-open time config ────────────────────────────────
+  const getBookingWindowConfig = async () => {
+    try {
+      const res = await adminService.getBookingWindowConfig()
+      const data = res.data || null
+      setBookingWindow(data)
+      return data
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to load booking open time', true)
+      return null
+    }
+  }
+
+  const updateBookingWindowConfig = async (openHour, openMinute) => {
+    try {
+      const res = await adminService.updateBookingWindowConfig(openHour, openMinute)
+      setBookingWindow(res.data || { openHour, openMinute })
+      return true
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to update booking open time', true)
+      return false
+    }
+  }
+
   const handleLabApproval = (id, action) => {
     setLabApprovals((prev) =>
       prev.map((l) => (l.id === id ? { ...l, status: action } : l))
@@ -186,10 +411,13 @@ export function DataProvider({ children }) {
         loading,
         dashboardKPI,
         venues,
+        allVenues,
         faculty,
         students,
         trainingSkills,
         slotTimings,
+        allSlotTimings,
+        bookingWindow,
         labApprovals,
         apApprovals,
         refreshAll,
@@ -200,6 +428,26 @@ export function DataProvider({ children }) {
         transferAllVenues,
         addSlotTiming,
         deleteSlotTiming,
+        // venue management
+        createVenue,
+        updateVenue,
+        setVenueActive,
+        // slot edit / open-close
+        updateSlotTiming,
+        setSlotActive,
+        // venue ↔ skill
+        getVenueSkills,
+        addVenueSkill,
+        removeVenueSkill,
+        // per-venue + per-date slots (Stage 3a)
+        getVenueSlots,
+        getAllVenueSlots,
+        createVenueSlot,
+        updateVenueSlot,
+        setVenueSlotActive,
+        // booking-open time config
+        getBookingWindowConfig,
+        updateBookingWindowConfig,
         handleLabApproval,
         handleApApproval,
       }}

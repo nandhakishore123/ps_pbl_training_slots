@@ -155,34 +155,37 @@ export const getSkillLevelPoints = async (trainingSkillId) => {
   return rows ?? [];
 };
 
-export const listSkillSlots = async (trainingSkillId, { startAfterTime = null } = {}) => {
-  const params = [Number(trainingSkillId)];
-  let timeFilter = '';
-  if (startAfterTime) {
-    // Same-day window: a slot is bookable only until its own start time.
-    timeFilter = '\n        AND st.start_time > ?';
-    params.push(startAfterTime);
-  }
+// Stage 3b: slots are per-venue + per-date rows in venue_slots. Capacity lives on
+// venues (via venue_slots.mapping_id -> venue_mapping.venue_id -> venues).
+// Stage B: multi-date window. Returns ALL active slots strictly after "now"
+// (future dates whole + today's not-yet-started), each carrying its date. The
+// chronological cutoff `(slot_date > now) OR (slot_date = now AND start_time >
+// nowTime)` excludes past dates and makes the same-day cutoff intrinsic.
+// All equality JOINs (TiDB-safe); the OR/range lives in WHERE.
+export const listSkillSlots = async (trainingSkillId, { fromDate, fromTime = '00:00:00' } = {}) => {
+  if (!fromDate) return [];
   const [rows] = await db.execute(
     `SELECT
-        vm.mapping_id,
-        st.slot_id,
-        st.start_time,
-        st.end_time,
+        vs.venue_slot_id,
+        vs.mapping_id,
+        DATE_FORMAT(vs.slot_date, '%Y-%m-%d') AS slot_date,
+        vs.start_time,
+        vs.end_time,
         v.venue_name,
         COALESCE(v.capacity, 0) AS capacity_total,
-        COALESCE(vm.current_bookings, 0) AS bookings_total,
-        (COALESCE(v.capacity, 0) - COALESCE(vm.current_bookings, 0)) AS seats_available
-      FROM slot_timings st
-      JOIN venue_mapping vm ON vm.slot_id = st.slot_id
+        COALESCE(vs.current_bookings, 0) AS bookings_total,
+        (COALESCE(v.capacity, 0) - COALESCE(vs.current_bookings, 0)) AS seats_available
+      FROM venue_slots vs
+      JOIN venue_mapping vm ON vm.mapping_id = vs.mapping_id
       JOIN venues v ON v.venue_id = vm.venue_id
       JOIN venue_alloted_skills vas ON vas.venue_id = v.venue_id
-      WHERE st.is_active = 1
+      WHERE vs.is_active = 1
         AND vas.training_skill_id = ?
         AND vas.is_active = 1
-        AND v.is_active = 1${timeFilter}
-      ORDER BY st.start_time ASC, st.end_time ASC, v.venue_name ASC`,
-    params
+        AND v.is_active = 1
+        AND ( vs.slot_date > ? OR (vs.slot_date = ? AND vs.start_time > ?) )
+      ORDER BY vs.slot_date ASC, vs.start_time ASC, v.venue_name ASC`,
+    [Number(trainingSkillId), fromDate, fromDate, fromTime]
   );
   return rows ?? [];
 };
@@ -197,6 +200,41 @@ export const getIstNow = async (conn = null) => {
     `SELECT DATE_FORMAT(CONVERT_TZ(UTC_TIMESTAMP(), '+00:00', '+05:30'), '%Y-%m-%d %H:%i:%s') AS ist_now`
   );
   return rows?.[0]?.ist_now ?? null;
+};
+
+// Booking-open time (admin-configurable) from app_config. Safe fallback to
+// 19:45 if rows are missing or invalid. Reads existing rows only — no DDL.
+export const getBookingOpenConfig = async (conn = null) => {
+  const exec = getExec(conn);
+  const [rows] = await exec.execute(
+    `SELECT config_key, config_value
+     FROM app_config
+     WHERE config_key IN ('booking_open_hour', 'booking_open_minute')`
+  );
+  let openHour = 19;
+  let openMinute = 45;
+  for (const r of rows ?? []) {
+    if (r.config_key === 'booking_open_hour') {
+      const h = Number(r.config_value);
+      if (Number.isInteger(h) && h >= 0 && h <= 23) openHour = h;
+    } else if (r.config_key === 'booking_open_minute') {
+      const m = Number(r.config_value);
+      if (Number.isInteger(m) && m >= 0 && m <= 59) openMinute = m;
+    }
+  }
+  return { openHour, openMinute };
+};
+
+// Update the two existing app_config rows (no insert/DDL).
+export const updateBookingOpenConfig = async (openHour, openMinute) => {
+  await db.execute(
+    `UPDATE app_config SET config_value = ? WHERE config_key = 'booking_open_hour'`,
+    [String(openHour)]
+  );
+  await db.execute(
+    `UPDATE app_config SET config_value = ? WHERE config_key = 'booking_open_minute'`,
+    [String(openMinute)]
+  );
 };
 
 export const isSlotTimingInFuture = async (slotId, conn = null) => {
@@ -226,107 +264,136 @@ export const getStudentIdByUserId = async (userId, conn = null) => {
   return rows?.[0]?.student_id ?? null;
 };
 
-export const getSlotTimingById = async (slotId, conn = null) => {
-  const exec = getExec(conn);
-  const [rows] = await exec.execute(
-    `SELECT slot_id, start_time, end_time, is_active
-     FROM slot_timings
-     WHERE slot_id = ?
-     LIMIT 1`,
-    [Number(slotId)]
-  );
-  return rows?.[0] ?? null;
-};
-
-export const getMappingSlotDetails = async (mappingId, conn = null) => {
+// Stage 3b: load a single venue_slot with its venue (capacity/active) and
+// mapping/faculty. Skill-eligibility is verified separately via
+// isSkillAllottedAtVenue. All equality JOINs (TiDB-safe).
+export const getVenueSlotById = async (venueSlotId, conn = null) => {
   const exec = getExec(conn);
   const [rows] = await exec.execute(
     `SELECT
-        vm.mapping_id,
-        st.start_time,
-        st.end_time,
-        COALESCE(vm.current_bookings, 0) AS current_bookings,
-        v.venue_id,
+        vs.venue_slot_id,
+        vs.mapping_id,
+        DATE_FORMAT(vs.slot_date, '%Y-%m-%d') AS slot_date,
+        vs.start_time,
+        vs.end_time,
+        vs.is_active,
+        COALESCE(vs.current_bookings, 0) AS current_bookings,
+        vm.venue_id,
+        vm.faculty_id,
         v.venue_name,
         v.capacity,
-        v.is_active AS venue_active,
-        st.slot_id
-      FROM venue_mapping vm
-      JOIN slot_timings st
-        ON st.is_active = 1
-       AND st.slot_id = vm.slot_id
-      LEFT JOIN venues v
-        ON v.venue_id = vm.venue_id
-      WHERE vm.mapping_id = ?
+        v.is_active AS venue_active
+      FROM venue_slots vs
+      JOIN venue_mapping vm ON vm.mapping_id = vs.mapping_id
+      LEFT JOIN venues v ON v.venue_id = vm.venue_id
+      WHERE vs.venue_slot_id = ?
       LIMIT 1`,
-    [Number(mappingId)]
+    [Number(venueSlotId)]
   );
   return rows?.[0] ?? null;
 };
 
-export const getExistingBookingForSlotDate = async (studentId, slotId, bookingDate, conn = null) => {
+// Is the skill actively allotted to this venue? (eligibility for booking)
+export const isSkillAllottedAtVenue = async (venueId, trainingSkillId, conn = null) => {
+  const exec = getExec(conn);
+  const [rows] = await exec.execute(
+    `SELECT 1 AS ok
+     FROM venue_alloted_skills
+     WHERE venue_id = ?
+       AND training_skill_id = ?
+       AND is_active = 1
+     LIMIT 1`,
+    [Number(venueId), Number(trainingSkillId)]
+  );
+  return Boolean(rows?.length);
+};
+
+// Duplicate-booking guard, keyed by venue_slot (uq_student_venue_slot backs this).
+export const getExistingBookingForVenueSlot = async (studentId, venueSlotId, conn = null) => {
   const exec = getExec(conn);
   const [rows] = await exec.execute(
     `SELECT booking_id
      FROM student_booking
      WHERE student_id = ?
-       AND slot_id = ?
-       AND booking_date = ?
+       AND venue_slot_id = ?
      LIMIT 1`,
-    [Number(studentId), Number(slotId), bookingDate]
+    [Number(studentId), Number(venueSlotId)]
   );
   return rows?.[0] ?? null;
 };
 
-export const listAvailableMappingsForSlot = async ({ startTime, endTime, preferredMappingId, trainingSkillId }, conn = null) => {
+// Same-time-same-day cross-venue guard: a student may not hold a non-terminal
+// booking at the same slot_date AND start_time in ANY venue. Equality JOIN only.
+export const getSameTimeBookingForStudent = async (studentId, slotDate, startTime, conn = null) => {
   const exec = getExec(conn);
   const [rows] = await exec.execute(
-    `SELECT
-        vm.mapping_id,
-        COALESCE(vm.current_bookings, 0) AS current_bookings,
-        v.capacity
-      FROM venue_mapping vm
-      JOIN slot_timings st
-        ON st.is_active = 1
-       AND st.slot_id = vm.slot_id
-      JOIN venues v
-        ON v.venue_id = vm.venue_id
-      JOIN venue_alloted_skills vas
-        ON vas.venue_id = v.venue_id
-      WHERE st.start_time = ?
-        AND st.end_time = ?
-        AND vas.training_skill_id = ?
-        AND v.is_active = 1
-        AND COALESCE(v.capacity, 0) > COALESCE(vm.current_bookings, 0)
-      ORDER BY (vm.mapping_id = ?) DESC,
-               COALESCE(vm.current_bookings, 0) ASC,
-               vm.mapping_id ASC`,
-    [startTime, endTime, Number(trainingSkillId), Number(preferredMappingId)]
+    `SELECT sb.booking_id
+     FROM student_booking sb
+     JOIN venue_slots vs ON vs.venue_slot_id = sb.venue_slot_id
+     WHERE sb.student_id = ?
+       AND vs.slot_date = ?
+       AND vs.start_time = ?
+       AND sb.status NOT IN ('PASS', 'FAIL', 'COMPLETED')
+     LIMIT 1`,
+    [Number(studentId), slotDate, startTime]
   );
-  return rows ?? [];
+  return rows?.[0] ?? null;
 };
 
-export const incrementMappingBooking = async (mappingId, conn = null) => {
+// Atomic guarded seat claim on venue_slots. Capacity is on venues, reached via
+// the mapping. affectedRows === 1 => claimed; 0 => full/inactive. TiDB multi-
+// table UPDATE...JOIN with equality joins is supported.
+export const incrementVenueSlotBooking = async (venueSlotId, conn = null) => {
   const exec = getExec(conn);
   const [result] = await exec.execute(
-    `UPDATE venue_mapping vm
+    `UPDATE venue_slots vs
+     JOIN venue_mapping vm ON vm.mapping_id = vs.mapping_id
      JOIN venues v ON v.venue_id = vm.venue_id
-     SET vm.current_bookings = COALESCE(vm.current_bookings, 0) + 1
-     WHERE vm.mapping_id = ?
+     SET vs.current_bookings = COALESCE(vs.current_bookings, 0) + 1
+     WHERE vs.venue_slot_id = ?
+       AND vs.is_active = 1
        AND v.is_active = 1
-       AND COALESCE(v.capacity, 0) > COALESCE(vm.current_bookings, 0)`,
-    [Number(mappingId)]
+       AND COALESCE(v.capacity, 0) > COALESCE(vs.current_bookings, 0)`,
+    [Number(venueSlotId)]
   );
   return result?.affectedRows ?? 0;
 };
 
-export const insertStudentBooking = async ({ studentId, trainingSkillId, levelId, mappingId, slotId, bookingDate }, conn = null) => {
+// Release one seat on a venue_slot (floored at 0).
+export const decrementVenueSlotBooking = async (venueSlotId, conn = null) => {
   const exec = getExec(conn);
   const [result] = await exec.execute(
+    `UPDATE venue_slots
+     SET current_bookings = GREATEST(0, COALESCE(current_bookings, 1) - 1)
+     WHERE venue_slot_id = ?`,
+    [Number(venueSlotId)]
+  );
+  return result?.affectedRows ?? 0;
+};
+
+// Hard-delete a booking and its dependents (Stage 4a admin cancel). Order
+// respects FKs: only attendance has an enforced FK to student_booking; end_survey
+// has no FK (cleared for cleanliness). Single-table deletes by key — TiDB-safe.
+// The seat release (decrement) is handled by the caller, ONLY for ONGOING.
+export const deleteBookingCascade = async (bookingId, conn = null) => {
+  const exec = getExec(conn);
+  await exec.execute(`DELETE FROM attendance WHERE booking_id = ?`, [Number(bookingId)]);
+  await exec.execute(`DELETE FROM end_survey WHERE booking_id = ?`, [Number(bookingId)]);
+  const [result] = await exec.execute(
+    `DELETE FROM student_booking WHERE booking_id = ?`,
+    [Number(bookingId)]
+  );
+  return result?.affectedRows ?? 0;
+};
+
+export const insertStudentBooking = async ({ studentId, trainingSkillId, levelId, mappingId, venueSlotId, bookingDate }, conn = null) => {
+  const exec = getExec(conn);
+  // Stage 3b: slot_id intentionally written NULL (kept nullable for rollback).
+  const [result] = await exec.execute(
     `INSERT INTO student_booking
-      (student_id, training_skill_id, level_id, mapping_id, slot_id, booking_date, status)
-     VALUES (?, ?, ?, ?, ?, ?, 'ONGOING')`,
-    [Number(studentId), Number(trainingSkillId), levelId ? Number(levelId) : null, Number(mappingId), Number(slotId), bookingDate]
+      (student_id, training_skill_id, level_id, mapping_id, venue_slot_id, slot_id, booking_date, status)
+     VALUES (?, ?, ?, ?, ?, NULL, ?, 'ONGOING')`,
+    [Number(studentId), Number(trainingSkillId), levelId ? Number(levelId) : null, Number(mappingId), Number(venueSlotId), bookingDate]
   );
   return result?.insertId ?? null;
 };
@@ -342,20 +409,20 @@ export const getBookingById = async (bookingId, conn = null) => {
         ts.skill_name,
         ts.skill_type,
         sb.mapping_id,
-        sb.slot_id,
+        sb.venue_slot_id,
         sb.booking_date,
         sb.status,
-        st.start_time,
-        st.end_time,
+        vs.start_time,
+        vs.end_time,
         v.venue_id,
         v.venue_name,
         v.capacity,
-        COALESCE(vm.current_bookings, 0) AS current_bookings,
+        COALESCE(vs.current_bookings, 0) AS current_bookings,
         COALESCE((SELECT 1 FROM end_survey WHERE booking_id = sb.booking_id LIMIT 1), 0) AS survey_submitted
       FROM student_booking sb
       JOIN training_skills ts ON ts.training_skill_id = sb.training_skill_id
       JOIN venue_mapping vm ON vm.mapping_id = sb.mapping_id
-      JOIN slot_timings st ON st.slot_id = sb.slot_id
+      JOIN venue_slots vs ON vs.venue_slot_id = sb.venue_slot_id
       LEFT JOIN venues v ON v.venue_id = vm.venue_id
       WHERE sb.booking_id = ?
       LIMIT 1`,
@@ -375,24 +442,24 @@ export const listStudentBookings = async (studentId, conn = null) => {
         ts.skill_name,
         ts.skill_type,
         sb.mapping_id,
-        sb.slot_id,
+        sb.venue_slot_id,
         DATE_FORMAT(sb.booking_date, '%Y-%m-%d') AS booking_date,
         sb.status,
         sb.is_present,
-        TIME_FORMAT(st.start_time, '%H:%i:%s') AS start_time,
-        TIME_FORMAT(st.end_time, '%H:%i:%s') AS end_time,
+        TIME_FORMAT(vs.start_time, '%H:%i:%s') AS start_time,
+        TIME_FORMAT(vs.end_time, '%H:%i:%s') AS end_time,
         v.venue_id,
         v.venue_name,
         v.capacity,
-        COALESCE(vm.current_bookings, 0) AS current_bookings,
+        COALESCE(vs.current_bookings, 0) AS current_bookings,
         COALESCE((SELECT 1 FROM end_survey WHERE booking_id = sb.booking_id LIMIT 1), 0) AS survey_submitted
       FROM student_booking sb
       JOIN training_skills ts ON ts.training_skill_id = sb.training_skill_id
       JOIN venue_mapping vm ON vm.mapping_id = sb.mapping_id
-      JOIN slot_timings st ON st.slot_id = sb.slot_id
+      JOIN venue_slots vs ON vs.venue_slot_id = sb.venue_slot_id
       LEFT JOIN venues v ON v.venue_id = vm.venue_id
       WHERE sb.student_id = ?
-      ORDER BY sb.booking_date DESC, st.start_time ASC, st.end_time ASC`,
+      ORDER BY sb.booking_date DESC, vs.start_time ASC, vs.end_time ASC`,
     [Number(studentId)]
   );
   return rows ?? [];
@@ -516,7 +583,7 @@ export const getExistingActiveBookingForCourse = async (studentId, trainingSkill
 export const markBookingMalpractice = async (bookingId, conn = null) => {
   const exec = getExec(conn);
   const [rows] = await exec.execute(
-    `SELECT mapping_id, status FROM student_booking WHERE booking_id = ? LIMIT 1`,
+    `SELECT venue_slot_id, status FROM student_booking WHERE booking_id = ? LIMIT 1`,
     [Number(bookingId)]
   );
   const booking = rows?.[0];
@@ -529,12 +596,8 @@ export const markBookingMalpractice = async (bookingId, conn = null) => {
        WHERE booking_id = ?`,
       [Number(bookingId)]
     );
-    await exec.execute(
-      `UPDATE venue_mapping
-       SET current_bookings = GREATEST(0, COALESCE(current_bookings, 1) - 1)
-       WHERE mapping_id = ?`,
-      [booking.mapping_id]
-    );
+    // Stage 3b: seat counter lives on venue_slots.
+    await decrementVenueSlotBooking(booking.venue_slot_id, conn);
     return result?.affectedRows ?? 0;
   }
   return 0;

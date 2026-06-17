@@ -7,7 +7,17 @@ import { useData } from '../context/DataContext'
 
 export default function Dashboard() {
   const { navigate } = useApp()
-  const { dashboardKPI, loading } = useData()
+  const { dashboardKPI, loading, bookingWindow } = useData()
+
+  const pad2 = (n) => String(n).padStart(2, '0')
+  const bookingOpenLabel = bookingWindow
+    ? (() => {
+        const hh = bookingWindow.openHour
+        const mm = pad2(bookingWindow.openMinute)
+        const ampm = hh >= 12 ? 'PM' : 'AM'
+        return `${hh % 12 || 12}:${mm} ${ampm}`
+      })()
+    : null
 
   return (
     <div className={styles.page}>
@@ -89,6 +99,36 @@ export default function Dashboard() {
                 { label: `${loading || !dashboardKPI ? 0 : dashboardKPI.totalFaculty} Total`, color: 'purple' },
               ]}
               onClick={() => navigate('faculty-allocation')}
+            />
+            <NavBox
+              iconColor="green"
+              icon={
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                  <line x1="16" y1="2" x2="16" y2="6" />
+                  <line x1="8" y1="2" x2="8" y2="6" />
+                  <line x1="3" y1="10" x2="21" y2="10" />
+                  <circle cx="12" cy="16" r="2.5" />
+                </svg>
+              }
+              label="Slot Scheduling"
+              desc="Set up the day's bookable slots — times, faculty & booking-open, in one place"
+              chips={bookingOpenLabel ? [{ label: `Opens ${bookingOpenLabel}`, color: 'green' }] : []}
+              onClick={() => navigate('slot-scheduling')}
+            />
+            <NavBox
+              iconColor="purple"
+              icon={
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                  <circle cx="9" cy="7" r="4" />
+                  <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                  <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                </svg>
+              }
+              label="Faculty Management"
+              desc="Create, edit, assign labs & revoke faculty accounts"
+              onClick={() => navigate('/faculty-management')}
             />
           </div>
         </div>

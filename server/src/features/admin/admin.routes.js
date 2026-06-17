@@ -18,8 +18,33 @@ router.get('/slot-timings', adminController.getSlotTimings);
 router.post('/slot-timings', adminController.addSlotTiming);
 router.delete('/slot-timings/:slotId', adminController.deleteSlotTiming);
 
+// ── Slot timing edit / open-close (Admin only — role_id 3) ───
+router.get('/slot-timings/all', requireRole(3), adminController.getAllSlotTimings);
+router.put('/slot-timings/:slotId', requireRole(3), adminController.updateSlotTiming);
+router.patch('/slot-timings/:slotId/active', requireRole(3), adminController.setSlotActive);
+
+// ── Venue management (Admin only — role_id 3) ────────────────
+router.get('/venues/all', requireRole(3), adminController.getAllVenues);
+router.post('/venues', requireRole(3), adminController.createVenue);
+router.put('/venues/:venueId', requireRole(3), adminController.updateVenue);
+router.patch('/venues/:venueId/active', requireRole(3), adminController.setVenueActive);
+
+// ── Venue ↔ Skill management (Admin only — role_id 3) ────────
+router.get('/venues/:venueId/skills', requireRole(3), adminController.getVenueSkills);
+router.post('/venues/:venueId/skills', requireRole(3), adminController.addVenueSkill);
+router.delete('/venues/:venueId/skills/:trainingSkillId', requireRole(3), adminController.removeVenueSkill);
+
+// ── Per-venue + per-date slots (venue_slots) — Stage 3a, ADMIN-ONLY, ADDITIVE.
+// Distinct from the global /slot-timings routes; not read by booking/assessment.
+// Whole-day convenience read for the Slot Scheduling page (READ-ONLY).
+// Declared before the parameterized venue route so '/slots-by-date' is distinct.
+router.get('/slots-by-date', requireRole(3), adminController.getAllVenueSlotsByDate);
+router.get('/venues/:venueId/slots-by-date', requireRole(3), adminController.getVenueSlotsByDate);
+router.post('/venues/:venueId/slots-by-date', requireRole(3), adminController.createVenueSlot);
+router.put('/venue-slots/:venueSlotId', requireRole(3), adminController.updateVenueSlot);
+router.patch('/venue-slots/:venueSlotId/active', requireRole(3), adminController.setVenueSlotActive);
+
 router.post('/venues/:mappingId/swap-faculty', adminController.swapFaculty);
-router.post('/faculty/:facultyId/add-venue', adminController.addVenueToFaculty);
 router.post('/faculty/transfer-individual', adminController.transferIndividualVenue);
 router.post('/faculty/transfer-all', adminController.transferAllVenues);
 
@@ -28,7 +53,18 @@ router.get('/attendance/mappings', requireRole(3), adminController.getAttendance
 router.get('/attendance/mappings/:mappingId/students', requireRole(3), adminController.getAttendanceStudents);
 router.post('/attendance/bookings/:bookingId', requireRole(3), adminController.markAttendance);
 
+// ── Booking-open time config (Admin only — role_id 3) ────────
+router.get('/config/booking-window', requireRole(3), adminController.getBookingWindowConfig);
+router.put('/config/booking-window', requireRole(3), adminController.updateBookingWindowConfig);
+
 // ── All Bookings dashboard (Admin only — role_id 3) ──────────
 router.get('/bookings', requireRole(3), adminController.getAllBookings);
+// ── Admin cancel a booking (Stage 4a) — hard delete + seat release ──
+router.delete('/bookings/:bookingId', requireRole(3), adminController.cancelBooking);
+// ── Admin book a slot FOR a student (Stage 4b) ──
+router.post('/bookings', requireRole(3), adminController.bookForStudent);
+router.get('/skills/:skillId/levels', requireRole(3), adminController.getSkillLevels);
+// ── Admin bulk-book many students into one slot (Stage 4c) ──
+router.post('/bookings/bulk', requireRole(3), adminController.bulkBook);
 
 export default router;
