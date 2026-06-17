@@ -13,6 +13,11 @@ router.get('/venues', adminController.getVenues);
 router.get('/faculty', adminController.getFaculty);
 router.get('/faculty/search', adminController.searchFaculty);
 router.get('/students', adminController.getStudents);
+// ── Student management (Admin only — role_id 3) — Stage 5d ───
+router.get('/students/all', requireRole(3), adminController.getAllStudents);
+router.post('/students', requireRole(3), adminController.createStudent);
+router.put('/students/:id', requireRole(3), adminController.updateStudent);
+router.patch('/students/:id/active', requireRole(3), adminController.setStudentActive);
 router.get('/training-skills', adminController.getTrainingSkills);
 router.get('/slot-timings', adminController.getSlotTimings);
 router.post('/slot-timings', adminController.addSlotTiming);
@@ -28,6 +33,36 @@ router.get('/venues/all', requireRole(3), adminController.getAllVenues);
 router.post('/venues', requireRole(3), adminController.createVenue);
 router.put('/venues/:venueId', requireRole(3), adminController.updateVenue);
 router.patch('/venues/:venueId/active', requireRole(3), adminController.setVenueActive);
+
+// ── Training skill (Course/Lab) management (Admin only — role_id 3) — Stage 5a ─
+router.get('/training-skills/all', requireRole(3), adminController.getAllTrainingSkills);
+router.get('/skill-categories', requireRole(3), adminController.getSkillCategories);
+router.post('/training-skills', requireRole(3), adminController.createTrainingSkill);
+router.put('/training-skills/:id', requireRole(3), adminController.updateTrainingSkill);
+router.patch('/training-skills/:id/active', requireRole(3), adminController.setTrainingSkillActive);
+
+// ── Skill level (Course/Lab level) management (Admin only — role_id 3) — Stage 5b ─
+// List reuses getSkillLevels (also exposed at /skills/:skillId/levels for Stage 4b).
+router.get('/training-skills/:skillId/levels', requireRole(3), adminController.getSkillLevels);
+router.post('/training-skills/:skillId/levels', requireRole(3), adminController.createLevel);
+router.put('/levels/:levelId', requireRole(3), adminController.updateLevel);
+router.delete('/levels/:levelId', requireRole(3), adminController.deleteLevel);
+
+// ── Assessment management (Admin only — role_id 3) — Stage 5c-i ─────
+router.get('/training-skills/:skillId/levels/:levelId/assessments', requireRole(3), adminController.getAssessmentsForLevel);
+router.post('/training-skills/:skillId/levels/:levelId/assessments', requireRole(3), adminController.createAssessment);
+router.put('/assessments/:assessmentId', requireRole(3), adminController.updateAssessment);
+router.patch('/assessments/:assessmentId/active', requireRole(3), adminController.setAssessmentActive);
+router.get('/mcq-types', requireRole(3), adminController.getMcqTypes);
+router.get('/assessments/:assessmentId/mcq-config', requireRole(3), adminController.getMcqTypeConfig);
+router.put('/assessments/:assessmentId/mcq-config', requireRole(3), adminController.upsertMcqTypeConfig);
+router.delete('/mcq-config/:configId', requireRole(3), adminController.deleteMcqTypeConfig);
+
+// ── MCQ Question Bank (Admin only — role_id 3) — Stage 5c-ii ─────
+router.get('/assessments/:assessmentId/questions', requireRole(3), adminController.getQuestions);
+router.post('/assessments/:assessmentId/questions', requireRole(3), adminController.createQuestion);
+router.put('/questions/:questionId', requireRole(3), adminController.updateQuestion);
+router.patch('/questions/:questionId/active', requireRole(3), adminController.setQuestionActive);
 
 // ── Venue ↔ Skill management (Admin only — role_id 3) ────────
 router.get('/venues/:venueId/skills', requireRole(3), adminController.getVenueSkills);

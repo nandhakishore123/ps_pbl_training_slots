@@ -19,7 +19,14 @@ export function DataProvider({ children }) {
   const [allVenues, setAllVenues] = useState([])
   const [faculty, setFaculty] = useState([])
   const [students, setStudents] = useState([])
+  // Admin management list — includes inactive students + email (active-only
+  // `students` stays the source for the points/read path).
+  const [allStudents, setAllStudents] = useState([])
   const [trainingSkills, setTrainingSkills] = useState([])
+  // Admin management list — includes inactive courses/labs (active-only
+  // `trainingSkills` stays the source for the points read & booking pickers).
+  const [allTrainingSkills, setAllTrainingSkills] = useState([])
+  const [skillCategories, setSkillCategories] = useState([])
   const [slotTimings, setSlotTimings] = useState([])
   // Admin management list — includes inactive slots (active-only `slotTimings`
   // stays the source for assign/booking pickers).
@@ -79,10 +86,37 @@ export function DataProvider({ children }) {
     }
   }, [])
 
+  const fetchAllStudents = useCallback(async () => {
+    try {
+      const res = await adminService.getAllStudents()
+      setAllStudents(Array.isArray(res.data) ? res.data : [])
+    } catch (err) {
+      console.error(err)
+    }
+  }, [])
+
   const fetchTrainingSkills = useCallback(async () => {
     try {
       const res = await adminService.getTrainingSkills()
       setTrainingSkills(Array.isArray(res.data) ? res.data : [])
+    } catch (err) {
+      console.error(err)
+    }
+  }, [])
+
+  const fetchAllTrainingSkills = useCallback(async () => {
+    try {
+      const res = await adminService.getAllTrainingSkills()
+      setAllTrainingSkills(Array.isArray(res.data) ? res.data : [])
+    } catch (err) {
+      console.error(err)
+    }
+  }, [])
+
+  const fetchSkillCategories = useCallback(async () => {
+    try {
+      const res = await adminService.getSkillCategories()
+      setSkillCategories(Array.isArray(res.data) ? res.data : [])
     } catch (err) {
       console.error(err)
     }
@@ -123,13 +157,16 @@ export function DataProvider({ children }) {
       fetchAllVenues(),
       fetchFaculty(),
       fetchStudents(),
+      fetchAllStudents(),
       fetchTrainingSkills(),
+      fetchAllTrainingSkills(),
+      fetchSkillCategories(),
       fetchSlotTimings(),
       fetchAllSlotTimings(),
       fetchBookingWindow()
     ])
     setLoading(false)
-  }, [fetchDashboardKPI, fetchVenues, fetchAllVenues, fetchFaculty, fetchStudents, fetchTrainingSkills, fetchSlotTimings, fetchAllSlotTimings, fetchBookingWindow])
+  }, [fetchDashboardKPI, fetchVenues, fetchAllVenues, fetchFaculty, fetchStudents, fetchAllStudents, fetchTrainingSkills, fetchAllTrainingSkills, fetchSkillCategories, fetchSlotTimings, fetchAllSlotTimings, fetchBookingWindow])
 
   useEffect(() => {
     refreshAll()
@@ -250,6 +287,266 @@ export function DataProvider({ children }) {
         return { requiresConfirmation: true, message: data.message }
       }
       showToast(data?.message || 'Failed to update venue status', true)
+      return false
+    }
+  }
+
+  // ── Training skill (Course/Lab) management — Stage 5a ───────
+  const refreshTrainingSkills = async () => {
+    await fetchTrainingSkills()
+    await fetchAllTrainingSkills()
+  }
+
+  const getSkillCategories = async () => {
+    // Categories rarely change; serve cached list but refresh if empty.
+    if (skillCategories.length === 0) await fetchSkillCategories()
+    return skillCategories
+  }
+
+  const createTrainingSkill = async (payload) => {
+    try {
+      await adminService.createTrainingSkill(payload)
+      await refreshTrainingSkills()
+      return true
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to create course/lab', true)
+      return false
+    }
+  }
+
+  const updateTrainingSkill = async (id, payload) => {
+    try {
+      await adminService.updateTrainingSkill(id, payload)
+      await refreshTrainingSkills()
+      return true
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to update course/lab', true)
+      return false
+    }
+  }
+
+  // Returns true on success, { requiresConfirmation, message } if the soft guard
+  // fired (course still offered at venues), or false on a hard error.
+  const setTrainingSkillActive = async (id, isActive, force = false) => {
+    try {
+      await adminService.setTrainingSkillActive(id, isActive, force)
+      await refreshTrainingSkills()
+      return true
+    } catch (err) {
+      const data = err.response?.data
+      if (data?.requiresConfirmation) {
+        return { requiresConfirmation: true, message: data.message }
+      }
+      showToast(data?.message || 'Failed to update course/lab status', true)
+      return false
+    }
+  }
+
+  // ── Student management — Stage 5d ───────────────────────────
+  const refreshStudents = async () => {
+    await fetchStudents()
+    await fetchAllStudents()
+  }
+
+  const createStudent = async (payload) => {
+    try {
+      await adminService.createStudent(payload)
+      await refreshStudents()
+      return true
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to create student', true)
+      return false
+    }
+  }
+
+  const updateStudent = async (id, payload) => {
+    try {
+      await adminService.updateStudent(id, payload)
+      await refreshStudents()
+      return true
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to update student', true)
+      return false
+    }
+  }
+
+  const setStudentActive = async (id, isActive) => {
+    try {
+      await adminService.setStudentActive(id, isActive)
+      await refreshStudents()
+      return true
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to update student status', true)
+      return false
+    }
+  }
+
+  // ── Skill level (Course/Lab level) management — Stage 5b ────
+  // Levels are loaded on demand per course (like venue skills/slots), not held
+  // in global state. Mutations refresh the skill lists so levels_count updates.
+  const getLevels = async (skillId) => {
+    try {
+      const res = await adminService.getLevels(skillId)
+      return Array.isArray(res.data) ? res.data : []
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to load levels', true)
+      return []
+    }
+  }
+
+  const createLevel = async (skillId, payload) => {
+    try {
+      await adminService.createLevel(skillId, payload)
+      await refreshTrainingSkills()
+      return true
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to create level', true)
+      return false
+    }
+  }
+
+  const updateLevel = async (levelId, payload) => {
+    try {
+      await adminService.updateLevel(levelId, payload)
+      await refreshTrainingSkills()
+      return true
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to update level', true)
+      return false
+    }
+  }
+
+  // Guard-delete: a 409 carries the block reason — surface it via toast.
+  const deleteLevel = async (levelId) => {
+    try {
+      await adminService.deleteLevel(levelId)
+      await refreshTrainingSkills()
+      return true
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to delete level', true)
+      return false
+    }
+  }
+
+  // ── Assessment management — Stage 5c-i ──────────────────────
+  // Loaded on demand per skill+level / per assessment (not in global state).
+  const getAssessments = async (skillId, levelId) => {
+    try {
+      const res = await adminService.getAssessments(skillId, levelId)
+      return Array.isArray(res.data) ? res.data : []
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to load assessments', true)
+      return []
+    }
+  }
+
+  const createAssessment = async (skillId, levelId, payload) => {
+    try {
+      await adminService.createAssessment(skillId, levelId, payload)
+      return true
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to create assessment', true)
+      return false
+    }
+  }
+
+  const updateAssessment = async (assessmentId, payload) => {
+    try {
+      await adminService.updateAssessment(assessmentId, payload)
+      return true
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to update assessment', true)
+      return false
+    }
+  }
+
+  const setAssessmentActive = async (assessmentId, isActive) => {
+    try {
+      await adminService.setAssessmentActive(assessmentId, isActive)
+      return true
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to update assessment status', true)
+      return false
+    }
+  }
+
+  const getMcqTypes = async () => {
+    try {
+      const res = await adminService.getMcqTypes()
+      return Array.isArray(res.data) ? res.data : []
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to load MCQ types', true)
+      return []
+    }
+  }
+
+  const getMcqTypeConfig = async (assessmentId) => {
+    try {
+      const res = await adminService.getMcqTypeConfig(assessmentId)
+      return Array.isArray(res.data) ? res.data : []
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to load MCQ type config', true)
+      return []
+    }
+  }
+
+  const upsertMcqTypeConfig = async (assessmentId, mcqTypeId, questionCount) => {
+    try {
+      await adminService.upsertMcqTypeConfig(assessmentId, mcqTypeId, questionCount)
+      return true
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to save MCQ type config', true)
+      return false
+    }
+  }
+
+  const deleteMcqTypeConfig = async (configId) => {
+    try {
+      await adminService.deleteMcqTypeConfig(configId)
+      return true
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to remove MCQ type config', true)
+      return false
+    }
+  }
+
+  // ── MCQ Question Bank — Stage 5c-ii ─────────────────────────
+  const getQuestions = async (assessmentId) => {
+    try {
+      const res = await adminService.getQuestions(assessmentId)
+      return Array.isArray(res.data) ? res.data : []
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to load questions', true)
+      return []
+    }
+  }
+
+  const createQuestion = async (assessmentId, payload) => {
+    try {
+      await adminService.createQuestion(assessmentId, payload)
+      return true
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to create question', true)
+      return false
+    }
+  }
+
+  const updateQuestion = async (questionId, payload) => {
+    try {
+      await adminService.updateQuestion(questionId, payload)
+      return true
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to update question', true)
+      return false
+    }
+  }
+
+  const setQuestionActive = async (questionId, isActive) => {
+    try {
+      await adminService.setQuestionActive(questionId, isActive)
+      return true
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to update question status', true)
       return false
     }
   }
@@ -414,7 +711,10 @@ export function DataProvider({ children }) {
         allVenues,
         faculty,
         students,
+        allStudents,
         trainingSkills,
+        allTrainingSkills,
+        skillCategories,
         slotTimings,
         allSlotTimings,
         bookingWindow,
@@ -432,6 +732,34 @@ export function DataProvider({ children }) {
         createVenue,
         updateVenue,
         setVenueActive,
+        // student management (Stage 5d)
+        createStudent,
+        updateStudent,
+        setStudentActive,
+        // training skill (course/lab) management
+        getSkillCategories,
+        createTrainingSkill,
+        updateTrainingSkill,
+        setTrainingSkillActive,
+        // skill level management (Stage 5b)
+        getLevels,
+        createLevel,
+        updateLevel,
+        deleteLevel,
+        // assessment management (Stage 5c-i)
+        getAssessments,
+        createAssessment,
+        updateAssessment,
+        setAssessmentActive,
+        getMcqTypes,
+        getMcqTypeConfig,
+        upsertMcqTypeConfig,
+        deleteMcqTypeConfig,
+        // mcq question bank (Stage 5c-ii)
+        getQuestions,
+        createQuestion,
+        updateQuestion,
+        setQuestionActive,
         // slot edit / open-close
         updateSlotTiming,
         setSlotActive,

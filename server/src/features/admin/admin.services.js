@@ -272,6 +272,95 @@ export const getStudents = async () => {
     return await adminModel.listStudentsWithPoints();
 };
 
+// ── Student management (admin authoring) — Stage 5d ──────────
+// Create provisions users + students in ONE transaction (rollback → no orphan
+// user). Deactivate mirrors is_active across both tables so a deactivated
+// student also can't log in. Required: email, reg_num, name.
+const normEmail = (v) => (v != null ? String(v).trim().toLowerCase() : '');
+const normYear = (v) => (v != null && v !== '' ? Number(v) : null);
+const normOpt = (v) => (v != null && String(v).trim() !== '' ? String(v).trim() : null);
+
+export const getAllStudents = async () => {
+    return await adminModel.listAllStudents();
+};
+
+export const createStudent = async ({ email, reg_num, name, degree, course, year_of_study }) => {
+    const e = normEmail(email);
+    const reg = reg_num != null ? String(reg_num).trim() : '';
+    const nm = name != null ? String(name).trim() : '';
+    if (!e) throw new Error('Email is required');
+    if (!reg) throw new Error('Registration number is required');
+    if (!nm) throw new Error('Name is required');
+
+    const conn = await db.getConnection();
+    try {
+        await conn.beginTransaction();
+        const result = await adminModel.createStudentWithUser({
+            email: e, reg_num: reg, name: nm,
+            degree: normOpt(degree), course: normOpt(course), year_of_study: normYear(year_of_study),
+        }, conn);
+        await conn.commit();
+        return result;
+    } catch (error) {
+        await conn.rollback();
+        throw error;
+    } finally {
+        conn.release();
+    }
+};
+
+export const updateStudent = async (studentId, { email, reg_num, name, degree, course, year_of_study }) => {
+    if (!studentId) throw new Error('Student ID is required');
+    const reg = reg_num != null ? String(reg_num).trim() : '';
+    const nm = name != null ? String(name).trim() : '';
+    if (!reg) throw new Error('Registration number is required');
+    if (!nm) throw new Error('Name is required');
+    const e = email != null && String(email).trim() !== '' ? normEmail(email) : null;
+
+    const conn = await db.getConnection();
+    try {
+        await conn.beginTransaction();
+        // user_id linkage is immutable; only the email value may change.
+        if (e) {
+            const userId = await adminModel.getStudentUserId(studentId, conn);
+            if (!userId) throw Object.assign(new Error('Student not found'), { status: 404 });
+            await adminModel.updateUserEmail(userId, e, conn);
+        }
+        await adminModel.updateStudent(studentId, {
+            reg_num: reg, name: nm,
+            degree: normOpt(degree), course: normOpt(course), year_of_study: normYear(year_of_study),
+        }, conn);
+        await conn.commit();
+        return true;
+    } catch (error) {
+        await conn.rollback();
+        throw error;
+    } finally {
+        conn.release();
+    }
+};
+
+export const setStudentActive = async (studentId, isActive) => {
+    if (!studentId) throw new Error('Student ID is required');
+    const conn = await db.getConnection();
+    try {
+        await conn.beginTransaction();
+        const userId = await adminModel.getStudentUserId(studentId, conn);
+        if (!userId) throw Object.assign(new Error('Student not found'), { status: 404 });
+        await adminModel.setStudentActiveRow(studentId, isActive, conn);
+        // Mirror to users so a deactivated student can't log in (issueSessionForEmail
+        // already rejects inactive users).
+        await adminModel.setUserActiveRow(userId, isActive, conn);
+        await conn.commit();
+        return true;
+    } catch (error) {
+        await conn.rollback();
+        throw error;
+    } finally {
+        conn.release();
+    }
+};
+
 export const getTrainingSkills = async () => {
     return await adminModel.listTrainingSkills();
 };
@@ -337,6 +426,277 @@ export const setVenueActive = async (venueId, isActive, force = false) => {
         }
     }
     return await adminModel.setVenueActive(venueId, isActive);
+};
+
+// ── Training skill (Course/Lab) management — Stage 5a ─────────
+// Mirrors venue management. PS vs PBL = the skill_type column; category via
+// category_id (NOT NULL FK). Soft-deactivate only.
+export const getAllTrainingSkills = async () => {
+    return await adminModel.listAllTrainingSkills();
+};
+
+export const getSkillCategories = async () => {
+    return await adminModel.listSkillCategories();
+};
+
+const VALID_SKILL_TYPES = ['PS', 'PBL'];
+
+export const createTrainingSkill = async ({ skill_name, skill_type, category_id, image_url }) => {
+    if (!skill_name || !String(skill_name).trim()) {
+        throw new Error('Skill name is required');
+    }
+    if (!VALID_SKILL_TYPES.includes(skill_type)) {
+        throw new Error('Skill type must be PS or PBL');
+    }
+    if (!category_id) {
+        throw new Error('Category is required');
+    }
+    return await adminModel.createTrainingSkill({
+        skill_name: String(skill_name).trim(),
+        skill_type,
+        category_id,
+        image_url: image_url != null && String(image_url).trim() !== '' ? String(image_url).trim() : null,
+    });
+};
+
+export const updateTrainingSkill = async (id, { skill_name, skill_type, category_id, image_url }) => {
+    if (!id) throw new Error('Training skill ID is required');
+    if (!skill_name || !String(skill_name).trim()) {
+        throw new Error('Skill name is required');
+    }
+    if (!VALID_SKILL_TYPES.includes(skill_type)) {
+        throw new Error('Skill type must be PS or PBL');
+    }
+    if (!category_id) {
+        throw new Error('Category is required');
+    }
+    return await adminModel.updateTrainingSkill(id, {
+        skill_name: String(skill_name).trim(),
+        skill_type,
+        category_id,
+        image_url: image_url != null && String(image_url).trim() !== '' ? String(image_url).trim() : null,
+    });
+};
+
+export const setTrainingSkillActive = async (id, isActive, force = false) => {
+    if (!id) throw new Error('Training skill ID is required');
+    // Deactivating a course that is still actively offered at venues hides it
+    // from booking pickers — warn (not hard-block) so admins confirm intent.
+    if (!isActive && !force) {
+        const venueCount = await adminModel.countVenueSkillsBySkill(id);
+        if (venueCount > 0) {
+            const err = new Error(`This course/lab is still offered at ${venueCount} venue(s). Deactivating it hides it from booking. Confirm to proceed.`);
+            err.status = 409;
+            err.requiresConfirmation = true;
+            err.count = venueCount;
+            throw err;
+        }
+    }
+    return await adminModel.setTrainingSkillActive(id, isActive);
+};
+
+// ── Skill level (Course/Lab level) management — Stage 5b ─────
+// Create/Edit are trivial. Delete is GUARD-DELETE: blocked when the level is in
+// use or still owns content (no soft-delete column on skill_levels).
+export const createLevel = async (skillId, { level_name, core_concept, max_attempts }) => {
+    if (!skillId) throw new Error('Training skill ID is required');
+    if (!level_name || !String(level_name).trim()) {
+        throw new Error('Level name is required');
+    }
+    return await adminModel.createLevel({
+        training_skill_id: skillId,
+        level_name: String(level_name).trim(),
+        core_concept: core_concept != null && String(core_concept).trim() !== '' ? String(core_concept).trim() : null,
+        max_attempts: max_attempts != null && max_attempts !== '' ? Number(max_attempts) : null,
+    });
+};
+
+export const updateLevel = async (levelId, { level_name, core_concept, max_attempts }) => {
+    if (!levelId) throw new Error('Level ID is required');
+    if (!level_name || !String(level_name).trim()) {
+        throw new Error('Level name is required');
+    }
+    return await adminModel.updateLevel(levelId, {
+        level_name: String(level_name).trim(),
+        core_concept: core_concept != null && String(core_concept).trim() !== '' ? String(core_concept).trim() : null,
+        max_attempts: max_attempts != null && max_attempts !== '' ? Number(max_attempts) : null,
+    });
+};
+
+// GUARD-DELETE. Order: in-use checks first (bookings, then assessment attempts),
+// then the "not empty" check. Each throws a 409 the controller surfaces verbatim.
+export const deleteLevelGuarded = async (levelId) => {
+    if (!levelId) throw new Error('Level ID is required');
+
+    const bookingCount = await adminModel.countBookingsByLevel(levelId);
+    if (bookingCount > 0) {
+        const err = new Error("Can't delete — this level has bookings.");
+        err.status = 409;
+        throw err;
+    }
+
+    const attemptCount = await adminModel.countAssessmentAttemptsByLevel(levelId);
+    if (attemptCount > 0) {
+        const err = new Error("Can't delete — this level has assessment attempts.");
+        err.status = 409;
+        throw err;
+    }
+
+    // No student data is attached; if the level still owns content, block rather
+    // than cascade into the assessment domain — admin must clear it first.
+    const contents = await adminModel.countLevelContents(levelId);
+    if (contents.syllabus + contents.points + contents.assessments > 0) {
+        const parts = [];
+        if (contents.syllabus > 0) parts.push(`${contents.syllabus} syllabus topic(s)`);
+        if (contents.points > 0) parts.push(`${contents.points} point rule(s)`);
+        if (contents.assessments > 0) parts.push(`${contents.assessments} assessment(s)`);
+        const err = new Error(`Can't delete — this level isn't empty (${parts.join(', ')}). Remove its contents first.`);
+        err.status = 409;
+        throw err;
+    }
+
+    return await adminModel.deleteLevel(levelId);
+};
+
+// ── Assessment management (admin authoring) — Stage 5c-i ─────
+// ADD-ONLY. Validation: marks > 0, passing ≤ total, duration > 0, count ≥ 0.
+const VALID_ASSESSMENT_TYPES = ['MCQ', 'CODING'];
+
+const validateAssessmentFields = ({ assessment_title, assessment_type, total_marks, passing_marks, duration_minutes }) => {
+    if (!assessment_title || !String(assessment_title).trim()) {
+        throw new Error('Assessment title is required');
+    }
+    if (!VALID_ASSESSMENT_TYPES.includes(assessment_type)) {
+        throw new Error('Assessment type must be MCQ or CODING');
+    }
+    const total = Number(total_marks);
+    const passing = Number(passing_marks);
+    const duration = Number(duration_minutes);
+    if (!Number.isFinite(total) || total <= 0) throw new Error('Total marks must be greater than 0');
+    if (!Number.isFinite(passing) || passing <= 0) throw new Error('Passing marks must be greater than 0');
+    if (passing > total) throw new Error('Passing marks cannot exceed total marks');
+    if (!Number.isFinite(duration) || duration <= 0) throw new Error('Duration must be greater than 0');
+    return { total, passing, duration };
+};
+
+export const getAssessmentsForLevel = async (skillId, levelId) => {
+    if (!skillId || !levelId) throw new Error('Skill ID and Level ID are required');
+    return await adminModel.listAssessmentsForLevel(skillId, levelId);
+};
+
+export const createAssessment = async (skillId, levelId, fields) => {
+    if (!skillId || !levelId) throw new Error('Skill ID and Level ID are required');
+    const { total, passing, duration } = validateAssessmentFields(fields);
+    return await adminModel.createAssessment({
+        training_skill_id: skillId,
+        level_id: levelId,
+        assessment_title: String(fields.assessment_title).trim(),
+        assessment_type: fields.assessment_type,
+        total_marks: total,
+        passing_marks: passing,
+        duration_minutes: duration,
+    });
+};
+
+export const updateAssessment = async (assessmentId, fields) => {
+    if (!assessmentId) throw new Error('Assessment ID is required');
+    const { total, passing, duration } = validateAssessmentFields(fields);
+    return await adminModel.updateAssessment(assessmentId, {
+        assessment_title: String(fields.assessment_title).trim(),
+        assessment_type: fields.assessment_type,
+        total_marks: total,
+        passing_marks: passing,
+        duration_minutes: duration,
+    });
+};
+
+export const setAssessmentActive = async (assessmentId, isActive) => {
+    if (!assessmentId) throw new Error('Assessment ID is required');
+    return await adminModel.setAssessmentActive(assessmentId, isActive);
+};
+
+export const getMcqTypes = async () => {
+    return await adminModel.listMcqTypes();
+};
+
+export const getMcqTypeConfig = async (assessmentId) => {
+    if (!assessmentId) throw new Error('Assessment ID is required');
+    return await adminModel.listMcqTypeConfig(assessmentId);
+};
+
+export const upsertMcqTypeConfig = async (assessmentId, mcqTypeId, questionCount) => {
+    if (!assessmentId) throw new Error('Assessment ID is required');
+    if (!mcqTypeId) throw new Error('MCQ type is required');
+    const count = Number(questionCount);
+    if (!Number.isInteger(count) || count < 0) throw new Error('Question count must be a whole number ≥ 0');
+    await adminModel.upsertMcqTypeConfig(assessmentId, mcqTypeId, count);
+    return true;
+};
+
+export const deleteMcqTypeConfig = async (configId) => {
+    if (!configId) throw new Error('Config ID is required');
+    return await adminModel.deleteMcqTypeConfig(configId);
+};
+
+// ── MCQ Question Bank (admin authoring) — Stage 5c-ii ────────
+// ADD-ONLY. Soft-delete via is_active. Validation: all 4 options non-empty,
+// correct_option ∈ {A,B,C,D}, marks > 0, type required.
+const VALID_OPTIONS = ['A', 'B', 'C', 'D'];
+const VALID_DIFFICULTY = ['EASY', 'MEDIUM', 'HARD'];
+
+const validateQuestionFields = ({ question_text, option_a, option_b, option_c, option_d, correct_option, mcq_type_id, difficulty, marks }) => {
+    if (!question_text || !String(question_text).trim()) throw new Error('Question text is required');
+    const opts = { option_a, option_b, option_c, option_d };
+    for (const [k, v] of Object.entries(opts)) {
+        if (!v || !String(v).trim()) throw new Error(`Option ${k.slice(-1).toUpperCase()} is required`);
+    }
+    if (!VALID_OPTIONS.includes(correct_option)) throw new Error('Correct option must be A, B, C or D');
+    if (!mcq_type_id) throw new Error('MCQ type is required');
+    if (difficulty != null && difficulty !== '' && !VALID_DIFFICULTY.includes(difficulty)) {
+        throw new Error('Difficulty must be EASY, MEDIUM or HARD');
+    }
+    const m = Number(marks);
+    if (!Number.isFinite(m) || m <= 0) throw new Error('Marks must be greater than 0');
+    return { marks: m };
+};
+
+const normQuestion = (fields) => ({
+    question_text: String(fields.question_text).trim(),
+    option_a: String(fields.option_a).trim(),
+    option_b: String(fields.option_b).trim(),
+    option_c: String(fields.option_c).trim(),
+    option_d: String(fields.option_d).trim(),
+    correct_option: fields.correct_option,
+    mcq_type_id: fields.mcq_type_id,
+    difficulty: fields.difficulty != null && fields.difficulty !== '' ? fields.difficulty : null,
+    marks: Number(fields.marks),
+});
+
+export const getQuestions = async (assessmentId) => {
+    if (!assessmentId) throw new Error('Assessment ID is required');
+    return await adminModel.listQuestions(assessmentId);
+};
+
+export const createQuestion = async (assessmentId, fields) => {
+    if (!assessmentId) throw new Error('Assessment ID is required');
+    validateQuestionFields(fields);
+    return await adminModel.createQuestion({ assessment_id: assessmentId, ...normQuestion(fields) });
+};
+
+export const updateQuestion = async (questionId, fields) => {
+    if (!questionId) throw new Error('Question ID is required');
+    validateQuestionFields(fields);
+    return await adminModel.updateQuestion(questionId, normQuestion(fields));
+};
+
+export const setQuestionActive = async (questionId, isActive) => {
+    if (!questionId) throw new Error('Question ID is required');
+    return await adminModel.setQuestionActive(questionId, isActive);
+};
+
+export const getAnswerCountForQuestion = async (questionId) => {
+    if (!questionId) throw new Error('Question ID is required');
+    return await adminModel.countAnswersForQuestion(questionId);
 };
 
 // ── Slot timing edit / open-close ────────────────────────────

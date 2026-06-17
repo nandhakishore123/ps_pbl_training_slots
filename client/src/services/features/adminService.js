@@ -21,6 +21,25 @@ export const adminService = {
     return api.get('/admin/students');
   },
 
+  // ── Student management (admin-only) — Stage 5d ──────────────
+  getAllStudents() {
+    return api.get('/admin/students/all');
+  },
+
+  createStudent(payload) {
+    // payload: { email, reg_num, name, degree, course, year_of_study }
+    return api.post('/admin/students', payload);
+  },
+
+  updateStudent(id, payload) {
+    // payload: { email, reg_num, name, degree, course, year_of_study }
+    return api.put(`/admin/students/${id}`, payload);
+  },
+
+  setStudentActive(id, isActive) {
+    return api.patch(`/admin/students/${id}/active`, { isActive });
+  },
+
   getTrainingSkills() {
     return api.get('/admin/training-skills');
   },
@@ -67,6 +86,100 @@ export const adminService = {
 
   setVenueActive(venueId, isActive, force = false) {
     return api.patch(`/admin/venues/${venueId}/active`, { isActive, force });
+  },
+
+  // ── Training skill (Course/Lab) management (admin-only) — Stage 5a ─
+  getAllTrainingSkills() {
+    return api.get('/admin/training-skills/all');
+  },
+
+  getSkillCategories() {
+    return api.get('/admin/skill-categories');
+  },
+
+  createTrainingSkill(payload) {
+    // payload: { skill_name, skill_type, category_id, image_url }
+    return api.post('/admin/training-skills', payload);
+  },
+
+  updateTrainingSkill(id, payload) {
+    // payload: { skill_name, skill_type, category_id, image_url }
+    return api.put(`/admin/training-skills/${id}`, payload);
+  },
+
+  setTrainingSkillActive(id, isActive, force = false) {
+    return api.patch(`/admin/training-skills/${id}/active`, { isActive, force });
+  },
+
+  // ── Skill level management (admin-only) — Stage 5b ──────────
+  getLevels(skillId) {
+    return api.get(`/admin/training-skills/${skillId}/levels`);
+  },
+
+  createLevel(skillId, payload) {
+    // payload: { level_name, core_concept, max_attempts }
+    return api.post(`/admin/training-skills/${skillId}/levels`, payload);
+  },
+
+  updateLevel(levelId, payload) {
+    // payload: { level_name, core_concept, max_attempts }
+    return api.put(`/admin/levels/${levelId}`, payload);
+  },
+
+  deleteLevel(levelId) {
+    return api.delete(`/admin/levels/${levelId}`);
+  },
+
+  // ── Assessment management (admin-only) — Stage 5c-i ─────────
+  getAssessments(skillId, levelId) {
+    return api.get(`/admin/training-skills/${skillId}/levels/${levelId}/assessments`);
+  },
+
+  createAssessment(skillId, levelId, payload) {
+    // payload: { assessment_title, assessment_type, total_marks, passing_marks, duration_minutes }
+    return api.post(`/admin/training-skills/${skillId}/levels/${levelId}/assessments`, payload);
+  },
+
+  updateAssessment(assessmentId, payload) {
+    return api.put(`/admin/assessments/${assessmentId}`, payload);
+  },
+
+  setAssessmentActive(assessmentId, isActive) {
+    return api.patch(`/admin/assessments/${assessmentId}/active`, { isActive });
+  },
+
+  getMcqTypes() {
+    return api.get('/admin/mcq-types');
+  },
+
+  getMcqTypeConfig(assessmentId) {
+    return api.get(`/admin/assessments/${assessmentId}/mcq-config`);
+  },
+
+  upsertMcqTypeConfig(assessmentId, mcqTypeId, questionCount) {
+    return api.put(`/admin/assessments/${assessmentId}/mcq-config`, { mcqTypeId, questionCount });
+  },
+
+  deleteMcqTypeConfig(configId) {
+    return api.delete(`/admin/mcq-config/${configId}`);
+  },
+
+  // ── MCQ Question Bank (admin-only) — Stage 5c-ii ────────────
+  getQuestions(assessmentId) {
+    return api.get(`/admin/assessments/${assessmentId}/questions`);
+  },
+
+  createQuestion(assessmentId, payload) {
+    // payload: { question_text, option_a..d, correct_option, mcq_type_id, difficulty, marks }
+    return api.post(`/admin/assessments/${assessmentId}/questions`, payload);
+  },
+
+  updateQuestion(questionId, payload) {
+    return api.put(`/admin/questions/${questionId}`, payload);
+  },
+
+  setQuestionActive(questionId, isActive) {
+    return api.patch(`/admin/questions/${questionId}/active`, { isActive });
   },
 
   // ── Venue ↔ Skill management (admin-only) ───────────────────

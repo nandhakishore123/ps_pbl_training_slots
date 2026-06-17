@@ -47,6 +47,49 @@ export const getStudents = async (req, res, next) => {
     }
 };
 
+// ── Student management (admin authoring) — Stage 5d ──────────
+
+export const getAllStudents = async (req, res, next) => {
+    try {
+        const data = await adminService.getAllStudents();
+        return successResponse(res, 'Students retrieved successfully', data);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const createStudent = async (req, res, next) => {
+    try {
+        const { email, reg_num, name, degree, course, year_of_study } = req.body;
+        const data = await adminService.createStudent({ email, reg_num, name, degree, course, year_of_study });
+        return successResponse(res, 'Student created successfully', data);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const updateStudent = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const { email, reg_num, name, degree, course, year_of_study } = req.body;
+        await adminService.updateStudent(id, { email, reg_num, name, degree, course, year_of_study });
+        return successResponse(res, 'Student updated successfully', null);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const setStudentActive = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const { isActive } = req.body;
+        await adminService.setStudentActive(id, !!isActive);
+        return successResponse(res, `Student ${isActive ? 'activated' : 'deactivated'} successfully`, null);
+    } catch (error) {
+        next(error);
+    }
+};
+
 export const getTrainingSkills = async (req, res, next) => {
     try {
         const data = await adminService.getTrainingSkills();
@@ -158,6 +201,236 @@ export const setVenueActive = async (req, res, next) => {
         if (error.requiresConfirmation) {
             return res.status(409).json({ success: false, requiresConfirmation: true, count: error.count, message: error.message });
         }
+        next(error);
+    }
+};
+
+// ── Training skill (Course/Lab) management — Stage 5a ─────────
+
+export const getAllTrainingSkills = async (req, res, next) => {
+    try {
+        const data = await adminService.getAllTrainingSkills();
+        return successResponse(res, 'Training skills retrieved successfully', data);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const getSkillCategories = async (req, res, next) => {
+    try {
+        const data = await adminService.getSkillCategories();
+        return successResponse(res, 'Skill categories retrieved successfully', data);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const createTrainingSkill = async (req, res, next) => {
+    try {
+        const { skill_name, skill_type, category_id, image_url } = req.body;
+        const trainingSkillId = await adminService.createTrainingSkill({ skill_name, skill_type, category_id, image_url });
+        return successResponse(res, 'Course/Lab created successfully', { trainingSkillId });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const updateTrainingSkill = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const { skill_name, skill_type, category_id, image_url } = req.body;
+        await adminService.updateTrainingSkill(id, { skill_name, skill_type, category_id, image_url });
+        return successResponse(res, 'Course/Lab updated successfully', null);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const setTrainingSkillActive = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const { isActive, force } = req.body;
+        await adminService.setTrainingSkillActive(id, !!isActive, !!force);
+        return successResponse(res, `Course/Lab ${isActive ? 'activated' : 'deactivated'} successfully`, null);
+    } catch (error) {
+        if (error.requiresConfirmation) {
+            return res.status(409).json({ success: false, requiresConfirmation: true, count: error.count, message: error.message });
+        }
+        next(error);
+    }
+};
+
+// ── Skill level (Course/Lab level) management — Stage 5b ─────
+// Listing reuses getSkillLevels above (GET /admin/training-skills/:skillId/levels).
+
+export const createLevel = async (req, res, next) => {
+    try {
+        const { skillId } = req.params;
+        const { level_name, core_concept, max_attempts } = req.body;
+        const levelId = await adminService.createLevel(skillId, { level_name, core_concept, max_attempts });
+        return successResponse(res, 'Level created successfully', { levelId });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const updateLevel = async (req, res, next) => {
+    try {
+        const { levelId } = req.params;
+        const { level_name, core_concept, max_attempts } = req.body;
+        await adminService.updateLevel(levelId, { level_name, core_concept, max_attempts });
+        return successResponse(res, 'Level updated successfully', null);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const deleteLevel = async (req, res, next) => {
+    try {
+        const { levelId } = req.params;
+        await adminService.deleteLevelGuarded(levelId);
+        return successResponse(res, 'Level deleted successfully', null);
+    } catch (error) {
+        // Guard rejections carry status 409 + a human message; the global error
+        // handler surfaces both so the client can toast the reason.
+        next(error);
+    }
+};
+
+// ── Assessment management (admin authoring) — Stage 5c-i ─────
+
+export const getAssessmentsForLevel = async (req, res, next) => {
+    try {
+        const { skillId, levelId } = req.params;
+        const data = await adminService.getAssessmentsForLevel(skillId, levelId);
+        return successResponse(res, 'Assessments retrieved successfully', data);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const createAssessment = async (req, res, next) => {
+    try {
+        const { skillId, levelId } = req.params;
+        const { assessment_title, assessment_type, total_marks, passing_marks, duration_minutes } = req.body;
+        const assessmentId = await adminService.createAssessment(skillId, levelId, {
+            assessment_title, assessment_type, total_marks, passing_marks, duration_minutes,
+        });
+        return successResponse(res, 'Assessment created successfully', { assessmentId });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const updateAssessment = async (req, res, next) => {
+    try {
+        const { assessmentId } = req.params;
+        const { assessment_title, assessment_type, total_marks, passing_marks, duration_minutes } = req.body;
+        await adminService.updateAssessment(assessmentId, {
+            assessment_title, assessment_type, total_marks, passing_marks, duration_minutes,
+        });
+        return successResponse(res, 'Assessment updated successfully', null);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const setAssessmentActive = async (req, res, next) => {
+    try {
+        const { assessmentId } = req.params;
+        const { isActive } = req.body;
+        await adminService.setAssessmentActive(assessmentId, !!isActive);
+        return successResponse(res, `Assessment ${isActive ? 'activated' : 'deactivated'} successfully`, null);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const getMcqTypes = async (req, res, next) => {
+    try {
+        const data = await adminService.getMcqTypes();
+        return successResponse(res, 'MCQ types retrieved successfully', data);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const getMcqTypeConfig = async (req, res, next) => {
+    try {
+        const { assessmentId } = req.params;
+        const data = await adminService.getMcqTypeConfig(assessmentId);
+        return successResponse(res, 'MCQ type config retrieved successfully', data);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const upsertMcqTypeConfig = async (req, res, next) => {
+    try {
+        const { assessmentId } = req.params;
+        const { mcqTypeId, questionCount } = req.body;
+        await adminService.upsertMcqTypeConfig(assessmentId, mcqTypeId, questionCount);
+        return successResponse(res, 'MCQ type config saved successfully', null);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const deleteMcqTypeConfig = async (req, res, next) => {
+    try {
+        const { configId } = req.params;
+        await adminService.deleteMcqTypeConfig(configId);
+        return successResponse(res, 'MCQ type config removed successfully', null);
+    } catch (error) {
+        next(error);
+    }
+};
+
+// ── MCQ Question Bank (admin authoring) — Stage 5c-ii ────────
+
+export const getQuestions = async (req, res, next) => {
+    try {
+        const { assessmentId } = req.params;
+        const data = await adminService.getQuestions(assessmentId);
+        return successResponse(res, 'Questions retrieved successfully', data);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const createQuestion = async (req, res, next) => {
+    try {
+        const { assessmentId } = req.params;
+        const { question_text, option_a, option_b, option_c, option_d, correct_option, mcq_type_id, difficulty, marks } = req.body;
+        const questionId = await adminService.createQuestion(assessmentId, {
+            question_text, option_a, option_b, option_c, option_d, correct_option, mcq_type_id, difficulty, marks,
+        });
+        return successResponse(res, 'Question created successfully', { questionId });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const updateQuestion = async (req, res, next) => {
+    try {
+        const { questionId } = req.params;
+        const { question_text, option_a, option_b, option_c, option_d, correct_option, mcq_type_id, difficulty, marks } = req.body;
+        await adminService.updateQuestion(questionId, {
+            question_text, option_a, option_b, option_c, option_d, correct_option, mcq_type_id, difficulty, marks,
+        });
+        return successResponse(res, 'Question updated successfully', null);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const setQuestionActive = async (req, res, next) => {
+    try {
+        const { questionId } = req.params;
+        const { isActive } = req.body;
+        await adminService.setQuestionActive(questionId, !!isActive);
+        return successResponse(res, `Question ${isActive ? 'restored' : 'retired'} successfully`, null);
+    } catch (error) {
         next(error);
     }
 };

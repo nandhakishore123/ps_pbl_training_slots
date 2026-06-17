@@ -164,6 +164,134 @@ export const listStudentsWithPoints = async () => {
   return rows;
 };
 
+// ── Student management (admin authoring) — Stage 5d ──────────
+// Create provisions a users row (role 1) AND a students row, transactionally
+// (the service owns the connection + commit/rollback so a failed students
+// insert never leaves an orphan user). Soft-deactivate mirrors is_active across
+// BOTH tables so a deactivated student also can't log in. Active-only
+// listStudentsWithPoints (above) still feeds the read path. Single-table writes
+// by key; the management list uses one equality JOIN to users for the email.
+const studentExec = (conn) => conn || db;
+
+// Admin management list — ALL students (incl. inactive), with email + is_active.
+export const listAllStudents = async () => {
+  const [rows] = await db.execute(`
+    SELECT
+      s.student_id, s.user_id, s.name, s.reg_num, s.degree, s.course, s.year_of_study,
+      s.is_active, u.email,
+      MAX(CASE WHEN p.point_type = 'REWARD_POINTS' THEN p.points_available ELSE 0 END) AS reward_points,
+      MAX(CASE WHEN p.point_type = 'ACTIVITY_POINTS' THEN p.points_available ELSE 0 END) AS activity_points
+    FROM students s
+    JOIN users u ON u.user_id = s.user_id
+    LEFT JOIN points p ON p.student_id = s.student_id
+    GROUP BY s.student_id, s.user_id, s.name, s.reg_num, s.degree, s.course, s.year_of_study, s.is_active, u.email
+    ORDER BY s.name ASC
+  `);
+  return rows;
+};
+
+// Two inserts on ONE connection. Caller wraps in a transaction. ER_DUP_ENTRY is
+// mapped to a 409 distinguishing email (users) vs reg_num (students).
+export const createStudentWithUser = async ({ email, reg_num, name, degree, course, year_of_study }, conn) => {
+  const exec = studentExec(conn);
+  let userId;
+  try {
+    const [uRes] = await exec.execute(
+      `INSERT INTO users (role_id, email, is_active) VALUES (1, ?, 1)`,
+      [email]
+    );
+    userId = uRes.insertId;
+  } catch (err) {
+    if (err?.code === 'ER_DUP_ENTRY') {
+      const e = new Error('A user with this email already exists.');
+      e.status = 409;
+      throw e;
+    }
+    throw err;
+  }
+  try {
+    const [sRes] = await exec.execute(
+      `INSERT INTO students (user_id, reg_num, name, degree, course, year_of_study, is_active)
+       VALUES (?, ?, ?, ?, ?, ?, 1)`,
+      [userId, reg_num, name, degree ?? null, course ?? null, year_of_study ?? null]
+    );
+    return { studentId: sRes.insertId, userId };
+  } catch (err) {
+    if (err?.code === 'ER_DUP_ENTRY') {
+      const e = new Error('A student with this registration number already exists.');
+      e.status = 409;
+      throw e;
+    }
+    throw err;
+  }
+};
+
+export const getStudentUserId = async (studentId, conn) => {
+  const exec = studentExec(conn);
+  const [rows] = await exec.execute(
+    `SELECT user_id FROM students WHERE student_id = ?`,
+    [Number(studentId)]
+  );
+  return rows?.[0]?.user_id ?? null;
+};
+
+// Single-table UPDATE by key. reg_num is UNIQUE → ER_DUP_ENTRY mapped to 409.
+export const updateStudent = async (studentId, { reg_num, name, degree, course, year_of_study }, conn) => {
+  const exec = studentExec(conn);
+  try {
+    const [result] = await exec.execute(
+      `UPDATE students SET reg_num = ?, name = ?, degree = ?, course = ?, year_of_study = ?
+       WHERE student_id = ?`,
+      [reg_num, name, degree ?? null, course ?? null, year_of_study ?? null, Number(studentId)]
+    );
+    return result.affectedRows ?? 0;
+  } catch (err) {
+    if (err?.code === 'ER_DUP_ENTRY') {
+      const e = new Error('A student with this registration number already exists.');
+      e.status = 409;
+      throw e;
+    }
+    throw err;
+  }
+};
+
+// Single-table UPDATE by key. email is UNIQUE → ER_DUP_ENTRY mapped to 409.
+export const updateUserEmail = async (userId, email, conn) => {
+  const exec = studentExec(conn);
+  try {
+    const [result] = await exec.execute(
+      `UPDATE users SET email = ? WHERE user_id = ?`,
+      [email, Number(userId)]
+    );
+    return result.affectedRows ?? 0;
+  } catch (err) {
+    if (err?.code === 'ER_DUP_ENTRY') {
+      const e = new Error('A user with this email already exists.');
+      e.status = 409;
+      throw e;
+    }
+    throw err;
+  }
+};
+
+export const setStudentActiveRow = async (studentId, isActive, conn) => {
+  const exec = studentExec(conn);
+  const [result] = await exec.execute(
+    `UPDATE students SET is_active = ? WHERE student_id = ?`,
+    [isActive ? 1 : 0, Number(studentId)]
+  );
+  return result.affectedRows ?? 0;
+};
+
+export const setUserActiveRow = async (userId, isActive, conn) => {
+  const exec = studentExec(conn);
+  const [result] = await exec.execute(
+    `UPDATE users SET is_active = ? WHERE user_id = ?`,
+    [isActive ? 1 : 0, Number(userId)]
+  );
+  return result.affectedRows ?? 0;
+};
+
 export const listTrainingSkills = async () => {
   const [rows] = await db.execute(`
     SELECT 
@@ -181,6 +309,290 @@ export const listTrainingSkills = async () => {
     ORDER BY ts.skill_name ASC
   `);
   return rows;
+};
+
+// ── Training skill (Course/Lab) management — Stage 5a ─────────
+// Mirrors the venue CRUD pattern. PS vs PBL = the skill_type column.
+// Active-only listTrainingSkills above still feeds the student/points reads;
+// listAllTrainingSkills returns inactive too so they can be reactivated.
+// Soft-deactivate only (toggles is_active) — never hard delete, which would
+// FK-fail against skill_levels / assessments / venue_alloted_skills / skill_points.
+export const listAllTrainingSkills = async () => {
+  const [rows] = await db.execute(`
+    SELECT
+      ts.training_skill_id, ts.skill_name, ts.skill_type,
+      ts.category_id, c.category_name, ts.image_url, ts.is_active,
+      COUNT(DISTINCT sl.level_id) as levels_count,
+      MAX(CASE WHEN sp.point_type = 'REWARD_POINTS' THEN sp.points_alloted ELSE 0 END) as max_reward_points,
+      MAX(CASE WHEN sp.point_type = 'ACTIVITY_POINTS' THEN sp.points_alloted ELSE 0 END) as max_activity_points
+    FROM training_skills ts
+    LEFT JOIN training_skill_category c ON ts.category_id = c.category_id
+    LEFT JOIN skill_levels sl ON ts.training_skill_id = sl.training_skill_id
+    LEFT JOIN skill_points sp ON ts.training_skill_id = sp.training_skill_id
+    GROUP BY ts.training_skill_id, ts.skill_name, ts.skill_type, ts.category_id, c.category_name, ts.image_url, ts.is_active
+    ORDER BY ts.skill_name ASC
+  `);
+  return rows;
+};
+
+export const listSkillCategories = async () => {
+  const [rows] = await db.execute(
+    `SELECT category_id, category_name FROM training_skill_category ORDER BY category_name ASC`
+  );
+  return rows;
+};
+
+export const createTrainingSkill = async ({ skill_name, skill_type, category_id, image_url }) => {
+  const [result] = await db.execute(
+    `INSERT INTO training_skills (skill_name, skill_type, category_id, image_url, is_active) VALUES (?, ?, ?, ?, 1)`,
+    [skill_name, skill_type, Number(category_id), image_url ?? null]
+  );
+  return result.insertId;
+};
+
+export const updateTrainingSkill = async (id, { skill_name, skill_type, category_id, image_url }) => {
+  // training_skills has no updated_at column — do not set one.
+  const [result] = await db.execute(
+    `UPDATE training_skills SET skill_name = ?, skill_type = ?, category_id = ?, image_url = ? WHERE training_skill_id = ?`,
+    [skill_name, skill_type, Number(category_id), image_url ?? null, Number(id)]
+  );
+  return result.affectedRows ?? 0;
+};
+
+export const setTrainingSkillActive = async (id, isActive) => {
+  const [result] = await db.execute(
+    `UPDATE training_skills SET is_active = ? WHERE training_skill_id = ?`,
+    [isActive ? 1 : 0, Number(id)]
+  );
+  return result.affectedRows ?? 0;
+};
+
+// Count of venues that ACTIVELY offer this skill — for the soft "still mapped"
+// warning when deactivating (mirrors countMappingsByVenue). Not a hard block.
+export const countVenueSkillsBySkill = async (id) => {
+  const [rows] = await db.execute(
+    `SELECT COUNT(*) AS cnt FROM venue_alloted_skills WHERE training_skill_id = ? AND is_active = 1`,
+    [Number(id)]
+  );
+  return Number(rows?.[0]?.cnt ?? 0);
+};
+
+// ── Skill level (Course/Lab level) management — Stage 5b ─────
+// skill_levels has NO is_active column → delete is a HARD delete, guarded.
+// Listing reuses trainingModel.getSkillLevels (student read path, unchanged).
+// Create/Edit are single-table writes by key. Delete is blocked whenever the
+// level is in use (bookings / assessment attempts) OR still owns content
+// (syllabus / points / assessments) — the safe "remove its contents first"
+// path, so we never cascade into the assessment/booking domain.
+export const createLevel = async ({ training_skill_id, level_name, core_concept, max_attempts }) => {
+  const [result] = await db.execute(
+    `INSERT INTO skill_levels (training_skill_id, level_name, core_concept, max_attempts) VALUES (?, ?, ?, ?)`,
+    [Number(training_skill_id), level_name, core_concept ?? null, max_attempts ?? null]
+  );
+  return result.insertId;
+};
+
+export const updateLevel = async (levelId, { level_name, core_concept, max_attempts }) => {
+  const [result] = await db.execute(
+    `UPDATE skill_levels SET level_name = ?, core_concept = ?, max_attempts = ? WHERE level_id = ?`,
+    [level_name, core_concept ?? null, max_attempts ?? null, Number(levelId)]
+  );
+  return result.affectedRows ?? 0;
+};
+
+// Block if any student has a booking pinned to this level.
+export const countBookingsByLevel = async (levelId) => {
+  const [rows] = await db.execute(
+    `SELECT COUNT(*) AS cnt FROM student_booking WHERE level_id = ?`,
+    [Number(levelId)]
+  );
+  return Number(rows?.[0]?.cnt ?? 0);
+};
+
+// Block if any assessment of this level has student attempts. Equality JOIN only.
+export const countAssessmentAttemptsByLevel = async (levelId) => {
+  const [rows] = await db.execute(
+    `SELECT COUNT(*) AS cnt
+     FROM student_assessments sa
+     JOIN assessments a ON a.assessment_id = sa.assessment_id
+     WHERE a.level_id = ?`,
+    [Number(levelId)]
+  );
+  return Number(rows?.[0]?.cnt ?? 0);
+};
+
+// Owned content (syllabus / points / assessments). Non-zero → "not empty".
+export const countLevelContents = async (levelId) => {
+  const id = Number(levelId);
+  const [[syl]] = await db.execute(`SELECT COUNT(*) AS cnt FROM skill_syllabus WHERE level_id = ?`, [id]);
+  const [[pts]] = await db.execute(`SELECT COUNT(*) AS cnt FROM skill_points WHERE level_id = ?`, [id]);
+  const [[asm]] = await db.execute(`SELECT COUNT(*) AS cnt FROM assessments WHERE level_id = ?`, [id]);
+  return {
+    syllabus: Number(syl?.cnt ?? 0),
+    points: Number(pts?.cnt ?? 0),
+    assessments: Number(asm?.cnt ?? 0),
+  };
+};
+
+// Single-table hard delete by key — callers MUST run the guards first.
+export const deleteLevel = async (levelId) => {
+  const [result] = await db.execute(
+    `DELETE FROM skill_levels WHERE level_id = ?`,
+    [Number(levelId)]
+  );
+  return result.affectedRows ?? 0;
+};
+
+// ── Assessment management (admin authoring) — Stage 5c-i ─────
+// ADD-ONLY admin CRUD. The student read path (getAssessmentForLevel /
+// getAssessmentMcqTypeConfig in training.model.js) is NOT touched — those still
+// filter is_active=1 and feed startAssessment. listAssessmentsForLevel returns
+// inactive too so the admin can reactivate. Single-table writes by key.
+export const listAssessmentsForLevel = async (trainingSkillId, levelId) => {
+  const [rows] = await db.execute(
+    `SELECT assessment_id, training_skill_id, level_id, assessment_title,
+            assessment_type, total_marks, passing_marks, duration_minutes,
+            is_active, created_at, updated_at
+     FROM assessments
+     WHERE training_skill_id = ? AND level_id = ?
+     ORDER BY assessment_id ASC`,
+    [Number(trainingSkillId), Number(levelId)]
+  );
+  return rows ?? [];
+};
+
+export const createAssessment = async ({ training_skill_id, level_id, assessment_title, assessment_type, total_marks, passing_marks, duration_minutes }) => {
+  const [result] = await db.execute(
+    `INSERT INTO assessments
+       (training_skill_id, level_id, assessment_title, assessment_type, total_marks, passing_marks, duration_minutes, is_active)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 1)`,
+    [Number(training_skill_id), Number(level_id), assessment_title, assessment_type,
+     Number(total_marks), Number(passing_marks), Number(duration_minutes)]
+  );
+  return result.insertId;
+};
+
+export const updateAssessment = async (assessmentId, { assessment_title, assessment_type, total_marks, passing_marks, duration_minutes }) => {
+  // assessments.updated_at is ON UPDATE CURRENT_TIMESTAMP → auto-maintained.
+  const [result] = await db.execute(
+    `UPDATE assessments
+       SET assessment_title = ?, assessment_type = ?, total_marks = ?, passing_marks = ?, duration_minutes = ?
+     WHERE assessment_id = ?`,
+    [assessment_title, assessment_type, Number(total_marks), Number(passing_marks), Number(duration_minutes), Number(assessmentId)]
+  );
+  return result.affectedRows ?? 0;
+};
+
+export const setAssessmentActive = async (assessmentId, isActive) => {
+  const [result] = await db.execute(
+    `UPDATE assessments SET is_active = ? WHERE assessment_id = ?`,
+    [isActive ? 1 : 0, Number(assessmentId)]
+  );
+  return result.affectedRows ?? 0;
+};
+
+export const listMcqTypes = async () => {
+  const [rows] = await db.execute(
+    `SELECT mcq_type_id, mcq_type_name FROM mcq_types WHERE is_active = 1 ORDER BY mcq_type_name ASC`
+  );
+  return rows ?? [];
+};
+
+// Admin view of the per-type counts. LEFT JOIN (not the student INNER JOIN) so a
+// row whose type was later deactivated still shows for management. Equality JOIN.
+export const listMcqTypeConfig = async (assessmentId) => {
+  const [rows] = await db.execute(
+    `SELECT c.config_id, c.assessment_id, c.mcq_type_id, mt.mcq_type_name, c.question_count
+     FROM assessment_mcq_type_config c
+     LEFT JOIN mcq_types mt ON mt.mcq_type_id = c.mcq_type_id
+     WHERE c.assessment_id = ?
+     ORDER BY c.config_id ASC`,
+    [Number(assessmentId)]
+  );
+  return rows ?? [];
+};
+
+// UNIQUE(assessment_id, mcq_type_id) = uq_assessment_mcq_type makes the upsert safe.
+export const upsertMcqTypeConfig = async (assessmentId, mcqTypeId, questionCount) => {
+  const [result] = await db.execute(
+    `INSERT INTO assessment_mcq_type_config (assessment_id, mcq_type_id, question_count)
+     VALUES (?, ?, ?)
+     ON DUPLICATE KEY UPDATE question_count = VALUES(question_count)`,
+    [Number(assessmentId), Number(mcqTypeId), Number(questionCount)]
+  );
+  return result;
+};
+
+export const deleteMcqTypeConfig = async (configId) => {
+  const [result] = await db.execute(
+    `DELETE FROM assessment_mcq_type_config WHERE config_id = ?`,
+    [Number(configId)]
+  );
+  return result.affectedRows ?? 0;
+};
+
+// ── MCQ Question Bank (admin authoring) — Stage 5c-ii ────────
+// ADD-ONLY admin CRUD. Delete is SOFT (is_active=0) because questions may be
+// referenced by student_mcq_answers — a hard delete would FK-fail and lose
+// answer history. The student sampling read (getRandomMcqQuestions) filters
+// is_active=1, so retired questions are never served but history stays intact.
+// Single-table writes by key; the list uses one equality JOIN for the type name.
+export const listQuestions = async (assessmentId) => {
+  const [rows] = await db.execute(
+    `SELECT q.mcq_question_id, q.assessment_id, q.question_text,
+            q.option_a, q.option_b, q.option_c, q.option_d,
+            q.correct_option, q.mcq_type_id, mt.mcq_type_name,
+            q.difficulty, q.marks, q.is_active, q.created_at,
+            (SELECT COUNT(*) FROM student_mcq_answers sma
+               WHERE sma.mcq_question_id = q.mcq_question_id) AS answer_count
+     FROM assessment_mcq_questions q
+     LEFT JOIN mcq_types mt ON mt.mcq_type_id = q.mcq_type_id
+     WHERE q.assessment_id = ?
+     ORDER BY q.mcq_question_id ASC`,
+    [Number(assessmentId)]
+  );
+  return rows ?? [];
+};
+
+export const createQuestion = async ({ assessment_id, question_text, option_a, option_b, option_c, option_d, correct_option, mcq_type_id, difficulty, marks }) => {
+  const [result] = await db.execute(
+    `INSERT INTO assessment_mcq_questions
+       (assessment_id, question_text, option_a, option_b, option_c, option_d,
+        correct_option, mcq_type_id, difficulty, marks, is_active)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+    [Number(assessment_id), question_text, option_a, option_b, option_c, option_d,
+     correct_option, Number(mcq_type_id), difficulty ?? null, Number(marks)]
+  );
+  return result.insertId;
+};
+
+export const updateQuestion = async (questionId, { question_text, option_a, option_b, option_c, option_d, correct_option, mcq_type_id, difficulty, marks }) => {
+  const [result] = await db.execute(
+    `UPDATE assessment_mcq_questions
+       SET question_text = ?, option_a = ?, option_b = ?, option_c = ?, option_d = ?,
+           correct_option = ?, mcq_type_id = ?, difficulty = ?, marks = ?
+     WHERE mcq_question_id = ?`,
+    [question_text, option_a, option_b, option_c, option_d,
+     correct_option, Number(mcq_type_id), difficulty ?? null, Number(marks), Number(questionId)]
+  );
+  return result.affectedRows ?? 0;
+};
+
+export const setQuestionActive = async (questionId, isActive) => {
+  const [result] = await db.execute(
+    `UPDATE assessment_mcq_questions SET is_active = ? WHERE mcq_question_id = ?`,
+    [isActive ? 1 : 0, Number(questionId)]
+  );
+  return result.affectedRows ?? 0;
+};
+
+// Info only — warn before retiring a question that has student answers.
+export const countAnswersForQuestion = async (questionId) => {
+  const [rows] = await db.execute(
+    `SELECT COUNT(*) AS cnt FROM student_mcq_answers WHERE mcq_question_id = ?`,
+    [Number(questionId)]
+  );
+  return Number(rows?.[0]?.cnt ?? 0);
 };
 
 export const listSlotTimings = async () => {
