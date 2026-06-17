@@ -678,6 +678,42 @@ export const cancelBooking = async (req, res, next) => {
     }
 };
 
+// ── Result override + admin malpractice — Stage 6c ───────────
+// All guard rejections carry err.status (409/400/404); the global error handler
+// surfaces status + message so the client can toast the reason.
+
+export const overrideResult = async (req, res, next) => {
+    try {
+        const { bookingId } = req.params;
+        const { newStatus, newScore } = req.body;
+        const data = await adminService.overrideAssessmentResult({ bookingId, newStatus, newScore });
+        return successResponse(res, 'Result overridden successfully', data);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const markMalpractice = async (req, res, next) => {
+    try {
+        const { bookingId } = req.params;
+        const { reason } = req.body || {};
+        const data = await adminService.adminMarkMalpractice(bookingId, reason);
+        return successResponse(res, 'Malpractice flagged successfully', data);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const revokeMalpractice = async (req, res, next) => {
+    try {
+        const { bookingId } = req.params;
+        const data = await adminService.adminRevokeMalpractice(bookingId);
+        return successResponse(res, 'Malpractice flag revoked successfully', data);
+    } catch (error) {
+        next(error);
+    }
+};
+
 export const bookForStudent = async (req, res, next) => {
     try {
         const { studentId, venueSlotId, trainingSkillId, levelId } = req.body;

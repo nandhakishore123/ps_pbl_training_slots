@@ -74,6 +74,143 @@ export const cancelBooking = async (bookingId) => {
     }
 };
 
+// ── Result override + admin malpractice — Stage 6c ───────────────────────────
+// SEAT INVARIANT: a seat is held ONLY while student_booking.status='ONGOING'.
+// Override only moves between TERMINAL values (already seat-free) → it must NEVER
+// touch the seat counter. Malpractice mark/revoke use the exact faculty seat SQL.
+
+const VALID_OVERRIDE_STATUSES = ['PASSED', 'FAILED']; // assessment outcome the admin picks
+
+// Admin override of an already-submitted assessment result. One transaction:
+// update the assessment (score+status) AND re-derive the booking status with the
+// SAME mapping the submit flow uses (PASSED→PS:PASS / non-PS:COMPLETED; FAILED→FAIL).
+export const overrideAssessmentResult = async ({ bookingId, newStatus, newScore }) => {
+    const id = Number(bookingId);
+    if (!id) { const e = new Error('Booking id is required'); e.status = 400; throw e; }
+    if (!VALID_OVERRIDE_STATUSES.includes(newStatus)) {
+        const e = new Error('newStatus must be PASSED or FAILED'); e.status = 400; throw e;
+    }
+
+    const conn = await db.getConnection();
+    try {
+        await conn.beginTransaction();
+
+        const booking = await trainingModel.getBookingById(id, conn);
+        if (!booking) { const e = new Error('Booking not found'); e.status = 404; throw e; }
+
+        // HARD GUARD: an ONGOING booking still holds a seat — overriding it is not
+        // allowed (the assessment hasn't been submitted yet).
+        if (booking.status === 'ONGOING') {
+            const e = new Error("Can't override — assessment not yet submitted."); e.status = 409; throw e;
+        }
+        // HARD GUARD: malpractice has its own revoke path.
+        if (booking.status === 'MALPRACTICE') {
+            const e = new Error('Use revoke-malpractice, not override.'); e.status = 409; throw e;
+        }
+        // Now necessarily terminal: PASS / FAIL / COMPLETED.
+
+        const assessment = await adminModel.getAssessmentForBooking({
+            studentId: booking.student_id,
+            trainingSkillId: booking.training_skill_id,
+            levelId: booking.level_id,
+        }, conn);
+        if (!assessment) {
+            const e = new Error('No submitted assessment found for this booking to override.'); e.status = 409; throw e;
+        }
+
+        const total = Number(assessment.total_marks);
+        const score = Number(newScore);
+        if (!Number.isInteger(score) || score < 0 || score > total) {
+            const e = new Error(`Score must be a whole number between 0 and ${total}.`); e.status = 400; throw e;
+        }
+
+        // 1) Update the assessment (score + status only; submitted_at preserved).
+        await adminModel.overrideStudentAssessment(assessment.student_assessment_id, score, newStatus, conn);
+
+        // 2) Re-derive booking status with the existing engine mapping.
+        const newBookingStatus = newStatus === 'PASSED'
+            ? (booking.skill_type === 'PS' ? 'PASS' : 'COMPLETED')
+            : 'FAIL';
+        await adminModel.setBookingStatusById(id, newBookingStatus, conn);
+
+        // NEVER touch venue_slots — the seat was released at submit and stays released
+        // across all terminal values.
+
+        await conn.commit();
+        return { bookingId: id, assessmentStatus: newStatus, score, bookingStatus: newBookingStatus };
+    } catch (error) {
+        await conn.rollback();
+        throw error;
+    } finally {
+        conn.release();
+    }
+};
+
+// Admin malpractice mark — identical seat-safe SQL as faculty, but by booking_id
+// only (no ownership predicate). Only ONGOING → MALPRACTICE; releases the seat.
+export const adminMarkMalpractice = async (bookingId, reason) => {
+    const id = Number(bookingId);
+    if (!id) { const e = new Error('Booking id is required'); e.status = 400; throw e; }
+
+    const conn = await db.getConnection();
+    try {
+        await conn.beginTransaction();
+
+        const booking = await adminModel.getBookingRow(id, conn);
+        if (!booking) { const e = new Error('Booking not found'); e.status = 404; throw e; }
+        if (booking.status !== 'ONGOING') {
+            const e = new Error('Only an ONGOING booking can be flagged as malpractice.'); e.status = 409; throw e;
+        }
+
+        await adminModel.setBookingMalpractice(id, reason || 'Flagged by admin', conn);
+        // Release the seat — same floored decrement as faculty markMalpractice.
+        await adminModel.releaseSeatFloored(booking.venue_slot_id, conn);
+
+        await conn.commit();
+        return { bookingId: id, status: 'MALPRACTICE' };
+    } catch (error) {
+        await conn.rollback();
+        throw error;
+    } finally {
+        conn.release();
+    }
+};
+
+// Admin malpractice revoke — only MALPRACTICE → ONGOING. Re-claims the seat with
+// the capacity-guarded increment; if the slot is full the whole revoke rolls back
+// (so a booking is never set ONGOING without actually holding a seat).
+export const adminRevokeMalpractice = async (bookingId) => {
+    const id = Number(bookingId);
+    if (!id) { const e = new Error('Booking id is required'); e.status = 400; throw e; }
+
+    const conn = await db.getConnection();
+    try {
+        await conn.beginTransaction();
+
+        const booking = await adminModel.getBookingRow(id, conn);
+        if (!booking) { const e = new Error('Booking not found'); e.status = 404; throw e; }
+        if (booking.status !== 'MALPRACTICE') {
+            const e = new Error('Booking is not flagged as malpractice.'); e.status = 409; throw e;
+        }
+
+        // Re-claim the seat FIRST; if full (affectedRows 0), abort so we never set
+        // ONGOING without a held seat (preserves the seat invariant).
+        const claimed = await adminModel.reclaimSeatGuarded(booking.venue_slot_id, conn);
+        if (claimed === 0) {
+            const e = new Error("Slot is full, can't revoke."); e.status = 409; throw e;
+        }
+        await adminModel.revokeBookingMalpractice(id, conn);
+
+        await conn.commit();
+        return { bookingId: id, status: 'ONGOING' };
+    } catch (error) {
+        await conn.rollback();
+        throw error;
+    } finally {
+        conn.release();
+    }
+};
+
 // ── Admin book a slot FOR a student (Stage 4b) ───────────────────────────────
 // Composes the SAME reusable guards as the student createBooking flow (which is
 // NOT modified). The ONLY relaxation vs students is skipping the daily open-time

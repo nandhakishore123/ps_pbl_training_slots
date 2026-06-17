@@ -113,6 +113,9 @@ export default function AdminBookings() {
   const [cancellingId, setCancellingId] = useState(null)
   const [showBookModal, setShowBookModal] = useState(false)
   const [showBulkModal, setShowBulkModal] = useState(false)
+  // Stage 6c — result override + admin malpractice
+  const [busyId, setBusyId] = useState(null)
+  const [overrideBooking, setOverrideBooking] = useState(null)
 
   // Filter dropdown sources (reuse existing admin endpoints)
   useEffect(() => {
@@ -149,6 +152,39 @@ export default function AdminBookings() {
       showToast(err?.response?.data?.message || 'Failed to cancel booking', true)
     } finally {
       setCancellingId(null)
+    }
+  }
+
+  // Mark malpractice — only ONGOING. Server frees the seat (floored decrement).
+  const handleMarkMal = async (b) => {
+    if (b.booking_status !== 'ONGOING') return
+    if (!window.confirm('Flag this booking as MALPRACTICE? This frees the held seat.')) return
+    setBusyId(b.booking_id)
+    try {
+      await adminService.markMalpractice(b.booking_id)
+      showToast('Malpractice flagged — seat freed')
+      fetchBookings()
+    } catch (err) {
+      showToast(err?.response?.data?.message || 'Failed to flag malpractice', true)
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  // Revoke malpractice — only MALPRACTICE. Server re-claims a seat (guarded); if
+  // the slot is full the revoke is rejected (409) and nothing changes.
+  const handleRevokeMal = async (b) => {
+    if (b.booking_status !== 'MALPRACTICE') return
+    if (!window.confirm('Revoke malpractice? This re-claims a seat (blocked if the slot is full).')) return
+    setBusyId(b.booking_id)
+    try {
+      await adminService.revokeMalpractice(b.booking_id)
+      showToast('Malpractice revoked — booking is ongoing again')
+      fetchBookings()
+    } catch (err) {
+      showToast(err?.response?.data?.message || 'Failed to revoke malpractice', true)
+    } finally {
+      setBusyId(null)
     }
   }
 
@@ -336,32 +372,67 @@ export default function AdminBookings() {
                       <td style={td}><AttendanceBadge b={b} /></td>
                       <td style={td}><ResultBadge b={b} /></td>
                       <td style={td}>
-                        {b.booking_status === 'ONGOING' ? (
-                          <button
-                            onClick={() => handleCancel(b)}
-                            disabled={cancellingId === b.booking_id}
-                            style={{
-                              padding: '6px 12px', borderRadius: 8, border: '1.5px solid rgba(239,68,68,0.4)',
-                              background: 'rgba(239,68,68,0.08)', color: '#ef4444', fontSize: 12, fontWeight: 700,
-                              cursor: cancellingId === b.booking_id ? 'not-allowed' : 'pointer',
-                              opacity: cancellingId === b.booking_id ? 0.6 : 1, fontFamily: font, whiteSpace: 'nowrap',
-                            }}
-                          >
-                            {cancellingId === b.booking_id ? 'Cancelling…' : 'Cancel'}
-                          </button>
-                        ) : (
-                          <button
-                            disabled
-                            title="Only ongoing bookings can be cancelled"
-                            style={{
-                              padding: '6px 12px', borderRadius: 8, border: '1.5px solid #e5e4eb',
-                              background: '#f9fafb', color: '#c7c3d4', fontSize: 12, fontWeight: 700,
-                              cursor: 'not-allowed', fontFamily: font, whiteSpace: 'nowrap',
-                            }}
-                          >
-                            Cancel
-                          </button>
-                        )}
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                          {b.booking_status === 'ONGOING' && (
+                            <>
+                              <button
+                                onClick={() => handleCancel(b)}
+                                disabled={cancellingId === b.booking_id}
+                                style={{
+                                  padding: '6px 12px', borderRadius: 8, border: '1.5px solid rgba(239,68,68,0.4)',
+                                  background: 'rgba(239,68,68,0.08)', color: '#ef4444', fontSize: 12, fontWeight: 700,
+                                  cursor: cancellingId === b.booking_id ? 'not-allowed' : 'pointer',
+                                  opacity: cancellingId === b.booking_id ? 0.6 : 1, fontFamily: font, whiteSpace: 'nowrap',
+                                }}
+                              >
+                                {cancellingId === b.booking_id ? 'Cancelling…' : 'Cancel'}
+                              </button>
+                              <button
+                                onClick={() => handleMarkMal(b)}
+                                disabled={busyId === b.booking_id}
+                                title="Flag as malpractice (frees the seat)"
+                                style={{
+                                  padding: '6px 12px', borderRadius: 8, border: '1.5px solid rgba(239,68,68,0.4)',
+                                  background: 'rgba(239,68,68,0.08)', color: '#ef4444', fontSize: 12, fontWeight: 700,
+                                  cursor: busyId === b.booking_id ? 'not-allowed' : 'pointer',
+                                  opacity: busyId === b.booking_id ? 0.6 : 1, fontFamily: font, whiteSpace: 'nowrap',
+                                }}
+                              >
+                                Malpractice
+                              </button>
+                            </>
+                          )}
+
+                          {(b.booking_status === 'PASS' || b.booking_status === 'FAIL' || b.booking_status === 'COMPLETED') && (
+                            <button
+                              onClick={() => setOverrideBooking(b)}
+                              title="Override the assessment result (does not change seat counts)"
+                              style={{
+                                padding: '6px 12px', borderRadius: 8, border: `1.5px solid ${P}`,
+                                background: 'rgba(108,71,255,0.08)', color: P, fontSize: 12, fontWeight: 700,
+                                cursor: 'pointer', fontFamily: font, whiteSpace: 'nowrap',
+                              }}
+                            >
+                              Override
+                            </button>
+                          )}
+
+                          {b.booking_status === 'MALPRACTICE' && (
+                            <button
+                              onClick={() => handleRevokeMal(b)}
+                              disabled={busyId === b.booking_id}
+                              title="Revoke malpractice (re-claims a seat if available)"
+                              style={{
+                                padding: '6px 12px', borderRadius: 8, border: '1.5px solid rgba(5,150,105,0.4)',
+                                background: 'rgba(16,185,129,0.08)', color: '#059669', fontSize: 12, fontWeight: 700,
+                                cursor: busyId === b.booking_id ? 'not-allowed' : 'pointer',
+                                opacity: busyId === b.booking_id ? 0.6 : 1, fontFamily: font, whiteSpace: 'nowrap',
+                              }}
+                            >
+                              {busyId === b.booking_id ? 'Working…' : 'Revoke MP'}
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -385,6 +456,92 @@ export default function AdminBookings() {
           onBooked={() => fetchBookings()}
         />
       )}
+
+      {overrideBooking && (
+        <OverrideResultModal
+          booking={overrideBooking}
+          onClose={() => setOverrideBooking(null)}
+          onSaved={() => fetchBookings()}
+          showToast={showToast}
+        />
+      )}
+    </div>
+  )
+}
+
+// ── Override Result modal (Stage 6c) ────────────────────────────
+// Admin picks the assessment outcome (Passed/Failed) + score for an already-
+// submitted (terminal) booking. The booking status is re-derived server-side;
+// seat counts are NOT affected by an override.
+function OverrideResultModal({ booking, onClose, onSaved, showToast }) {
+  const total = booking.assessment_total != null ? Number(booking.assessment_total) : null
+  const [status, setStatus] = useState(booking.assessment_status === 'FAILED' ? 'FAILED' : 'PASSED')
+  const [score, setScore] = useState(booking.assessment_score != null ? String(booking.assessment_score) : '')
+  const [busy, setBusy] = useState(false)
+
+  const submit = async () => {
+    const s = Number(score)
+    if (!Number.isInteger(s) || s < 0 || (total != null && s > total)) {
+      showToast(`Score must be a whole number between 0 and ${total != null ? total : 'the total'}.`, true)
+      return
+    }
+    setBusy(true)
+    try {
+      await adminService.overrideResult(booking.booking_id, { newStatus: status, newScore: s })
+      showToast('Result overridden')
+      onSaved()
+      onClose()
+    } catch (err) {
+      showToast(err?.response?.data?.message || 'Failed to override result', true)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const fieldLabel = { fontSize: 11, fontWeight: 800, color: '#6b7280', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6, display: 'block' }
+  const inputStyle = { width: '100%', padding: '10px 12px', border: '1.5px solid #e5e4eb', borderRadius: 10, fontSize: 13, color: '#1a1a2e', outline: 'none', fontFamily: font, background: '#fff' }
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, backdropFilter: 'blur(3px)' }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 18, width: '100%', maxWidth: 420, boxShadow: '0 24px 60px rgba(0,0,0,0.2)', fontFamily: font }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 22px', borderBottom: '1px solid #e5e4eb' }}>
+          <h2 style={{ fontSize: 16, fontWeight: 800, color: '#1a1a2e', margin: 0 }}>Override Result</h2>
+          <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: '50%', border: '1px solid #e5e4eb', background: '#fff', color: '#9ca3af', fontSize: 16, cursor: 'pointer', lineHeight: 1 }}>×</button>
+        </div>
+
+        <div style={{ padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ fontSize: 13, color: '#4b5563' }}>
+            <b>{booking.student_name}</b> · {booking.venue_name}
+            <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>
+              Current: {RESULT_LABELS[booking.assessment_status] || booking.assessment_status || '—'} · booking {booking.booking_status}
+            </div>
+          </div>
+
+          <div style={{ fontSize: 12, color: '#4b5563', background: 'rgba(108,71,255,0.06)', border: '1px solid rgba(108,71,255,0.18)', borderRadius: 10, padding: '10px 12px', lineHeight: 1.5 }}>
+            The booking status is re-derived from the result. Seat counts are <b>not</b> affected by an override.
+          </div>
+
+          <div>
+            <label style={fieldLabel}>New Result</label>
+            <select value={status} onChange={(e) => setStatus(e.target.value)} style={{ ...inputStyle, cursor: 'pointer' }}>
+              <option value="PASSED">Passed</option>
+              <option value="FAILED">Failed</option>
+            </select>
+          </div>
+
+          <div>
+            <label style={fieldLabel}>Score{total != null ? ` (0–${total})` : ''}</label>
+            <input type="number" min="0" max={total != null ? total : undefined} value={score} onChange={(e) => setScore(e.target.value)} style={inputStyle} />
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, padding: '16px 22px', borderTop: '1px solid #e5e4eb' }}>
+          <button onClick={onClose} disabled={busy} style={{ padding: '10px 18px', borderRadius: 10, border: '1.5px solid #e5e4eb', background: '#fff', color: '#6b7280', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: font }}>Cancel</button>
+          <button onClick={submit} disabled={busy} style={{ padding: '10px 18px', borderRadius: 10, border: 'none', background: P, color: '#fff', fontSize: 13, fontWeight: 800, cursor: busy ? 'not-allowed' : 'pointer', opacity: busy ? 0.6 : 1, fontFamily: font }}>
+            {busy ? 'Saving…' : 'Save Override'}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

@@ -108,4 +108,9 @@ router.get('/skills/:skillId/levels', requireRole(3), adminController.getSkillLe
 // ── Admin bulk-book many students into one slot (Stage 4c) ──
 router.post('/bookings/bulk', requireRole(3), adminController.bulkBook);
 
+// ── Result override + admin malpractice (Admin only — role_id 3) — Stage 6c ──
+router.patch('/bookings/:bookingId/result', requireRole(3), adminController.overrideResult);
+router.post('/bookings/:bookingId/malpractice', requireRole(3), adminController.markMalpractice);
+router.post('/bookings/:bookingId/revoke-malpractice', requireRole(3), adminController.revokeMalpractice);
+
 export default router;

@@ -1017,6 +1017,109 @@ export const listAllBookings = async ({ venueId, date, venueSlotId } = {}) => {
   return rows ?? [];
 };
 
+// ── Result override + admin malpractice — Stage 6c ───────────
+// SEAT INVARIANT: a seat in venue_slots.current_bookings is held ONLY while
+// student_booking.status='ONGOING'. Terminal (PASS/FAIL/COMPLETED) and
+// MALPRACTICE have already released it. Override moves only between terminal
+// values → it must NEVER touch the seat counter. Malpractice mark/revoke use
+// the EXACT faculty seat SQL (floored decrement / capacity-guarded increment).
+// All callers pass the transaction connection.
+
+// Latest assessment attempt for a booking (student+skill+level). Equality JOIN.
+export const getAssessmentForBooking = async ({ studentId, trainingSkillId, levelId }, conn = null) => {
+  const exec = conn || db;
+  const params = [Number(studentId), Number(trainingSkillId)];
+  let levelSql = '';
+  if (levelId != null) { levelSql = ' AND a.level_id = ?'; params.push(Number(levelId)); }
+  const [rows] = await exec.execute(
+    `SELECT sa.student_assessment_id, sa.status, sa.score_obtained, sa.total_marks
+     FROM student_assessments sa
+     JOIN assessments a ON a.assessment_id = sa.assessment_id
+     WHERE sa.student_id = ? AND a.training_skill_id = ?${levelSql}
+     ORDER BY sa.student_assessment_id DESC
+     LIMIT 1`,
+    params
+  );
+  return rows?.[0] ?? null;
+};
+
+// Override updates score + status ONLY — deliberately NOT submitted_at, so the
+// original submission timestamp is preserved.
+export const overrideStudentAssessment = async (studentAssessmentId, score, status, conn = null) => {
+  const exec = conn || db;
+  const [result] = await exec.execute(
+    `UPDATE student_assessments SET score_obtained = ?, status = ? WHERE student_assessment_id = ?`,
+    [Number(score), status, Number(studentAssessmentId)]
+  );
+  return result?.affectedRows ?? 0;
+};
+
+// Single-table booking-status write by key (used by override re-derive).
+export const setBookingStatusById = async (bookingId, status, conn = null) => {
+  const exec = conn || db;
+  const [result] = await exec.execute(
+    `UPDATE student_booking SET status = ? WHERE booking_id = ?`,
+    [status, Number(bookingId)]
+  );
+  return result?.affectedRows ?? 0;
+};
+
+// Lightweight booking read (single table) for mutation guards.
+export const getBookingRow = async (bookingId, conn = null) => {
+  const exec = conn || db;
+  const [rows] = await exec.execute(
+    `SELECT booking_id, venue_slot_id, status FROM student_booking WHERE booking_id = ?`,
+    [Number(bookingId)]
+  );
+  return rows?.[0] ?? null;
+};
+
+export const setBookingMalpractice = async (bookingId, remarks, conn = null) => {
+  const exec = conn || db;
+  const [result] = await exec.execute(
+    `UPDATE student_booking SET status = 'MALPRACTICE', remarks = ? WHERE booking_id = ?`,
+    [remarks ?? null, Number(bookingId)]
+  );
+  return result?.affectedRows ?? 0;
+};
+
+export const revokeBookingMalpractice = async (bookingId, conn = null) => {
+  const exec = conn || db;
+  const [result] = await exec.execute(
+    `UPDATE student_booking SET status = 'ONGOING', remarks = NULL WHERE booking_id = ?`,
+    [Number(bookingId)]
+  );
+  return result?.affectedRows ?? 0;
+};
+
+// Floored seat release — mirrors faculty markMalpractice exactly.
+export const releaseSeatFloored = async (venueSlotId, conn = null) => {
+  const exec = conn || db;
+  const [result] = await exec.execute(
+    `UPDATE venue_slots
+     SET current_bookings = GREATEST(0, COALESCE(current_bookings, 1) - 1)
+     WHERE venue_slot_id = ?`,
+    [Number(venueSlotId)]
+  );
+  return result?.affectedRows ?? 0;
+};
+
+// Capacity-guarded seat re-claim — mirrors faculty revokeMalpractice exactly
+// (capacity on venues, reached via the mapping). affectedRows === 0 ⇒ slot full.
+export const reclaimSeatGuarded = async (venueSlotId, conn = null) => {
+  const exec = conn || db;
+  const [result] = await exec.execute(
+    `UPDATE venue_slots vs
+     JOIN venue_mapping vm ON vm.mapping_id = vs.mapping_id
+     JOIN venues v ON v.venue_id = vm.venue_id
+     SET vs.current_bookings = COALESCE(vs.current_bookings, 0) + 1
+     WHERE vs.venue_slot_id = ?
+       AND COALESCE(v.capacity, 0) > COALESCE(vs.current_bookings, 0)`,
+    [Number(venueSlotId)]
+  );
+  return result?.affectedRows ?? 0;
+};
+
 // ── Venue ↔ Skill management (venue_alloted_skills) ──────────
 // Equality JOIN only (TiDB-safe: no subquery in JOIN ON).
 export const listVenueSkills = async (venueId) => {
