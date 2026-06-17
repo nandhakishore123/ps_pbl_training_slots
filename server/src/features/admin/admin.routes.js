@@ -61,5 +61,8 @@ router.put('/config/booking-window', requireRole(3), adminController.updateBooki
 router.get('/bookings', requireRole(3), adminController.getAllBookings);
 // ── Admin cancel a booking (Stage 4a) — hard delete + seat release ──
 router.delete('/bookings/:bookingId', requireRole(3), adminController.cancelBooking);
+// ── Admin book a slot FOR a student (Stage 4b) ──
+router.post('/bookings', requireRole(3), adminController.bookForStudent);
+router.get('/skills/:skillId/levels', requireRole(3), adminController.getSkillLevels);
 
 export default router;

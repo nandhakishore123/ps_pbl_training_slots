@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import { adminService } from '../../../services/features/adminService'
 import Header from '../layout/Header'
 import { useApp } from '../context/AppContext'
+import BookForStudentModal from './BookForStudentModal'
 
 const P = '#6c47ff'
 const font = "'Plus Jakarta Sans', 'Outfit', system-ui, sans-serif"
@@ -109,6 +110,7 @@ export default function AdminBookings() {
   const [error, setError] = useState('')
   const [search, setSearch] = useState('')
   const [cancellingId, setCancellingId] = useState(null)
+  const [showBookModal, setShowBookModal] = useState(false)
 
   // Filter dropdown sources (reuse existing admin endpoints)
   useEffect(() => {
@@ -242,6 +244,16 @@ export default function AdminBookings() {
             <div style={{ flex: 1 }} />
 
             <button
+              onClick={() => setShowBookModal(true)}
+              style={{
+                padding: '9px 18px', border: `1.5px solid ${P}`, borderRadius: 10,
+                background: '#fff', color: P, fontSize: 13, fontWeight: 800, cursor: 'pointer', fontFamily: font,
+              }}
+            >
+              ＋ Book for student
+            </button>
+
+            <button
               onClick={handleExport}
               disabled={!filtered.length}
               style={{
@@ -347,6 +359,13 @@ export default function AdminBookings() {
           )}
         </div>
       </div>
+
+      {showBookModal && (
+        <BookForStudentModal
+          onClose={() => setShowBookModal(false)}
+          onBooked={() => { showToast('Booking created'); fetchBookings() }}
+        />
+      )}
     </div>
   )
 }

@@ -149,5 +149,15 @@ export const adminService = {
   // ── Admin cancel a booking (Stage 4a) ────────────────────────
   cancelBooking(bookingId) {
     return api.delete(`/admin/bookings/${bookingId}`);
+  },
+
+  // ── Admin book a slot for a student (Stage 4b) ───────────────
+  bookForStudent(payload) {
+    // payload: { studentId, venueSlotId, trainingSkillId, levelId }
+    return api.post('/admin/bookings', payload);
+  },
+
+  getSkillLevels(skillId) {
+    return api.get(`/admin/skills/${skillId}/levels`);
   }
 };

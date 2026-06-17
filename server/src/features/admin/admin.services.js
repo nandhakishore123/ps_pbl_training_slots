@@ -57,6 +57,99 @@ export const cancelBooking = async (bookingId) => {
     }
 };
 
+// ── Admin book a slot FOR a student (Stage 4b) ───────────────────────────────
+// Composes the SAME reusable guards as the student createBooking flow (which is
+// NOT modified). The ONLY relaxation vs students is skipping the daily open-time
+// gate — every integrity check (capacity, duplicate, same-time, one-active,
+// malpractice, not-in-past) is still enforced. Seat claim is the existing atomic
+// guarded increment, so admins can never oversell.
+export const adminBookForStudent = async ({ studentId, venueSlotId, trainingSkillId, levelId }) => {
+    const sId = Number(studentId);
+    const vsId = Number(venueSlotId);
+    const skillId = Number(trainingSkillId);
+    if (!sId || !vsId || !skillId) {
+        const err = new Error('studentId, venueSlotId and trainingSkillId are required');
+        err.status = 400;
+        throw err;
+    }
+
+    const conn = await db.getConnection();
+    try {
+        await conn.beginTransaction();
+
+        const slot = await trainingModel.getVenueSlotById(vsId, conn);
+        if (!slot) { const e = new Error('Slot not found'); e.status = 404; throw e; }
+        if (!slot.is_active) { const e = new Error('This slot is inactive'); e.status = 400; throw e; }
+        if (!slot.venue_active) { const e = new Error('This venue is inactive'); e.status = 400; throw e; }
+
+        // The slot's venue must actively offer this skill.
+        const allotted = await trainingModel.isSkillAllottedAtVenue(slot.venue_id, skillId, conn);
+        if (!allotted) { const e = new Error('This venue does not offer the selected skill'); e.status = 403; throw e; }
+
+        // Not in the past — admin skips ONLY the daily open-time gate, never temporal sanity.
+        const istNow = await trainingModel.getIstNow(conn);
+        const [nowDate, nowTime = '00:00:00'] = String(istNow || '').trim().split(' ');
+        if (nowDate && String(slot.slot_date) < String(nowDate)) {
+            const e = new Error("This slot's date has already passed."); e.status = 400; throw e;
+        }
+        if (nowDate && String(slot.slot_date) === String(nowDate) && String(slot.start_time) <= String(nowTime)) {
+            const e = new Error('This slot has already started.'); e.status = 400; throw e;
+        }
+
+        // Malpractice lock (kept — intentional).
+        const hasMal = await trainingModel.hasMalpractice(sId, skillId, conn);
+        if (hasMal) { const e = new Error('This student is blocked for this skill due to malpractice'); e.status = 403; throw e; }
+
+        // Duplicate (same venue_slot) — uq_student_venue_slot is the backstop.
+        const existing = await trainingModel.getExistingBookingForVenueSlot(sId, vsId, conn);
+        if (existing) { const e = new Error('Student has already booked this slot'); e.status = 409; throw e; }
+
+        // Same-time-same-day across venues.
+        const sameTime = await trainingModel.getSameTimeBookingForStudent(sId, slot.slot_date, slot.start_time, conn);
+        if (sameTime) { const e = new Error('Student already has a booking at this time on this day'); e.status = 409; throw e; }
+
+        // One active booking per course.
+        const active = await trainingModel.getExistingActiveBookingForCourse(sId, skillId, conn);
+        if (active) { const e = new Error('Student already has an active/ongoing booking for this course'); e.status = 409; throw e; }
+
+        // Atomic guarded seat claim (capacity enforced — no oversell).
+        const claimed = await trainingModel.incrementVenueSlotBooking(vsId, conn);
+        if (claimed === 0) { const e = new Error('Slot is full'); e.status = 409; throw e; }
+
+        let bookingId;
+        try {
+            bookingId = await trainingModel.insertStudentBooking({
+                studentId: sId,
+                trainingSkillId: skillId,
+                levelId: levelId ? Number(levelId) : null,
+                mappingId: slot.mapping_id,
+                venueSlotId: vsId,
+                bookingDate: slot.slot_date,
+            }, conn);
+        } catch (e) {
+            if (e?.code === 'ER_DUP_ENTRY') {
+                const dup = new Error('Student has already booked this slot'); dup.status = 409; throw dup;
+            }
+            throw e;
+        }
+
+        const booking = await trainingModel.getBookingById(bookingId, conn);
+        await conn.commit();
+        return booking;
+    } catch (error) {
+        await conn.rollback();
+        throw error;
+    } finally {
+        conn.release();
+    }
+};
+
+// Skill levels for the admin booking modal (read-only; reuses trainingModel).
+export const getSkillLevels = async (skillId) => {
+    if (!skillId) throw new Error('Skill id is required');
+    return await trainingModel.getSkillLevels(skillId);
+};
+
 // ── Booking-open time config (app_config) ────────────────────
 // Returns date context for the admin Slot Scheduling page (READ-ONLY helpers):
 //  • today          = IST current date 'YYYY-MM-DD' (for the [Today] quick button)

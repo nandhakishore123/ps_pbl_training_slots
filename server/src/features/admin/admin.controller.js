@@ -1,5 +1,5 @@
 import * as adminService from './admin.services.js';
-import { successResponse, errorResponse } from '../../utils/response.js';
+import { successResponse, createdResponse, errorResponse } from '../../utils/response.js';
 
 export const getDashboardKPI = async (req, res, next) => {
     try {
@@ -362,6 +362,26 @@ export const cancelBooking = async (req, res, next) => {
         const { bookingId } = req.params;
         const data = await adminService.cancelBooking(bookingId);
         return successResponse(res, 'Booking cancelled successfully', data);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const bookForStudent = async (req, res, next) => {
+    try {
+        const { studentId, venueSlotId, trainingSkillId, levelId } = req.body;
+        const data = await adminService.adminBookForStudent({ studentId, venueSlotId, trainingSkillId, levelId });
+        return createdResponse(res, 'Booking created successfully', data);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const getSkillLevels = async (req, res, next) => {
+    try {
+        const { skillId } = req.params;
+        const data = await adminService.getSkillLevels(skillId);
+        return successResponse(res, 'Skill levels retrieved successfully', data);
     } catch (error) {
         next(error);
     }
