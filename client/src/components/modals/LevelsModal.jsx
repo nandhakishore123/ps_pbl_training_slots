@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import styles from './LevelsModal.module.css'
 import { useData } from '../../pages/Admin/context/DataContext'
 import { useApp } from '../../pages/Admin/context/AppContext'
+import AssessmentModal from './AssessmentModal'
 
 // Inline level list for one course/lab. Mirrors VenueDateSlotsModal:
 // load on open, add via the top form, per-row inline edit + guard-delete.
@@ -23,6 +24,11 @@ export default function LevelsModal({ isOpen, onClose, skill }) {
   const [editName, setEditName] = useState('')
   const [editConcept, setEditConcept] = useState('')
   const [editAttempts, setEditAttempts] = useState('')
+
+  // assessment management (Stage 5c-i)
+  const [assessmentOpen, setAssessmentOpen] = useState(false)
+  const [assessmentLevel, setAssessmentLevel] = useState(null)
+  const openAssessment = (lv) => { setAssessmentLevel(lv); setAssessmentOpen(true) }
 
   const load = async () => {
     if (!skill) return
@@ -166,6 +172,7 @@ export default function LevelsModal({ isOpen, onClose, skill }) {
                         </div>
                         <div className={styles.rowActions}>
                           <button onClick={() => startEdit(lv)} disabled={busy}>Edit</button>
+                          <button onClick={() => openAssessment(lv)} disabled={busy}>Manage Assessment</button>
                           <button className={styles.delBtn} onClick={() => handleDelete(lv)} disabled={busy}>Delete</button>
                         </div>
                       </>
@@ -183,6 +190,15 @@ export default function LevelsModal({ isOpen, onClose, skill }) {
           <button className={styles.btnCancel} onClick={onClose}>Done</button>
         </div>
       </div>
+
+      {assessmentOpen && assessmentLevel && (
+        <AssessmentModal
+          isOpen={assessmentOpen}
+          onClose={() => setAssessmentOpen(false)}
+          skill={skill}
+          level={assessmentLevel}
+        />
+      )}
     </div>
   )
 }

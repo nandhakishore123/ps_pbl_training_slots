@@ -111,6 +111,40 @@ export const adminService = {
     return api.delete(`/admin/levels/${levelId}`);
   },
 
+  // ── Assessment management (admin-only) — Stage 5c-i ─────────
+  getAssessments(skillId, levelId) {
+    return api.get(`/admin/training-skills/${skillId}/levels/${levelId}/assessments`);
+  },
+
+  createAssessment(skillId, levelId, payload) {
+    // payload: { assessment_title, assessment_type, total_marks, passing_marks, duration_minutes }
+    return api.post(`/admin/training-skills/${skillId}/levels/${levelId}/assessments`, payload);
+  },
+
+  updateAssessment(assessmentId, payload) {
+    return api.put(`/admin/assessments/${assessmentId}`, payload);
+  },
+
+  setAssessmentActive(assessmentId, isActive) {
+    return api.patch(`/admin/assessments/${assessmentId}/active`, { isActive });
+  },
+
+  getMcqTypes() {
+    return api.get('/admin/mcq-types');
+  },
+
+  getMcqTypeConfig(assessmentId) {
+    return api.get(`/admin/assessments/${assessmentId}/mcq-config`);
+  },
+
+  upsertMcqTypeConfig(assessmentId, mcqTypeId, questionCount) {
+    return api.put(`/admin/assessments/${assessmentId}/mcq-config`, { mcqTypeId, questionCount });
+  },
+
+  deleteMcqTypeConfig(configId) {
+    return api.delete(`/admin/mcq-config/${configId}`);
+  },
+
   // ── Venue ↔ Skill management (admin-only) ───────────────────
   getVenueSkills(venueId) {
     return api.get(`/admin/venues/${venueId}/skills`);

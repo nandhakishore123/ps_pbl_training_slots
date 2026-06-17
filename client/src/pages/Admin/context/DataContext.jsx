@@ -376,6 +376,88 @@ export function DataProvider({ children }) {
     }
   }
 
+  // ── Assessment management — Stage 5c-i ──────────────────────
+  // Loaded on demand per skill+level / per assessment (not in global state).
+  const getAssessments = async (skillId, levelId) => {
+    try {
+      const res = await adminService.getAssessments(skillId, levelId)
+      return Array.isArray(res.data) ? res.data : []
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to load assessments', true)
+      return []
+    }
+  }
+
+  const createAssessment = async (skillId, levelId, payload) => {
+    try {
+      await adminService.createAssessment(skillId, levelId, payload)
+      return true
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to create assessment', true)
+      return false
+    }
+  }
+
+  const updateAssessment = async (assessmentId, payload) => {
+    try {
+      await adminService.updateAssessment(assessmentId, payload)
+      return true
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to update assessment', true)
+      return false
+    }
+  }
+
+  const setAssessmentActive = async (assessmentId, isActive) => {
+    try {
+      await adminService.setAssessmentActive(assessmentId, isActive)
+      return true
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to update assessment status', true)
+      return false
+    }
+  }
+
+  const getMcqTypes = async () => {
+    try {
+      const res = await adminService.getMcqTypes()
+      return Array.isArray(res.data) ? res.data : []
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to load MCQ types', true)
+      return []
+    }
+  }
+
+  const getMcqTypeConfig = async (assessmentId) => {
+    try {
+      const res = await adminService.getMcqTypeConfig(assessmentId)
+      return Array.isArray(res.data) ? res.data : []
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to load MCQ type config', true)
+      return []
+    }
+  }
+
+  const upsertMcqTypeConfig = async (assessmentId, mcqTypeId, questionCount) => {
+    try {
+      await adminService.upsertMcqTypeConfig(assessmentId, mcqTypeId, questionCount)
+      return true
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to save MCQ type config', true)
+      return false
+    }
+  }
+
+  const deleteMcqTypeConfig = async (configId) => {
+    try {
+      await adminService.deleteMcqTypeConfig(configId)
+      return true
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to remove MCQ type config', true)
+      return false
+    }
+  }
+
   // ── Slot timing edit / open-close ───────────────────────────
   const refreshSlots = async () => {
     await fetchAllSlotTimings()
@@ -566,6 +648,15 @@ export function DataProvider({ children }) {
         createLevel,
         updateLevel,
         deleteLevel,
+        // assessment management (Stage 5c-i)
+        getAssessments,
+        createAssessment,
+        updateAssessment,
+        setAssessmentActive,
+        getMcqTypes,
+        getMcqTypeConfig,
+        upsertMcqTypeConfig,
+        deleteMcqTypeConfig,
         // slot edit / open-close
         updateSlotTiming,
         setSlotActive,

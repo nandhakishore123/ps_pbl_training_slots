@@ -469,6 +469,86 @@ export const deleteLevelGuarded = async (levelId) => {
     return await adminModel.deleteLevel(levelId);
 };
 
+// ── Assessment management (admin authoring) — Stage 5c-i ─────
+// ADD-ONLY. Validation: marks > 0, passing ≤ total, duration > 0, count ≥ 0.
+const VALID_ASSESSMENT_TYPES = ['MCQ', 'CODING'];
+
+const validateAssessmentFields = ({ assessment_title, assessment_type, total_marks, passing_marks, duration_minutes }) => {
+    if (!assessment_title || !String(assessment_title).trim()) {
+        throw new Error('Assessment title is required');
+    }
+    if (!VALID_ASSESSMENT_TYPES.includes(assessment_type)) {
+        throw new Error('Assessment type must be MCQ or CODING');
+    }
+    const total = Number(total_marks);
+    const passing = Number(passing_marks);
+    const duration = Number(duration_minutes);
+    if (!Number.isFinite(total) || total <= 0) throw new Error('Total marks must be greater than 0');
+    if (!Number.isFinite(passing) || passing <= 0) throw new Error('Passing marks must be greater than 0');
+    if (passing > total) throw new Error('Passing marks cannot exceed total marks');
+    if (!Number.isFinite(duration) || duration <= 0) throw new Error('Duration must be greater than 0');
+    return { total, passing, duration };
+};
+
+export const getAssessmentsForLevel = async (skillId, levelId) => {
+    if (!skillId || !levelId) throw new Error('Skill ID and Level ID are required');
+    return await adminModel.listAssessmentsForLevel(skillId, levelId);
+};
+
+export const createAssessment = async (skillId, levelId, fields) => {
+    if (!skillId || !levelId) throw new Error('Skill ID and Level ID are required');
+    const { total, passing, duration } = validateAssessmentFields(fields);
+    return await adminModel.createAssessment({
+        training_skill_id: skillId,
+        level_id: levelId,
+        assessment_title: String(fields.assessment_title).trim(),
+        assessment_type: fields.assessment_type,
+        total_marks: total,
+        passing_marks: passing,
+        duration_minutes: duration,
+    });
+};
+
+export const updateAssessment = async (assessmentId, fields) => {
+    if (!assessmentId) throw new Error('Assessment ID is required');
+    const { total, passing, duration } = validateAssessmentFields(fields);
+    return await adminModel.updateAssessment(assessmentId, {
+        assessment_title: String(fields.assessment_title).trim(),
+        assessment_type: fields.assessment_type,
+        total_marks: total,
+        passing_marks: passing,
+        duration_minutes: duration,
+    });
+};
+
+export const setAssessmentActive = async (assessmentId, isActive) => {
+    if (!assessmentId) throw new Error('Assessment ID is required');
+    return await adminModel.setAssessmentActive(assessmentId, isActive);
+};
+
+export const getMcqTypes = async () => {
+    return await adminModel.listMcqTypes();
+};
+
+export const getMcqTypeConfig = async (assessmentId) => {
+    if (!assessmentId) throw new Error('Assessment ID is required');
+    return await adminModel.listMcqTypeConfig(assessmentId);
+};
+
+export const upsertMcqTypeConfig = async (assessmentId, mcqTypeId, questionCount) => {
+    if (!assessmentId) throw new Error('Assessment ID is required');
+    if (!mcqTypeId) throw new Error('MCQ type is required');
+    const count = Number(questionCount);
+    if (!Number.isInteger(count) || count < 0) throw new Error('Question count must be a whole number ≥ 0');
+    await adminModel.upsertMcqTypeConfig(assessmentId, mcqTypeId, count);
+    return true;
+};
+
+export const deleteMcqTypeConfig = async (configId) => {
+    if (!configId) throw new Error('Config ID is required');
+    return await adminModel.deleteMcqTypeConfig(configId);
+};
+
 // ── Slot timing edit / open-close ────────────────────────────
 export const updateSlotTiming = async (slotId, startTime, endTime, force = false) => {
     if (!slotId) throw new Error('Slot ID is required');

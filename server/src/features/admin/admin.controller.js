@@ -254,6 +254,95 @@ export const deleteLevel = async (req, res, next) => {
     }
 };
 
+// ── Assessment management (admin authoring) — Stage 5c-i ─────
+
+export const getAssessmentsForLevel = async (req, res, next) => {
+    try {
+        const { skillId, levelId } = req.params;
+        const data = await adminService.getAssessmentsForLevel(skillId, levelId);
+        return successResponse(res, 'Assessments retrieved successfully', data);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const createAssessment = async (req, res, next) => {
+    try {
+        const { skillId, levelId } = req.params;
+        const { assessment_title, assessment_type, total_marks, passing_marks, duration_minutes } = req.body;
+        const assessmentId = await adminService.createAssessment(skillId, levelId, {
+            assessment_title, assessment_type, total_marks, passing_marks, duration_minutes,
+        });
+        return successResponse(res, 'Assessment created successfully', { assessmentId });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const updateAssessment = async (req, res, next) => {
+    try {
+        const { assessmentId } = req.params;
+        const { assessment_title, assessment_type, total_marks, passing_marks, duration_minutes } = req.body;
+        await adminService.updateAssessment(assessmentId, {
+            assessment_title, assessment_type, total_marks, passing_marks, duration_minutes,
+        });
+        return successResponse(res, 'Assessment updated successfully', null);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const setAssessmentActive = async (req, res, next) => {
+    try {
+        const { assessmentId } = req.params;
+        const { isActive } = req.body;
+        await adminService.setAssessmentActive(assessmentId, !!isActive);
+        return successResponse(res, `Assessment ${isActive ? 'activated' : 'deactivated'} successfully`, null);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const getMcqTypes = async (req, res, next) => {
+    try {
+        const data = await adminService.getMcqTypes();
+        return successResponse(res, 'MCQ types retrieved successfully', data);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const getMcqTypeConfig = async (req, res, next) => {
+    try {
+        const { assessmentId } = req.params;
+        const data = await adminService.getMcqTypeConfig(assessmentId);
+        return successResponse(res, 'MCQ type config retrieved successfully', data);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const upsertMcqTypeConfig = async (req, res, next) => {
+    try {
+        const { assessmentId } = req.params;
+        const { mcqTypeId, questionCount } = req.body;
+        await adminService.upsertMcqTypeConfig(assessmentId, mcqTypeId, questionCount);
+        return successResponse(res, 'MCQ type config saved successfully', null);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const deleteMcqTypeConfig = async (req, res, next) => {
+    try {
+        const { configId } = req.params;
+        await adminService.deleteMcqTypeConfig(configId);
+        return successResponse(res, 'MCQ type config removed successfully', null);
+    } catch (error) {
+        next(error);
+    }
+};
+
 // ── Slot timing edit / open-close ────────────────────────────
 
 export const getAllSlotTimings = async (req, res, next) => {

@@ -315,6 +315,94 @@ export const deleteLevel = async (levelId) => {
   return result.affectedRows ?? 0;
 };
 
+// ── Assessment management (admin authoring) — Stage 5c-i ─────
+// ADD-ONLY admin CRUD. The student read path (getAssessmentForLevel /
+// getAssessmentMcqTypeConfig in training.model.js) is NOT touched — those still
+// filter is_active=1 and feed startAssessment. listAssessmentsForLevel returns
+// inactive too so the admin can reactivate. Single-table writes by key.
+export const listAssessmentsForLevel = async (trainingSkillId, levelId) => {
+  const [rows] = await db.execute(
+    `SELECT assessment_id, training_skill_id, level_id, assessment_title,
+            assessment_type, total_marks, passing_marks, duration_minutes,
+            is_active, created_at, updated_at
+     FROM assessments
+     WHERE training_skill_id = ? AND level_id = ?
+     ORDER BY assessment_id ASC`,
+    [Number(trainingSkillId), Number(levelId)]
+  );
+  return rows ?? [];
+};
+
+export const createAssessment = async ({ training_skill_id, level_id, assessment_title, assessment_type, total_marks, passing_marks, duration_minutes }) => {
+  const [result] = await db.execute(
+    `INSERT INTO assessments
+       (training_skill_id, level_id, assessment_title, assessment_type, total_marks, passing_marks, duration_minutes, is_active)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 1)`,
+    [Number(training_skill_id), Number(level_id), assessment_title, assessment_type,
+     Number(total_marks), Number(passing_marks), Number(duration_minutes)]
+  );
+  return result.insertId;
+};
+
+export const updateAssessment = async (assessmentId, { assessment_title, assessment_type, total_marks, passing_marks, duration_minutes }) => {
+  // assessments.updated_at is ON UPDATE CURRENT_TIMESTAMP → auto-maintained.
+  const [result] = await db.execute(
+    `UPDATE assessments
+       SET assessment_title = ?, assessment_type = ?, total_marks = ?, passing_marks = ?, duration_minutes = ?
+     WHERE assessment_id = ?`,
+    [assessment_title, assessment_type, Number(total_marks), Number(passing_marks), Number(duration_minutes), Number(assessmentId)]
+  );
+  return result.affectedRows ?? 0;
+};
+
+export const setAssessmentActive = async (assessmentId, isActive) => {
+  const [result] = await db.execute(
+    `UPDATE assessments SET is_active = ? WHERE assessment_id = ?`,
+    [isActive ? 1 : 0, Number(assessmentId)]
+  );
+  return result.affectedRows ?? 0;
+};
+
+export const listMcqTypes = async () => {
+  const [rows] = await db.execute(
+    `SELECT mcq_type_id, mcq_type_name FROM mcq_types WHERE is_active = 1 ORDER BY mcq_type_name ASC`
+  );
+  return rows ?? [];
+};
+
+// Admin view of the per-type counts. LEFT JOIN (not the student INNER JOIN) so a
+// row whose type was later deactivated still shows for management. Equality JOIN.
+export const listMcqTypeConfig = async (assessmentId) => {
+  const [rows] = await db.execute(
+    `SELECT c.config_id, c.assessment_id, c.mcq_type_id, mt.mcq_type_name, c.question_count
+     FROM assessment_mcq_type_config c
+     LEFT JOIN mcq_types mt ON mt.mcq_type_id = c.mcq_type_id
+     WHERE c.assessment_id = ?
+     ORDER BY c.config_id ASC`,
+    [Number(assessmentId)]
+  );
+  return rows ?? [];
+};
+
+// UNIQUE(assessment_id, mcq_type_id) = uq_assessment_mcq_type makes the upsert safe.
+export const upsertMcqTypeConfig = async (assessmentId, mcqTypeId, questionCount) => {
+  const [result] = await db.execute(
+    `INSERT INTO assessment_mcq_type_config (assessment_id, mcq_type_id, question_count)
+     VALUES (?, ?, ?)
+     ON DUPLICATE KEY UPDATE question_count = VALUES(question_count)`,
+    [Number(assessmentId), Number(mcqTypeId), Number(questionCount)]
+  );
+  return result;
+};
+
+export const deleteMcqTypeConfig = async (configId) => {
+  const [result] = await db.execute(
+    `DELETE FROM assessment_mcq_type_config WHERE config_id = ?`,
+    [Number(configId)]
+  );
+  return result.affectedRows ?? 0;
+};
+
 export const listSlotTimings = async () => {
   const [rows] = await db.execute(`
     SELECT slot_id, start_time, end_time 
