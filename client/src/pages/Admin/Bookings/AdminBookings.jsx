@@ -3,6 +3,7 @@ import { adminService } from '../../../services/features/adminService'
 import Header from '../layout/Header'
 import { useApp } from '../context/AppContext'
 import BookForStudentModal from './BookForStudentModal'
+import BulkBookModal from './BulkBookModal'
 
 const P = '#6c47ff'
 const font = "'Plus Jakarta Sans', 'Outfit', system-ui, sans-serif"
@@ -111,6 +112,7 @@ export default function AdminBookings() {
   const [search, setSearch] = useState('')
   const [cancellingId, setCancellingId] = useState(null)
   const [showBookModal, setShowBookModal] = useState(false)
+  const [showBulkModal, setShowBulkModal] = useState(false)
 
   // Filter dropdown sources (reuse existing admin endpoints)
   useEffect(() => {
@@ -254,6 +256,16 @@ export default function AdminBookings() {
             </button>
 
             <button
+              onClick={() => setShowBulkModal(true)}
+              style={{
+                padding: '9px 18px', border: `1.5px solid ${P}`, borderRadius: 10,
+                background: '#fff', color: P, fontSize: 13, fontWeight: 800, cursor: 'pointer', fontFamily: font,
+              }}
+            >
+              ☰ Bulk book
+            </button>
+
+            <button
               onClick={handleExport}
               disabled={!filtered.length}
               style={{
@@ -364,6 +376,13 @@ export default function AdminBookings() {
         <BookForStudentModal
           onClose={() => setShowBookModal(false)}
           onBooked={() => { showToast('Booking created'); fetchBookings() }}
+        />
+      )}
+
+      {showBulkModal && (
+        <BulkBookModal
+          onClose={() => setShowBulkModal(false)}
+          onBooked={() => fetchBookings()}
         />
       )}
     </div>

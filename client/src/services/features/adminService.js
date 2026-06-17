@@ -157,6 +157,11 @@ export const adminService = {
     return api.post('/admin/bookings', payload);
   },
 
+  bulkBook(payload) {
+    // payload: { studentIds: [...], venueSlotId, trainingSkillId, levelId }
+    return api.post('/admin/bookings/bulk', payload);
+  },
+
   getSkillLevels(skillId) {
     return api.get(`/admin/skills/${skillId}/levels`);
   }

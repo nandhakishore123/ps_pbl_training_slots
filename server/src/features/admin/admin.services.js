@@ -63,7 +63,10 @@ export const cancelBooking = async (bookingId) => {
 // gate — every integrity check (capacity, duplicate, same-time, one-active,
 // malpractice, not-in-past) is still enforced. Seat claim is the existing atomic
 // guarded increment, so admins can never oversell.
-export const adminBookForStudent = async ({ studentId, venueSlotId, trainingSkillId, levelId }) => {
+// Per-student booking core — runs in its OWN transaction. Shared by
+// adminBookForStudent (single) and adminBulkBook (loop) so the guard + atomic
+// seat logic exists exactly once. Throws typed errors (err.status) on rejection.
+const bookOneStudent = async ({ studentId, venueSlotId, trainingSkillId, levelId }) => {
     const sId = Number(studentId);
     const vsId = Number(venueSlotId);
     const skillId = Number(trainingSkillId);
@@ -142,6 +145,68 @@ export const adminBookForStudent = async ({ studentId, venueSlotId, trainingSkil
     } finally {
         conn.release();
     }
+};
+
+// Single admin booking — thin wrapper over the shared core.
+export const adminBookForStudent = async (payload) => {
+    return await bookOneStudent(payload);
+};
+
+// ── Admin bulk-book (Stage 4c) ───────────────────────────────────────────────
+// Books many students into ONE venue_slot. CRITICAL: each student runs in its
+// OWN transaction (bookOneStudent), so one student's failure never rolls back
+// the others. The atomic guarded seat increment is the gate — once the slot hits
+// capacity mid-batch, the remaining students get "Slot is full" (no oversell, no
+// counter drift). Sequential loop so the capacity gate is deterministic.
+export const adminBulkBook = async ({ studentIds, venueSlotId, trainingSkillId, levelId }) => {
+    const vsId = Number(venueSlotId);
+    const skillId = Number(trainingSkillId);
+    if (!vsId || !skillId) {
+        const err = new Error('venueSlotId and trainingSkillId are required');
+        err.status = 400;
+        throw err;
+    }
+    const ids = Array.isArray(studentIds)
+        ? [...new Set(studentIds.map(Number).filter(Boolean))]
+        : [];
+    if (!ids.length) {
+        const err = new Error('At least one student is required');
+        err.status = 400;
+        throw err;
+    }
+
+    // Best-effort names for the report (reuses the same source as getStudents).
+    const nameMap = new Map();
+    try {
+        const students = await adminModel.listStudentsWithPoints();
+        for (const s of students) nameMap.set(Number(s.student_id), { name: s.name, regNum: s.reg_num });
+    } catch {
+        // Report still works with ids only.
+    }
+
+    const results = [];
+    let booked = 0, skipped = 0, failed = 0;
+
+    for (const sId of ids) {
+        const meta = nameMap.get(sId) || {};
+        try {
+            const booking = await bookOneStudent({ studentId: sId, venueSlotId: vsId, trainingSkillId: skillId, levelId });
+            booked++;
+            results.push({ studentId: sId, name: meta.name, regNum: meta.regNum, outcome: 'booked', bookingId: booking?.booking_id });
+        } catch (err) {
+            // Guard rejections carry err.status (400/403/404/409) → 'skipped' with the
+            // reason. An error WITHOUT a status is unexpected → 'failed'.
+            if (err?.status) {
+                skipped++;
+                results.push({ studentId: sId, name: meta.name, regNum: meta.regNum, outcome: 'skipped', reason: err.message });
+            } else {
+                failed++;
+                results.push({ studentId: sId, name: meta.name, regNum: meta.regNum, outcome: 'failed', reason: err.message || 'Unexpected error' });
+            }
+        }
+    }
+
+    return { summary: { booked, skipped, failed }, results };
 };
 
 // Skill levels for the admin booking modal (read-only; reuses trainingModel).

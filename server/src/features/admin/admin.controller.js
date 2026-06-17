@@ -386,3 +386,13 @@ export const getSkillLevels = async (req, res, next) => {
         next(error);
     }
 };
+
+export const bulkBook = async (req, res, next) => {
+    try {
+        const { studentIds, venueSlotId, trainingSkillId, levelId } = req.body;
+        const data = await adminService.adminBulkBook({ studentIds, venueSlotId, trainingSkillId, levelId });
+        return successResponse(res, 'Bulk booking processed', data);
+    } catch (error) {
+        next(error);
+    }
+};

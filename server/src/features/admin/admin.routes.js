@@ -64,5 +64,7 @@ router.delete('/bookings/:bookingId', requireRole(3), adminController.cancelBook
 // ── Admin book a slot FOR a student (Stage 4b) ──
 router.post('/bookings', requireRole(3), adminController.bookForStudent);
 router.get('/skills/:skillId/levels', requireRole(3), adminController.getSkillLevels);
+// ── Admin bulk-book many students into one slot (Stage 4c) ──
+router.post('/bookings/bulk', requireRole(3), adminController.bulkBook);
 
 export default router;
