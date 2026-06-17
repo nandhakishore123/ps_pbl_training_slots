@@ -6,14 +6,24 @@ export const facultyService = {
     return api.get('/faculty/dashboard-kpi');
   },
 
-  /** Get all venue-mappings assigned to the logged-in faculty */
+  /** Get all venue-mappings assigned to the logged-in faculty (legacy) */
   getMyVenues() {
     return api.get('/faculty/my-venues');
   },
 
-  /** Get students booked under a specific mapping_id */
+  /** Get the logged-in faculty's per-date venue_slots (admin-scheduled) */
+  getMyVenueSlots() {
+    return api.get('/faculty/my-venue-slots');
+  },
+
+  /** Get students booked under a specific mapping_id (legacy) */
   getStudentsByMapping(mappingId) {
     return api.get(`/faculty/mappings/${mappingId}/students`);
+  },
+
+  /** Get the per-date roster for a specific venue_slot_id */
+  getStudentsByVenueSlot(venueSlotId) {
+    return api.get(`/faculty/venue-slots/${venueSlotId}/students`);
   },
 
   /** Mark a single student's attendance as PRESENT or ABSENT */
@@ -21,9 +31,9 @@ export const facultyService = {
     return api.post(`/faculty/bookings/${bookingId}/attendance`, { status });
   },
 
-  /** Mark ALL ongoing students in a mapping as PRESENT */
-  markAllAttendance(mappingId) {
-    return api.post(`/faculty/mappings/${mappingId}/attendance/all`);
+  /** Mark ALL ongoing students in a venue_slot as PRESENT */
+  markAllAttendance(venueSlotId) {
+    return api.post(`/faculty/venue-slots/${venueSlotId}/attendance/all`);
   },
 
   /** Flag a student booking as MALPRACTICE with a reason */

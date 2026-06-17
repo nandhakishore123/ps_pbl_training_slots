@@ -38,7 +38,6 @@ export function AppProvider({ children }) {
       const routes = {
         dashboard: '/admin-dashboard',
         approvals: '/approvals',
-        'faculty-allocation': '/faculty-allocation',
         reports: '/reports',
         settings: '/settings',
         notification: '/notification',

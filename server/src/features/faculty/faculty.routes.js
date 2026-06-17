@@ -13,11 +13,13 @@ router.get('/dashboard-kpi', facultyController.getDashboardKPI);
 
 // ── Venue & Students ──────────────────────────────────────────────────
 router.get('/my-venues', facultyController.getMyVenues);
+router.get('/my-venue-slots', facultyController.getMyVenueSlots);
 router.get('/mappings/:mappingId/students', facultyController.getStudentsByMapping);
+router.get('/venue-slots/:venueSlotId/students', facultyController.getStudentsByVenueSlot);
 
 // ── Attendance ────────────────────────────────────────────────────────
 router.post('/bookings/:bookingId/attendance', facultyController.markAttendance);
-router.post('/mappings/:mappingId/attendance/all', facultyController.markAllAttendance);
+router.post('/venue-slots/:venueSlotId/attendance/all', facultyController.markAllAttendance);
 
 // ── Malpractice ───────────────────────────────────────────────────────
 router.post('/bookings/:bookingId/malpractice', facultyController.markMalpractice);
