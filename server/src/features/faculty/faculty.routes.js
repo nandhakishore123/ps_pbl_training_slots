@@ -29,6 +29,12 @@ router.post('/bookings/:bookingId/revoke-malpractice', facultyController.revokeM
 router.get('/bookings/:bookingId/review', facultyController.getStudentReviewData);
 router.patch('/bookings/:bookingId/verify-incharge', facultyController.verifyInchargeLabRecord);
 
+// ── Lab Record approvals (faculty path — ownership-gated) — Stage 6a-i ──
+router.get('/approvals/lab-records', facultyController.getLabRecordApprovals);
+router.get('/approvals/lab-records/:bookingId', facultyController.getLabRecordApprovalDetail);
+router.post('/approvals/lab-records/:bookingId/approve', facultyController.approveLabRecord);
+router.post('/approvals/lab-records/:bookingId/reject', facultyController.rejectLabRecord);
+
 // ── Transfer Requests ─────────────────────────────────────────────────
 router.get('/transfer-requests', facultyController.getMyTransferRequests);
 router.post('/transfer-requests', facultyController.createTransferRequest);

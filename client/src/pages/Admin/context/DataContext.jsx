@@ -384,6 +384,48 @@ export function DataProvider({ children }) {
     }
   }
 
+  // ── Lab Record approvals (admin path) — Stage 6a-i ──────────
+  // Fetched on demand by the Approvals page (not held in global state).
+  const getLabRecordApprovals = async (status = 'pending') => {
+    try {
+      const res = await adminService.getLabRecordApprovals(status)
+      return Array.isArray(res.data) ? res.data : []
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to load lab records', true)
+      return []
+    }
+  }
+
+  const getLabRecordApprovalDetail = async (bookingId) => {
+    try {
+      const res = await adminService.getLabRecordApprovalDetail(bookingId)
+      return res.data || null
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to load lab record', true)
+      return null
+    }
+  }
+
+  const approveLabRecord = async (bookingId) => {
+    try {
+      await adminService.approveLabRecord(bookingId)
+      return true
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to approve lab record', true)
+      return false
+    }
+  }
+
+  const rejectLabRecord = async (bookingId, reason) => {
+    try {
+      await adminService.rejectLabRecord(bookingId, reason)
+      return true
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to reject lab record', true)
+      return false
+    }
+  }
+
   // ── Student management — Stage 5d ───────────────────────────
   const refreshStudents = async () => {
     await fetchStudents()
@@ -783,6 +825,11 @@ export function DataProvider({ children }) {
         getReportsBySkill,
         getReportsByCourse,
         getReportsTimeline,
+        // lab record approvals (Stage 6a-i)
+        getLabRecordApprovals,
+        getLabRecordApprovalDetail,
+        approveLabRecord,
+        rejectLabRecord,
         // training skill (course/lab) management
         getSkillCategories,
         createTrainingSkill,

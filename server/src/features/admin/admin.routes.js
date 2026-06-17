@@ -113,4 +113,10 @@ router.patch('/bookings/:bookingId/result', requireRole(3), adminController.over
 router.post('/bookings/:bookingId/malpractice', requireRole(3), adminController.markMalpractice);
 router.post('/bookings/:bookingId/revoke-malpractice', requireRole(3), adminController.revokeMalpractice);
 
+// ── Lab Record approvals (Admin only — role_id 3, no ownership) — Stage 6a-i ──
+router.get('/approvals/lab-records', requireRole(3), adminController.getLabRecordApprovals);
+router.get('/approvals/lab-records/:bookingId', requireRole(3), adminController.getLabRecordApprovalDetail);
+router.post('/approvals/lab-records/:bookingId/approve', requireRole(3), adminController.approveLabRecord);
+router.post('/approvals/lab-records/:bookingId/reject', requireRole(3), adminController.rejectLabRecord);
+
 export default router;

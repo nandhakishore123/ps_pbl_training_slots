@@ -34,6 +34,7 @@ import FileNotFound from '../pages/404/FileNotFound.jsx';
 import FacultyDashboard from '../pages/Faculty/FacultyDashboard.jsx';
 import RequestTransfer from '../pages/Faculty/RequestTransfer.jsx';
 import MyVenues from '../pages/Faculty/MyVenues.jsx';
+import FacultyApprovals from '../pages/Faculty/FacultyApprovals.jsx';
 
 
 function useBootstrapAuth() {
@@ -154,6 +155,7 @@ function AppNavigator() {
                 <Route path="/faculty-dashboard" element={<RequireAuth><RequireRole allowedRoles={[2]}><FacultyDashboard/></RequireRole></RequireAuth>} />
                 <Route path="/my-venues" element={<RequireAuth><RequireRole allowedRoles={[2]}><MyVenues/></RequireRole></RequireAuth>} />
                 <Route path="/request-transfer" element={<RequireAuth><RequireRole allowedRoles={[2]}><RequestTransfer/></RequireRole></RequireAuth>} />
+                <Route path="/faculty-approvals" element={<RequireAuth><RequireRole allowedRoles={[2]}><FacultyApprovals/></RequireRole></RequireAuth>} />
 
 
                 <Route path="/not-found" element={<FileNotFound/>}/>

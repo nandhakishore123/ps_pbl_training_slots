@@ -308,5 +308,22 @@ export const adminService = {
 
   revokeMalpractice(bookingId) {
     return api.post(`/admin/bookings/${bookingId}/revoke-malpractice`);
+  },
+
+  // ── Lab Record approvals (admin path) — Stage 6a-i ───────────
+  getLabRecordApprovals(status = 'pending') {
+    return api.get('/admin/approvals/lab-records', { params: { status } });
+  },
+
+  getLabRecordApprovalDetail(bookingId) {
+    return api.get(`/admin/approvals/lab-records/${bookingId}`);
+  },
+
+  approveLabRecord(bookingId) {
+    return api.post(`/admin/approvals/lab-records/${bookingId}/approve`);
+  },
+
+  rejectLabRecord(bookingId, reason) {
+    return api.post(`/admin/approvals/lab-records/${bookingId}/reject`, { reason });
   }
 };

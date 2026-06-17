@@ -151,6 +151,18 @@ export default function FacultyDashboard() {
               chips={kpi.pendingTransfers > 0 ? [{ label: `${kpi.pendingTransfers} Pending`, color: 'orange' }] : []}
               onClick={() => navigate('/request-transfer')}
             />
+            <NavBox
+              iconColor="purple"
+              icon={
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M9 11l3 3L22 4"/>
+                  <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/>
+                </svg>
+              }
+              label="Lab Approvals"
+              desc="Review and approve/reject student lab records for your venues"
+              onClick={() => navigate('/faculty-approvals')}
+            />
           </div>
         </div>
 
