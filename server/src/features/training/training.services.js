@@ -73,10 +73,31 @@ export const invalidateBookingWindowCache = () => {
   _bookingCfgExpiry = 0;
 };
 
-const getCurrentBookingWindow = async (conn = null) => {
+// Stage B: multi-date booking window. Booking is a simple daily on/off gate —
+// once the IST clock reaches the configured open time, ALL upcoming active slots
+// (today's not-yet-started + future dates) are bookable. No Sunday special-case:
+// visibility is data-driven (admins simply don't author Sunday slots).
+// { isOpen, nowDate: 'YYYY-MM-DD'|null, nowTime: 'HH:MM:SS'|null }
+export const computeBookingOpenState = (istNowStr, { openHour = DEFAULT_OPEN_HOUR, openMinute = DEFAULT_OPEN_MINUTE } = {}) => {
+  if (!istNowStr) return { isOpen: false, nowDate: null, nowTime: null };
+  const [datePart, timePart = '00:00:00'] = String(istNowStr).trim().split(' ');
+  const [hh, mi] = timePart.split(':').map(Number);
+  const minutesNow = hh * 60 + mi;
+  const openMinutes = openHour * 60 + openMinute;
+  return { isOpen: minutesNow >= openMinutes, nowDate: datePart, nowTime: timePart };
+};
+
+const getCurrentBookingOpenState = async (conn = null) => {
   const istNow = await trainingModel.getIstNow(conn);
   const cfg = await getBookingOpenConfigCached(conn);
-  return computeBookingWindow(istNow, cfg);
+  return computeBookingOpenState(istNow, cfg);
+};
+
+// 'open hour/minute' config → friendly '7:45 PM' for user-facing messages.
+const formatOpenTime = ({ openHour = DEFAULT_OPEN_HOUR, openMinute = DEFAULT_OPEN_MINUTE } = {}) => {
+  const ampm = openHour >= 12 ? 'PM' : 'AM';
+  const h12 = openHour % 12 || 12;
+  return `${h12}:${String(openMinute).padStart(2, '0')} ${ampm}`;
 };
 
 export const getCategories = async () => {
@@ -150,15 +171,15 @@ export const getSkillDetails = async (trainingSkillId) => {
 };
 
 export const getSkillSlots = async (trainingSkillId) => {
-  const window = await getCurrentBookingWindow();
-  // Nothing currently open → empty list; the frontend shows the friendly
-  // "booking opens at 7:45 PM" empty state. Stage 3b: slots are read from
-  // venue_slots for the open day — there is NO fallback to global slot_timings,
-  // so a day with zero authored venue_slots also returns [] (empty state).
-  if (!window.bookingDate) return [];
+  const state = await getCurrentBookingOpenState();
+  // Before the daily open time → empty list; the frontend shows the friendly
+  // "booking opens at <time>" empty state. Once open, return ALL upcoming active
+  // slots from now (today's not-yet-started + future dates). NO fallback to
+  // global slot_timings — a window with zero upcoming slots also returns [].
+  if (!state.isOpen) return [];
   return trainingModel.listSkillSlots(trainingSkillId, {
-    bookingDate: window.bookingDate,
-    startAfterTime: window.startAfterTime,
+    fromDate: state.nowDate,
+    fromTime: state.nowTime,
   });
 };
 
@@ -224,21 +245,24 @@ export const createBooking = async ({ userId, venueSlotId, trainingSkillId, leve
     }
 
     // Re-validate the booking window server-side (never trust the client).
-    const window = await getCurrentBookingWindow(conn);
-    if (!window.bookingDate) {
-      const err = new Error('Booking is not open right now. Booking opens daily at 7:45 PM for the next day.');
+    // Stage B: multi-date — booking is open/closed by the daily gate, then the
+    // slot must be today-or-future and (if today) not yet started.
+    const state = await getCurrentBookingOpenState(conn);
+    if (!state.isOpen) {
+      const cfg = await getBookingOpenConfigCached(conn);
+      const err = new Error(`Booking is not open right now. It opens daily at ${formatOpenTime(cfg)}.`);
       err.status = 400;
       throw err;
     }
-    // The slot must belong to the currently-open booking day.
-    if (String(slot.slot_date) !== String(window.bookingDate)) {
-      const err = new Error('This slot is not open for booking right now.');
+    // The slot's date must not be in the past.
+    if (String(slot.slot_date) < String(state.nowDate)) {
+      const err = new Error("This slot's date has already passed.");
       err.status = 400;
       throw err;
     }
-    // Same-day window: a slot is bookable only until its own start time.
-    if (window.isToday && window.startAfterTime && String(slot.start_time) <= window.startAfterTime) {
-      const err = new Error("This slot's booking window has closed — a slot can only be booked before its start time.");
+    // Same-day cutoff: a today-slot is bookable only until its own start time.
+    if (String(slot.slot_date) === String(state.nowDate) && String(slot.start_time) <= String(state.nowTime)) {
+      const err = new Error("This slot's booking window has closed — book before its start time.");
       err.status = 400;
       throw err;
     }

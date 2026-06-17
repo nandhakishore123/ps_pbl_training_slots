@@ -155,19 +155,15 @@ export const getSkillLevelPoints = async (trainingSkillId) => {
   return rows ?? [];
 };
 
-// Stage 3b: slots are now per-venue + per-date rows in venue_slots. Reads the
-// authored venue_slots for a single booking day. Capacity lives on venues
-// (reached via venue_slots.mapping_id -> venue_mapping.venue_id -> venues).
-// All equality JOINs (TiDB-safe); the same-day cutoff is a WHERE-range filter.
-export const listSkillSlots = async (trainingSkillId, { bookingDate, startAfterTime = null } = {}) => {
-  if (!bookingDate) return [];
-  const params = [bookingDate, Number(trainingSkillId)];
-  let timeFilter = '';
-  if (startAfterTime) {
-    // Same-day window: a slot is bookable only until its own start time.
-    timeFilter = '\n        AND vs.start_time > ?';
-    params.push(startAfterTime);
-  }
+// Stage 3b: slots are per-venue + per-date rows in venue_slots. Capacity lives on
+// venues (via venue_slots.mapping_id -> venue_mapping.venue_id -> venues).
+// Stage B: multi-date window. Returns ALL active slots strictly after "now"
+// (future dates whole + today's not-yet-started), each carrying its date. The
+// chronological cutoff `(slot_date > now) OR (slot_date = now AND start_time >
+// nowTime)` excludes past dates and makes the same-day cutoff intrinsic.
+// All equality JOINs (TiDB-safe); the OR/range lives in WHERE.
+export const listSkillSlots = async (trainingSkillId, { fromDate, fromTime = '00:00:00' } = {}) => {
+  if (!fromDate) return [];
   const [rows] = await db.execute(
     `SELECT
         vs.venue_slot_id,
@@ -184,12 +180,12 @@ export const listSkillSlots = async (trainingSkillId, { bookingDate, startAfterT
       JOIN venues v ON v.venue_id = vm.venue_id
       JOIN venue_alloted_skills vas ON vas.venue_id = v.venue_id
       WHERE vs.is_active = 1
-        AND vs.slot_date = ?
         AND vas.training_skill_id = ?
         AND vas.is_active = 1
-        AND v.is_active = 1${timeFilter}
-      ORDER BY vs.start_time ASC, vs.end_time ASC, v.venue_name ASC`,
-    params
+        AND v.is_active = 1
+        AND ( vs.slot_date > ? OR (vs.slot_date = ? AND vs.start_time > ?) )
+      ORDER BY vs.slot_date ASC, vs.start_time ASC, v.venue_name ASC`,
+    [Number(trainingSkillId), fromDate, fromDate, fromTime]
   );
   return rows ?? [];
 };
