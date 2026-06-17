@@ -342,6 +342,48 @@ export function DataProvider({ children }) {
     }
   }
 
+  // ── Reports & Analytics (read-only) — Stage 6b ──────────────
+  // Fetched on demand by the Reports page (not held in global state).
+  const getReportsSummary = async () => {
+    try {
+      const res = await adminService.getReportsSummary()
+      return res.data || null
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to load reports summary', true)
+      return null
+    }
+  }
+
+  const getReportsBySkill = async () => {
+    try {
+      const res = await adminService.getReportsBySkill()
+      return Array.isArray(res.data) ? res.data : []
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to load skill report', true)
+      return []
+    }
+  }
+
+  const getReportsByCourse = async () => {
+    try {
+      const res = await adminService.getReportsByCourse()
+      return Array.isArray(res.data) ? res.data : []
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to load course report', true)
+      return []
+    }
+  }
+
+  const getReportsTimeline = async () => {
+    try {
+      const res = await adminService.getReportsTimeline()
+      return res.data || { byDate: [], byVenue: [] }
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to load timeline report', true)
+      return { byDate: [], byVenue: [] }
+    }
+  }
+
   // ── Student management — Stage 5d ───────────────────────────
   const refreshStudents = async () => {
     await fetchStudents()
@@ -736,6 +778,11 @@ export function DataProvider({ children }) {
         createStudent,
         updateStudent,
         setStudentActive,
+        // reports & analytics (Stage 6b, read-only)
+        getReportsSummary,
+        getReportsBySkill,
+        getReportsByCourse,
+        getReportsTimeline,
         // training skill (course/lab) management
         getSkillCategories,
         createTrainingSkill,

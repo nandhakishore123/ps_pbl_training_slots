@@ -5,6 +5,23 @@ export const adminService = {
     return api.get('/admin/dashboard-kpi');
   },
 
+  // ── Reports & Analytics (admin-only, read-only) — Stage 6b ──
+  getReportsSummary() {
+    return api.get('/admin/reports/summary');
+  },
+
+  getReportsBySkill() {
+    return api.get('/admin/reports/by-skill');
+  },
+
+  getReportsByCourse() {
+    return api.get('/admin/reports/by-course');
+  },
+
+  getReportsTimeline() {
+    return api.get('/admin/reports/timeline');
+  },
+
   getVenues() {
     return api.get('/admin/venues');
   },
@@ -277,5 +294,19 @@ export const adminService = {
 
   getSkillLevels(skillId) {
     return api.get(`/admin/skills/${skillId}/levels`);
+  },
+
+  // ── Result override + admin malpractice (Stage 6c) ───────────
+  overrideResult(bookingId, payload) {
+    // payload: { newStatus: 'PASSED'|'FAILED', newScore }
+    return api.patch(`/admin/bookings/${bookingId}/result`, payload);
+  },
+
+  markMalpractice(bookingId, reason) {
+    return api.post(`/admin/bookings/${bookingId}/malpractice`, { reason });
+  },
+
+  revokeMalpractice(bookingId) {
+    return api.post(`/admin/bookings/${bookingId}/revoke-malpractice`);
   }
 };

@@ -32,6 +32,176 @@ export const getDashboardKPI = async () => {
   };
 };
 
+// ── Reports & Analytics (admin, READ-ONLY) — Stage 6b ────────
+// Pure aggregations over existing tables. NO writes, NO seat counter contact,
+// NO engine calls. TiDB-safe: equality JOIN ON only (no subquery in any JOIN ON),
+// aggregates / DATE_FORMAT live in SELECT/GROUP BY. Numbers are coerced with
+// Number() because mysql2 returns BIGINT/DECIMAL aggregates as strings.
+const n = (v) => Number(v ?? 0);
+
+// Headline tiles + booking status breakdown.
+export const getReportsSummary = async () => {
+  // Bookings by status (single table).
+  const [statusRows] = await db.execute(
+    `SELECT status, COUNT(*) AS cnt FROM student_booking GROUP BY status`
+  );
+  const bookingsByStatus = { ONGOING: 0, PASS: 0, FAIL: 0, COMPLETED: 0, MALPRACTICE: 0 };
+  let totalBookings = 0;
+  for (const r of statusRows) {
+    const c = n(r.cnt);
+    totalBookings += c;
+    if (r.status in bookingsByStatus) bookingsByStatus[r.status] = c;
+  }
+
+  // Attendance — canonical `attendance` table (PRESENT/ABSENT). student_booking.is_present
+  // mirrors it, so either gives the same answer; the explicit enum is clearer.
+  const [[att]] = await db.execute(
+    `SELECT
+        SUM(attendance_status = 'PRESENT') AS present,
+        SUM(attendance_status = 'ABSENT')  AS absent,
+        COUNT(*) AS marked
+     FROM attendance`
+  );
+  const present = n(att.present), absent = n(att.absent), marked = n(att.marked);
+
+  // Assessments (single table).
+  const [[asm]] = await db.execute(
+    `SELECT
+        SUM(status = 'PASSED')    AS passed,
+        SUM(status = 'FAILED')    AS failed,
+        SUM(status = 'ONGOING')   AS ongoing,
+        SUM(status = 'COMPLETED') AS completed,
+        COUNT(*) AS total,
+        AVG(CASE WHEN total_marks > 0 THEN score_obtained / total_marks * 100 END) AS avg_pct
+     FROM student_assessments`
+  );
+  const asmPassed = n(asm.passed), asmFailed = n(asm.failed);
+  const asmOngoing = n(asm.ongoing), asmCompleted = n(asm.completed), asmTotal = n(asm.total);
+  // Pass rate over FINISHED attempts only (passed + failed), so in-progress
+  // attempts don't drag the rate down.
+  const asmFinished = asmPassed + asmFailed;
+
+  // Lab records — real source is end_survey (one+ rows per booking that submitted).
+  const [[lr]] = await db.execute(
+    `SELECT COUNT(DISTINCT booking_id) AS with_record FROM end_survey WHERE booking_id IS NOT NULL`
+  );
+  const labWithRecord = n(lr.with_record);
+
+  // Slots with an incharge — venue_slots whose mapping has a faculty assigned.
+  // Equality JOIN; counts live (active) slots only.
+  const [[slots]] = await db.execute(
+    `SELECT
+        COUNT(*) AS total_slots,
+        SUM(vm.faculty_id IS NOT NULL) AS covered
+     FROM venue_slots vs
+     JOIN venue_mapping vm ON vm.mapping_id = vs.mapping_id
+     WHERE vs.is_active = 1`
+  );
+  const totalSlots = n(slots.total_slots), coveredSlots = n(slots.covered);
+
+  const pct = (num, den) => (den > 0 ? Math.round((num / den) * 100) : null);
+
+  return {
+    bookingsByStatus,
+    totalBookings,
+    attendance: {
+      present, absent, marked,
+      rate: pct(present, marked), // % present of marked bookings
+    },
+    assessments: {
+      passed: asmPassed, failed: asmFailed, ongoing: asmOngoing,
+      completed: asmCompleted, total: asmTotal,
+      passRate: pct(asmPassed, asmFinished), // of finished attempts
+      avgScorePct: asm.avg_pct != null ? Math.round(n(asm.avg_pct)) : null,
+    },
+    labRecords: {
+      withRecord: labWithRecord, totalBookings,
+      rate: pct(labWithRecord, totalBookings),
+    },
+    slotsWithIncharge: {
+      covered: coveredSlots, total: totalSlots,
+      rate: pct(coveredSlots, totalSlots),
+    },
+    // AP (activity-point) claims have no data source yet — needs Stage 6a.
+    // Flagged as a placeholder so the UI never shows a fake number.
+    apClaims: { available: false, note: 'Needs Stage 6a (no AP-claim data source yet)' },
+  };
+};
+
+// Completion + pass/fail per training skill (course/lab). Equality JOIN.
+export const getReportsBySkill = async () => {
+  const [rows] = await db.execute(
+    `SELECT
+        ts.training_skill_id, ts.skill_name, ts.skill_type,
+        COUNT(sb.booking_id) AS bookings,
+        SUM(sb.status IN ('PASS','COMPLETED')) AS completed,
+        SUM(sb.status = 'PASS') AS pass,
+        SUM(sb.status = 'FAIL') AS fail
+     FROM student_booking sb
+     JOIN training_skills ts ON ts.training_skill_id = sb.training_skill_id
+     GROUP BY ts.training_skill_id, ts.skill_name, ts.skill_type
+     ORDER BY bookings DESC`
+  );
+  return rows.map((r) => {
+    const bookings = n(r.bookings), completed = n(r.completed);
+    return {
+      training_skill_id: r.training_skill_id,
+      skill_name: r.skill_name,
+      skill_type: r.skill_type,
+      bookings, completed, pass: n(r.pass), fail: n(r.fail),
+      completionRate: bookings > 0 ? Math.round((completed / bookings) * 100) : 0,
+    };
+  });
+};
+
+// Completion grouped by students.course (used as the department proxy — there is
+// no dedicated department column on students; course is the closest field).
+export const getReportsByCourse = async () => {
+  const [rows] = await db.execute(
+    `SELECT
+        s.course,
+        COUNT(sb.booking_id) AS bookings,
+        SUM(sb.status IN ('PASS','COMPLETED')) AS completed
+     FROM student_booking sb
+     JOIN students s ON s.student_id = sb.student_id
+     GROUP BY s.course
+     ORDER BY bookings DESC`
+  );
+  return rows.map((r) => {
+    const bookings = n(r.bookings), completed = n(r.completed);
+    return {
+      course: r.course || 'Unspecified',
+      bookings, completed,
+      completionRate: bookings > 0 ? Math.round((completed / bookings) * 100) : 0,
+    };
+  });
+};
+
+// Bookings over time (recent days) + per venue. Equality JOINs only.
+export const getReportsTimeline = async () => {
+  const [byDate] = await db.execute(
+    `SELECT DATE_FORMAT(sb.booking_date, '%Y-%m-%d') AS slot_date, COUNT(*) AS cnt
+     FROM student_booking sb
+     GROUP BY sb.booking_date
+     ORDER BY sb.booking_date DESC
+     LIMIT 14`
+  );
+  const [byVenue] = await db.execute(
+    `SELECT v.venue_id, v.venue_name, COUNT(sb.booking_id) AS cnt
+     FROM student_booking sb
+     JOIN venue_mapping vm ON vm.mapping_id = sb.mapping_id
+     JOIN venues v ON v.venue_id = vm.venue_id
+     GROUP BY v.venue_id, v.venue_name
+     ORDER BY cnt DESC
+     LIMIT 10`
+  );
+  return {
+    // Reverse byDate so the chart reads oldest→newest left to right.
+    byDate: byDate.map((r) => ({ slot_date: r.slot_date, count: n(r.cnt) })).reverse(),
+    byVenue: byVenue.map((r) => ({ venue_name: r.venue_name, count: n(r.cnt) })),
+  };
+};
+
 export const listVenues = async () => {
   // Venues with their LATEST mapping only (one row per venue)
   const [rows] = await db.execute(`
@@ -845,6 +1015,109 @@ export const listAllBookings = async ({ venueId, date, venueSlotId } = {}) => {
     params
   );
   return rows ?? [];
+};
+
+// ── Result override + admin malpractice — Stage 6c ───────────
+// SEAT INVARIANT: a seat in venue_slots.current_bookings is held ONLY while
+// student_booking.status='ONGOING'. Terminal (PASS/FAIL/COMPLETED) and
+// MALPRACTICE have already released it. Override moves only between terminal
+// values → it must NEVER touch the seat counter. Malpractice mark/revoke use
+// the EXACT faculty seat SQL (floored decrement / capacity-guarded increment).
+// All callers pass the transaction connection.
+
+// Latest assessment attempt for a booking (student+skill+level). Equality JOIN.
+export const getAssessmentForBooking = async ({ studentId, trainingSkillId, levelId }, conn = null) => {
+  const exec = conn || db;
+  const params = [Number(studentId), Number(trainingSkillId)];
+  let levelSql = '';
+  if (levelId != null) { levelSql = ' AND a.level_id = ?'; params.push(Number(levelId)); }
+  const [rows] = await exec.execute(
+    `SELECT sa.student_assessment_id, sa.status, sa.score_obtained, sa.total_marks
+     FROM student_assessments sa
+     JOIN assessments a ON a.assessment_id = sa.assessment_id
+     WHERE sa.student_id = ? AND a.training_skill_id = ?${levelSql}
+     ORDER BY sa.student_assessment_id DESC
+     LIMIT 1`,
+    params
+  );
+  return rows?.[0] ?? null;
+};
+
+// Override updates score + status ONLY — deliberately NOT submitted_at, so the
+// original submission timestamp is preserved.
+export const overrideStudentAssessment = async (studentAssessmentId, score, status, conn = null) => {
+  const exec = conn || db;
+  const [result] = await exec.execute(
+    `UPDATE student_assessments SET score_obtained = ?, status = ? WHERE student_assessment_id = ?`,
+    [Number(score), status, Number(studentAssessmentId)]
+  );
+  return result?.affectedRows ?? 0;
+};
+
+// Single-table booking-status write by key (used by override re-derive).
+export const setBookingStatusById = async (bookingId, status, conn = null) => {
+  const exec = conn || db;
+  const [result] = await exec.execute(
+    `UPDATE student_booking SET status = ? WHERE booking_id = ?`,
+    [status, Number(bookingId)]
+  );
+  return result?.affectedRows ?? 0;
+};
+
+// Lightweight booking read (single table) for mutation guards.
+export const getBookingRow = async (bookingId, conn = null) => {
+  const exec = conn || db;
+  const [rows] = await exec.execute(
+    `SELECT booking_id, venue_slot_id, status FROM student_booking WHERE booking_id = ?`,
+    [Number(bookingId)]
+  );
+  return rows?.[0] ?? null;
+};
+
+export const setBookingMalpractice = async (bookingId, remarks, conn = null) => {
+  const exec = conn || db;
+  const [result] = await exec.execute(
+    `UPDATE student_booking SET status = 'MALPRACTICE', remarks = ? WHERE booking_id = ?`,
+    [remarks ?? null, Number(bookingId)]
+  );
+  return result?.affectedRows ?? 0;
+};
+
+export const revokeBookingMalpractice = async (bookingId, conn = null) => {
+  const exec = conn || db;
+  const [result] = await exec.execute(
+    `UPDATE student_booking SET status = 'ONGOING', remarks = NULL WHERE booking_id = ?`,
+    [Number(bookingId)]
+  );
+  return result?.affectedRows ?? 0;
+};
+
+// Floored seat release — mirrors faculty markMalpractice exactly.
+export const releaseSeatFloored = async (venueSlotId, conn = null) => {
+  const exec = conn || db;
+  const [result] = await exec.execute(
+    `UPDATE venue_slots
+     SET current_bookings = GREATEST(0, COALESCE(current_bookings, 1) - 1)
+     WHERE venue_slot_id = ?`,
+    [Number(venueSlotId)]
+  );
+  return result?.affectedRows ?? 0;
+};
+
+// Capacity-guarded seat re-claim — mirrors faculty revokeMalpractice exactly
+// (capacity on venues, reached via the mapping). affectedRows === 0 ⇒ slot full.
+export const reclaimSeatGuarded = async (venueSlotId, conn = null) => {
+  const exec = conn || db;
+  const [result] = await exec.execute(
+    `UPDATE venue_slots vs
+     JOIN venue_mapping vm ON vm.mapping_id = vs.mapping_id
+     JOIN venues v ON v.venue_id = vm.venue_id
+     SET vs.current_bookings = COALESCE(vs.current_bookings, 0) + 1
+     WHERE vs.venue_slot_id = ?
+       AND COALESCE(v.capacity, 0) > COALESCE(vs.current_bookings, 0)`,
+    [Number(venueSlotId)]
+  );
+  return result?.affectedRows ?? 0;
 };
 
 // ── Venue ↔ Skill management (venue_alloted_skills) ──────────
