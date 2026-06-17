@@ -18,7 +18,6 @@ import TrainingSlots from '../pages/Student/TrainingSlots.jsx';
 //admin
 import AdminDashboard from '../pages/Admin/Dashboard/Dashboard.jsx'
 import Approvals from '../pages/Admin/Approvals/Approvals.jsx'
-import FacultyAllocation from '../pages/Admin/FacultyAllocation/FacultyAllocation.jsx'
 import Reports from '../pages/Admin/Reports/Reports.jsx'
 import Settings from '../pages/Admin/Settings/Settings.jsx'
 import Notifications from '../pages/Admin/Notifications/Notifications.jsx'
@@ -141,7 +140,6 @@ function AppNavigator() {
                 {/* Admin routes */}
                 <Route path="/admin-dashboard" element={<RequireAuth><RequireRole allowedRoles={[3]}><AdminProviders><AdminDashboard/></AdminProviders></RequireRole></RequireAuth>} />
                 <Route path="/approvals" element={<RequireAuth><RequireRole allowedRoles={[3]}><AdminProviders><Approvals/></AdminProviders></RequireRole></RequireAuth>} />
-                <Route path="/faculty-allocation" element={<RequireAuth><RequireRole allowedRoles={[3]}><AdminProviders><FacultyAllocation/></AdminProviders></RequireRole></RequireAuth>} />
                 <Route path="/reports" element={<RequireAuth><RequireRole allowedRoles={[3]}><AdminProviders><Reports/></AdminProviders></RequireRole></RequireAuth>} />
                 <Route path="/settings" element={<RequireAuth><RequireRole allowedRoles={[3]}><AdminProviders><Settings/></AdminProviders></RequireRole></RequireAuth>} />
                 <Route path="/notification" element={<RequireAuth><RequireRole allowedRoles={[3]}><AdminProviders><Notifications/></AdminProviders></RequireRole></RequireAuth>} />
