@@ -1,14 +1,33 @@
 import * as adminModel from './admin.model.js';
 import * as trainingModel from '../training/training.model.js';
-import { invalidateBookingWindowCache } from '../training/training.services.js';
+import { invalidateBookingWindowCache, computeBookingWindow } from '../training/training.services.js';
 
 export const getDashboardKPI = async () => {
     return await adminModel.getDashboardKPI();
 };
 
 // ── Booking-open time config (app_config) ────────────────────
+// Returns date context for the admin Slot Scheduling page (READ-ONLY helpers):
+//  • today          = IST current date 'YYYY-MM-DD' (for the [Today] quick button)
+//  • nextBookingDate = the next working day (today+1, skip Sunday) students will
+//    target when the window opens tonight — computed with the SAME pure
+//    computeBookingWindow students use (forced to the post-open branch via a
+//    23:59:59 IST time) so the admin's default date can never disagree with what
+//    students see. One getIstNow() call feeds both. No engine change.
+const getDateContext = async (cfg) => {
+    try {
+        const istNow = await trainingModel.getIstNow();
+        const today = istNow ? String(istNow).trim().split(' ')[0] : null;
+        const nextBookingDate = today ? computeBookingWindow(`${today} 23:59:59`, cfg).bookingDate : null;
+        return { today, nextBookingDate };
+    } catch {
+        return { today: null, nextBookingDate: null };
+    }
+};
+
 export const getBookingWindowConfig = async () => {
-    return await trainingModel.getBookingOpenConfig();
+    const cfg = await trainingModel.getBookingOpenConfig();
+    return { ...cfg, ...(await getDateContext(cfg)) };
 };
 
 export const updateBookingWindowConfig = async (openHour, openMinute) => {
@@ -23,7 +42,8 @@ export const updateBookingWindowConfig = async (openHour, openMinute) => {
     await trainingModel.updateBookingOpenConfig(h, m);
     // New time takes effect immediately for students + booking re-validation.
     invalidateBookingWindowCache();
-    return { openHour: h, openMinute: m };
+    const cfg = { openHour: h, openMinute: m };
+    return { ...cfg, ...(await getDateContext(cfg)) };
 };
 
 export const getVenues = async () => {
@@ -165,6 +185,16 @@ export const getVenueSlotsByDate = async (venueId, slotDate = null) => {
     const [slots, mappings] = await Promise.all([
         adminModel.listVenueSlots(venueId, slotDate || null),
         adminModel.listMappingsByVenue(venueId),
+    ]);
+    return { slots, mappings };
+};
+
+// Whole-day convenience read for the Slot Scheduling page (READ-ONLY).
+export const getAllVenueSlotsByDate = async (slotDate) => {
+    if (!slotDate) throw new Error('Date is required');
+    const [slots, mappings] = await Promise.all([
+        adminModel.listAllVenueSlotsByDate(slotDate),
+        adminModel.listAllActiveMappings(),
     ]);
     return { slots, mappings };
 };

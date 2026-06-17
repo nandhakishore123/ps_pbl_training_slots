@@ -87,6 +87,11 @@ export const adminService = {
     return api.get(`/admin/venues/${venueId}/slots-by-date`, { params: slotDate ? { date: slotDate } : {} });
   },
 
+  // Whole-day convenience read for the Slot Scheduling page (READ-ONLY).
+  getAllVenueSlotsByDate(slotDate) {
+    return api.get('/admin/slots-by-date', { params: { date: slotDate } });
+  },
+
   createVenueSlot(venueId, payload) {
     // payload: { mappingId, slotDate, startTime, endTime }
     return api.post(`/admin/venues/${venueId}/slots-by-date`, payload);

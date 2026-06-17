@@ -244,6 +244,16 @@ export const getVenueSlotsByDate = async (req, res, next) => {
     }
 };
 
+export const getAllVenueSlotsByDate = async (req, res, next) => {
+    try {
+        const { date } = req.query;
+        const data = await adminService.getAllVenueSlotsByDate(date);
+        return successResponse(res, 'Slots for date retrieved successfully', data);
+    } catch (error) {
+        next(error);
+    }
+};
+
 export const createVenueSlot = async (req, res, next) => {
     try {
         const { mappingId, slotDate, startTime, endTime } = req.body;

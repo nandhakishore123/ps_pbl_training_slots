@@ -36,6 +36,9 @@ router.delete('/venues/:venueId/skills/:trainingSkillId', requireRole(3), adminC
 
 // ── Per-venue + per-date slots (venue_slots) — Stage 3a, ADMIN-ONLY, ADDITIVE.
 // Distinct from the global /slot-timings routes; not read by booking/assessment.
+// Whole-day convenience read for the Slot Scheduling page (READ-ONLY).
+// Declared before the parameterized venue route so '/slots-by-date' is distinct.
+router.get('/slots-by-date', requireRole(3), adminController.getAllVenueSlotsByDate);
 router.get('/venues/:venueId/slots-by-date', requireRole(3), adminController.getVenueSlotsByDate);
 router.post('/venues/:venueId/slots-by-date', requireRole(3), adminController.createVenueSlot);
 router.put('/venue-slots/:venueSlotId', requireRole(3), adminController.updateVenueSlot);

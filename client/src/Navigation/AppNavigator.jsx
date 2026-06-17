@@ -24,6 +24,7 @@ import Settings from '../pages/Admin/Settings/Settings.jsx'
 import Notifications from '../pages/Admin/Notifications/Notifications.jsx'
 import Students from '../pages/Admin/StudentManagement/StudentManagement.jsx'
 import VenueAllocation from '../pages/Admin/VenueAllocation/VenueAllocation.jsx'
+import SlotScheduling from '../pages/Admin/SlotScheduling/SlotScheduling.jsx'
 import AdminAttendance from '../pages/Admin/Attendance/AdminAttendance.jsx'
 import AdminBookings from '../pages/Admin/Bookings/AdminBookings.jsx'
 import FacultyManagement from '../pages/Admin/FacultyManagement/FacultyManagement.jsx'
@@ -146,6 +147,7 @@ function AppNavigator() {
                 <Route path="/notification" element={<RequireAuth><RequireRole allowedRoles={[3]}><AdminProviders><Notifications/></AdminProviders></RequireRole></RequireAuth>} />
                 <Route path="/view-students" element={<RequireAuth><RequireRole allowedRoles={[3]}><AdminProviders><Students/></AdminProviders></RequireRole></RequireAuth>} />
                 <Route path="/venue-allocation" element={<RequireAuth><RequireRole allowedRoles={[3]}><AdminProviders><VenueAllocation/></AdminProviders></RequireRole></RequireAuth>} />
+                <Route path="/slot-scheduling" element={<RequireAuth><RequireRole allowedRoles={[3]}><AdminProviders><SlotScheduling/></AdminProviders></RequireRole></RequireAuth>} />
                 <Route path="/admin-attendance" element={<RequireAuth><RequireRole allowedRoles={[3]}><AdminProviders><AdminAttendance/></AdminProviders></RequireRole></RequireAuth>} />
                 <Route path="/admin-bookings" element={<RequireAuth><RequireRole allowedRoles={[3]}><AdminProviders><AdminBookings/></AdminProviders></RequireRole></RequireAuth>} />
                 <Route path="/faculty-management" element={<RequireAuth><RequireRole allowedRoles={[3]}><FacultyManagement/></RequireRole></RequireAuth>} />

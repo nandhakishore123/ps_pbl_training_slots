@@ -45,6 +45,7 @@ export function AppProvider({ children }) {
         notifications: '/notification',
         students: '/view-students',
         'venue-allocation': '/venue-allocation',
+        'slot-scheduling': '/slot-scheduling',
       }
 
       const target = routes[pageId] || pageId

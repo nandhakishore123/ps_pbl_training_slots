@@ -328,6 +328,17 @@ export function DataProvider({ children }) {
     }
   }
 
+  // Whole-day convenience read for the Slot Scheduling page (one call).
+  const getAllVenueSlots = async (slotDate) => {
+    try {
+      const res = await adminService.getAllVenueSlotsByDate(slotDate)
+      return res.data || { slots: [], mappings: [] }
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to load slots for this day', true)
+      return { slots: [], mappings: [] }
+    }
+  }
+
   const createVenueSlot = async (venueId, payload) => {
     try {
       await adminService.createVenueSlot(venueId, payload)
@@ -430,6 +441,7 @@ export function DataProvider({ children }) {
         removeVenueSkill,
         // per-venue + per-date slots (Stage 3a)
         getVenueSlots,
+        getAllVenueSlots,
         createVenueSlot,
         updateVenueSlot,
         setVenueSlotActive,

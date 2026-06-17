@@ -71,9 +71,10 @@ export default function VenueDateSlotsModal({ isOpen, onClose, venue }) {
   if (!isOpen || !venue) return null
 
   const mappingLabel = (m) => {
+    // Show only the faculty (the admin sets the real time in the time fields);
+    // the old global slot time was misleading here.
     const fac = m.faculty_name || 'Unassigned'
-    const time = m.start_time ? ` · ${fmtTime(m.start_time)}–${fmtTime(m.end_time)}` : ''
-    return `${fac}${time}`
+    return m.faculty_reg_num ? `${fac} · ${m.faculty_reg_num}` : fac
   }
 
   const handleAdd = async () => {

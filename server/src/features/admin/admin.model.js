@@ -556,3 +556,39 @@ export const setVenueSlotActive = async (venueSlotId, isActive) => {
   );
   return result.affectedRows ?? 0;
 };
+
+// ── Whole-day convenience read (Slot Scheduling page) — READ-ONLY ────────────
+// All venue_slots for a single date across every venue, with venue + faculty
+// labels. Equality JOINs only (TiDB-safe; no subquery in JOIN ON).
+export const listAllVenueSlotsByDate = async (slotDate) => {
+  const [rows] = await db.execute(
+    `SELECT vs.venue_slot_id, vs.mapping_id,
+            DATE_FORMAT(vs.slot_date, '%Y-%m-%d') AS slot_date,
+            vs.start_time, vs.end_time, vs.current_bookings, vs.is_active,
+            vm.venue_id, vm.faculty_id,
+            v.venue_name, v.location, v.capacity,
+            f.name AS faculty_name, f.reg_num AS faculty_reg_num
+     FROM venue_slots vs
+     JOIN venue_mapping vm ON vm.mapping_id = vs.mapping_id
+     JOIN venues v ON v.venue_id = vm.venue_id
+     LEFT JOIN faculties f ON f.faculty_id = vm.faculty_id
+     WHERE vs.slot_date = ?
+     ORDER BY v.venue_name ASC, vs.start_time ASC`,
+    [slotDate]
+  );
+  return rows ?? [];
+};
+
+// All faculty-mappings for ACTIVE venues, for the per-venue faculty pickers.
+export const listAllActiveMappings = async () => {
+  const [rows] = await db.execute(
+    `SELECT vm.mapping_id, vm.venue_id, vm.faculty_id,
+            f.name AS faculty_name, f.reg_num AS faculty_reg_num
+     FROM venue_mapping vm
+     JOIN venues v ON v.venue_id = vm.venue_id
+     LEFT JOIN faculties f ON f.faculty_id = vm.faculty_id
+     WHERE v.is_active = 1
+     ORDER BY f.name ASC`
+  );
+  return rows ?? [];
+};
