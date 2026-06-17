@@ -458,6 +458,47 @@ export function DataProvider({ children }) {
     }
   }
 
+  // ── MCQ Question Bank — Stage 5c-ii ─────────────────────────
+  const getQuestions = async (assessmentId) => {
+    try {
+      const res = await adminService.getQuestions(assessmentId)
+      return Array.isArray(res.data) ? res.data : []
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to load questions', true)
+      return []
+    }
+  }
+
+  const createQuestion = async (assessmentId, payload) => {
+    try {
+      await adminService.createQuestion(assessmentId, payload)
+      return true
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to create question', true)
+      return false
+    }
+  }
+
+  const updateQuestion = async (questionId, payload) => {
+    try {
+      await adminService.updateQuestion(questionId, payload)
+      return true
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to update question', true)
+      return false
+    }
+  }
+
+  const setQuestionActive = async (questionId, isActive) => {
+    try {
+      await adminService.setQuestionActive(questionId, isActive)
+      return true
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to update question status', true)
+      return false
+    }
+  }
+
   // ── Slot timing edit / open-close ───────────────────────────
   const refreshSlots = async () => {
     await fetchAllSlotTimings()
@@ -657,6 +698,11 @@ export function DataProvider({ children }) {
         getMcqTypeConfig,
         upsertMcqTypeConfig,
         deleteMcqTypeConfig,
+        // mcq question bank (Stage 5c-ii)
+        getQuestions,
+        createQuestion,
+        updateQuestion,
+        setQuestionActive,
         // slot edit / open-close
         updateSlotTiming,
         setSlotActive,

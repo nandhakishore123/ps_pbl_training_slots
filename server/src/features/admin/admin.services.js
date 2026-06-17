@@ -549,6 +549,67 @@ export const deleteMcqTypeConfig = async (configId) => {
     return await adminModel.deleteMcqTypeConfig(configId);
 };
 
+// ── MCQ Question Bank (admin authoring) — Stage 5c-ii ────────
+// ADD-ONLY. Soft-delete via is_active. Validation: all 4 options non-empty,
+// correct_option ∈ {A,B,C,D}, marks > 0, type required.
+const VALID_OPTIONS = ['A', 'B', 'C', 'D'];
+const VALID_DIFFICULTY = ['EASY', 'MEDIUM', 'HARD'];
+
+const validateQuestionFields = ({ question_text, option_a, option_b, option_c, option_d, correct_option, mcq_type_id, difficulty, marks }) => {
+    if (!question_text || !String(question_text).trim()) throw new Error('Question text is required');
+    const opts = { option_a, option_b, option_c, option_d };
+    for (const [k, v] of Object.entries(opts)) {
+        if (!v || !String(v).trim()) throw new Error(`Option ${k.slice(-1).toUpperCase()} is required`);
+    }
+    if (!VALID_OPTIONS.includes(correct_option)) throw new Error('Correct option must be A, B, C or D');
+    if (!mcq_type_id) throw new Error('MCQ type is required');
+    if (difficulty != null && difficulty !== '' && !VALID_DIFFICULTY.includes(difficulty)) {
+        throw new Error('Difficulty must be EASY, MEDIUM or HARD');
+    }
+    const m = Number(marks);
+    if (!Number.isFinite(m) || m <= 0) throw new Error('Marks must be greater than 0');
+    return { marks: m };
+};
+
+const normQuestion = (fields) => ({
+    question_text: String(fields.question_text).trim(),
+    option_a: String(fields.option_a).trim(),
+    option_b: String(fields.option_b).trim(),
+    option_c: String(fields.option_c).trim(),
+    option_d: String(fields.option_d).trim(),
+    correct_option: fields.correct_option,
+    mcq_type_id: fields.mcq_type_id,
+    difficulty: fields.difficulty != null && fields.difficulty !== '' ? fields.difficulty : null,
+    marks: Number(fields.marks),
+});
+
+export const getQuestions = async (assessmentId) => {
+    if (!assessmentId) throw new Error('Assessment ID is required');
+    return await adminModel.listQuestions(assessmentId);
+};
+
+export const createQuestion = async (assessmentId, fields) => {
+    if (!assessmentId) throw new Error('Assessment ID is required');
+    validateQuestionFields(fields);
+    return await adminModel.createQuestion({ assessment_id: assessmentId, ...normQuestion(fields) });
+};
+
+export const updateQuestion = async (questionId, fields) => {
+    if (!questionId) throw new Error('Question ID is required');
+    validateQuestionFields(fields);
+    return await adminModel.updateQuestion(questionId, normQuestion(fields));
+};
+
+export const setQuestionActive = async (questionId, isActive) => {
+    if (!questionId) throw new Error('Question ID is required');
+    return await adminModel.setQuestionActive(questionId, isActive);
+};
+
+export const getAnswerCountForQuestion = async (questionId) => {
+    if (!questionId) throw new Error('Question ID is required');
+    return await adminModel.countAnswersForQuestion(questionId);
+};
+
 // ── Slot timing edit / open-close ────────────────────────────
 export const updateSlotTiming = async (slotId, startTime, endTime, force = false) => {
     if (!slotId) throw new Error('Slot ID is required');

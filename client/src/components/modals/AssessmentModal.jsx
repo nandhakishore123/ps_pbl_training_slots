@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import styles from './AssessmentModal.module.css'
 import { useData } from '../../pages/Admin/context/DataContext'
 import { useApp } from '../../pages/Admin/context/AppContext'
+import QuestionsModal from './QuestionsModal'
 
 const EMPTY_FORM = { assessment_title: '', assessment_type: 'MCQ', total_marks: '', passing_marks: '', duration_minutes: '' }
 
@@ -31,6 +32,11 @@ export default function AssessmentModal({ isOpen, onClose, skill, level }) {
   const [configLoading, setConfigLoading] = useState(false)
   const [cfgTypeId, setCfgTypeId] = useState('')
   const [cfgCount, setCfgCount] = useState('')
+
+  // questions bank (Stage 5c-ii)
+  const [questionsOpen, setQuestionsOpen] = useState(false)
+  const [questionsAssessment, setQuestionsAssessment] = useState(null)
+  const openQuestions = (a) => { setQuestionsAssessment(a); setQuestionsOpen(true) }
 
   const loadAssessments = async () => {
     if (!skill || !level) return
@@ -242,7 +248,10 @@ export default function AssessmentModal({ isOpen, onClose, skill, level }) {
                     <div className={styles.rowActions}>
                       <button onClick={() => openEditForm(a)} disabled={busy}>Edit</button>
                       {a.assessment_type === 'MCQ' && (
-                        <button onClick={() => openConfig(a)} disabled={busy}>MCQ Config</button>
+                        <>
+                          <button onClick={() => openConfig(a)} disabled={busy}>MCQ Config</button>
+                          <button onClick={() => openQuestions(a)} disabled={busy}>Manage Questions</button>
+                        </>
                       )}
                       <button onClick={() => handleToggleActive(a)} disabled={busy}>{active ? 'Deactivate' : 'Activate'}</button>
                     </div>
@@ -311,6 +320,15 @@ export default function AssessmentModal({ isOpen, onClose, skill, level }) {
           <button className={styles.btnCancel} onClick={onClose}>Done</button>
         </div>
       </div>
+
+      {questionsOpen && questionsAssessment && (
+        <QuestionsModal
+          isOpen={questionsOpen}
+          onClose={() => setQuestionsOpen(false)}
+          assessment={questionsAssessment}
+          mcqTypes={mcqTypes}
+        />
+      )}
     </div>
   )
 }

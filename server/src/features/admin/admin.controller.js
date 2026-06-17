@@ -343,6 +343,55 @@ export const deleteMcqTypeConfig = async (req, res, next) => {
     }
 };
 
+// ── MCQ Question Bank (admin authoring) — Stage 5c-ii ────────
+
+export const getQuestions = async (req, res, next) => {
+    try {
+        const { assessmentId } = req.params;
+        const data = await adminService.getQuestions(assessmentId);
+        return successResponse(res, 'Questions retrieved successfully', data);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const createQuestion = async (req, res, next) => {
+    try {
+        const { assessmentId } = req.params;
+        const { question_text, option_a, option_b, option_c, option_d, correct_option, mcq_type_id, difficulty, marks } = req.body;
+        const questionId = await adminService.createQuestion(assessmentId, {
+            question_text, option_a, option_b, option_c, option_d, correct_option, mcq_type_id, difficulty, marks,
+        });
+        return successResponse(res, 'Question created successfully', { questionId });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const updateQuestion = async (req, res, next) => {
+    try {
+        const { questionId } = req.params;
+        const { question_text, option_a, option_b, option_c, option_d, correct_option, mcq_type_id, difficulty, marks } = req.body;
+        await adminService.updateQuestion(questionId, {
+            question_text, option_a, option_b, option_c, option_d, correct_option, mcq_type_id, difficulty, marks,
+        });
+        return successResponse(res, 'Question updated successfully', null);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const setQuestionActive = async (req, res, next) => {
+    try {
+        const { questionId } = req.params;
+        const { isActive } = req.body;
+        await adminService.setQuestionActive(questionId, !!isActive);
+        return successResponse(res, `Question ${isActive ? 'restored' : 'retired'} successfully`, null);
+    } catch (error) {
+        next(error);
+    }
+};
+
 // ── Slot timing edit / open-close ────────────────────────────
 
 export const getAllSlotTimings = async (req, res, next) => {

@@ -53,6 +53,12 @@ router.get('/assessments/:assessmentId/mcq-config', requireRole(3), adminControl
 router.put('/assessments/:assessmentId/mcq-config', requireRole(3), adminController.upsertMcqTypeConfig);
 router.delete('/mcq-config/:configId', requireRole(3), adminController.deleteMcqTypeConfig);
 
+// ── MCQ Question Bank (Admin only — role_id 3) — Stage 5c-ii ─────
+router.get('/assessments/:assessmentId/questions', requireRole(3), adminController.getQuestions);
+router.post('/assessments/:assessmentId/questions', requireRole(3), adminController.createQuestion);
+router.put('/questions/:questionId', requireRole(3), adminController.updateQuestion);
+router.patch('/questions/:questionId/active', requireRole(3), adminController.setQuestionActive);
+
 // ── Venue ↔ Skill management (Admin only — role_id 3) ────────
 router.get('/venues/:venueId/skills', requireRole(3), adminController.getVenueSkills);
 router.post('/venues/:venueId/skills', requireRole(3), adminController.addVenueSkill);

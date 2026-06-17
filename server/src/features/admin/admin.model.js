@@ -403,6 +403,70 @@ export const deleteMcqTypeConfig = async (configId) => {
   return result.affectedRows ?? 0;
 };
 
+// ── MCQ Question Bank (admin authoring) — Stage 5c-ii ────────
+// ADD-ONLY admin CRUD. Delete is SOFT (is_active=0) because questions may be
+// referenced by student_mcq_answers — a hard delete would FK-fail and lose
+// answer history. The student sampling read (getRandomMcqQuestions) filters
+// is_active=1, so retired questions are never served but history stays intact.
+// Single-table writes by key; the list uses one equality JOIN for the type name.
+export const listQuestions = async (assessmentId) => {
+  const [rows] = await db.execute(
+    `SELECT q.mcq_question_id, q.assessment_id, q.question_text,
+            q.option_a, q.option_b, q.option_c, q.option_d,
+            q.correct_option, q.mcq_type_id, mt.mcq_type_name,
+            q.difficulty, q.marks, q.is_active, q.created_at,
+            (SELECT COUNT(*) FROM student_mcq_answers sma
+               WHERE sma.mcq_question_id = q.mcq_question_id) AS answer_count
+     FROM assessment_mcq_questions q
+     LEFT JOIN mcq_types mt ON mt.mcq_type_id = q.mcq_type_id
+     WHERE q.assessment_id = ?
+     ORDER BY q.mcq_question_id ASC`,
+    [Number(assessmentId)]
+  );
+  return rows ?? [];
+};
+
+export const createQuestion = async ({ assessment_id, question_text, option_a, option_b, option_c, option_d, correct_option, mcq_type_id, difficulty, marks }) => {
+  const [result] = await db.execute(
+    `INSERT INTO assessment_mcq_questions
+       (assessment_id, question_text, option_a, option_b, option_c, option_d,
+        correct_option, mcq_type_id, difficulty, marks, is_active)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+    [Number(assessment_id), question_text, option_a, option_b, option_c, option_d,
+     correct_option, Number(mcq_type_id), difficulty ?? null, Number(marks)]
+  );
+  return result.insertId;
+};
+
+export const updateQuestion = async (questionId, { question_text, option_a, option_b, option_c, option_d, correct_option, mcq_type_id, difficulty, marks }) => {
+  const [result] = await db.execute(
+    `UPDATE assessment_mcq_questions
+       SET question_text = ?, option_a = ?, option_b = ?, option_c = ?, option_d = ?,
+           correct_option = ?, mcq_type_id = ?, difficulty = ?, marks = ?
+     WHERE mcq_question_id = ?`,
+    [question_text, option_a, option_b, option_c, option_d,
+     correct_option, Number(mcq_type_id), difficulty ?? null, Number(marks), Number(questionId)]
+  );
+  return result.affectedRows ?? 0;
+};
+
+export const setQuestionActive = async (questionId, isActive) => {
+  const [result] = await db.execute(
+    `UPDATE assessment_mcq_questions SET is_active = ? WHERE mcq_question_id = ?`,
+    [isActive ? 1 : 0, Number(questionId)]
+  );
+  return result.affectedRows ?? 0;
+};
+
+// Info only — warn before retiring a question that has student answers.
+export const countAnswersForQuestion = async (questionId) => {
+  const [rows] = await db.execute(
+    `SELECT COUNT(*) AS cnt FROM student_mcq_answers WHERE mcq_question_id = ?`,
+    [Number(questionId)]
+  );
+  return Number(rows?.[0]?.cnt ?? 0);
+};
+
 export const listSlotTimings = async () => {
   const [rows] = await db.execute(`
     SELECT slot_id, start_time, end_time 

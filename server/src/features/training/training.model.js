@@ -504,6 +504,7 @@ export const getRandomMcqQuestions = async (assessmentId, mcqTypeId, count) => {
      FROM assessment_mcq_questions
      WHERE assessment_id = ?
        AND mcq_type_id = ?
+       AND is_active = 1
      ORDER BY RAND()
      LIMIT ${limitCount}`,
     [Number(assessmentId), Number(mcqTypeId)]

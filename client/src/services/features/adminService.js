@@ -145,6 +145,24 @@ export const adminService = {
     return api.delete(`/admin/mcq-config/${configId}`);
   },
 
+  // ── MCQ Question Bank (admin-only) — Stage 5c-ii ────────────
+  getQuestions(assessmentId) {
+    return api.get(`/admin/assessments/${assessmentId}/questions`);
+  },
+
+  createQuestion(assessmentId, payload) {
+    // payload: { question_text, option_a..d, correct_option, mcq_type_id, difficulty, marks }
+    return api.post(`/admin/assessments/${assessmentId}/questions`, payload);
+  },
+
+  updateQuestion(questionId, payload) {
+    return api.put(`/admin/questions/${questionId}`, payload);
+  },
+
+  setQuestionActive(questionId, isActive) {
+    return api.patch(`/admin/questions/${questionId}/active`, { isActive });
+  },
+
   // ── Venue ↔ Skill management (admin-only) ───────────────────
   getVenueSkills(venueId) {
     return api.get(`/admin/venues/${venueId}/skills`);
