@@ -164,6 +164,134 @@ export const listStudentsWithPoints = async () => {
   return rows;
 };
 
+// ── Student management (admin authoring) — Stage 5d ──────────
+// Create provisions a users row (role 1) AND a students row, transactionally
+// (the service owns the connection + commit/rollback so a failed students
+// insert never leaves an orphan user). Soft-deactivate mirrors is_active across
+// BOTH tables so a deactivated student also can't log in. Active-only
+// listStudentsWithPoints (above) still feeds the read path. Single-table writes
+// by key; the management list uses one equality JOIN to users for the email.
+const studentExec = (conn) => conn || db;
+
+// Admin management list — ALL students (incl. inactive), with email + is_active.
+export const listAllStudents = async () => {
+  const [rows] = await db.execute(`
+    SELECT
+      s.student_id, s.user_id, s.name, s.reg_num, s.degree, s.course, s.year_of_study,
+      s.is_active, u.email,
+      MAX(CASE WHEN p.point_type = 'REWARD_POINTS' THEN p.points_available ELSE 0 END) AS reward_points,
+      MAX(CASE WHEN p.point_type = 'ACTIVITY_POINTS' THEN p.points_available ELSE 0 END) AS activity_points
+    FROM students s
+    JOIN users u ON u.user_id = s.user_id
+    LEFT JOIN points p ON p.student_id = s.student_id
+    GROUP BY s.student_id, s.user_id, s.name, s.reg_num, s.degree, s.course, s.year_of_study, s.is_active, u.email
+    ORDER BY s.name ASC
+  `);
+  return rows;
+};
+
+// Two inserts on ONE connection. Caller wraps in a transaction. ER_DUP_ENTRY is
+// mapped to a 409 distinguishing email (users) vs reg_num (students).
+export const createStudentWithUser = async ({ email, reg_num, name, degree, course, year_of_study }, conn) => {
+  const exec = studentExec(conn);
+  let userId;
+  try {
+    const [uRes] = await exec.execute(
+      `INSERT INTO users (role_id, email, is_active) VALUES (1, ?, 1)`,
+      [email]
+    );
+    userId = uRes.insertId;
+  } catch (err) {
+    if (err?.code === 'ER_DUP_ENTRY') {
+      const e = new Error('A user with this email already exists.');
+      e.status = 409;
+      throw e;
+    }
+    throw err;
+  }
+  try {
+    const [sRes] = await exec.execute(
+      `INSERT INTO students (user_id, reg_num, name, degree, course, year_of_study, is_active)
+       VALUES (?, ?, ?, ?, ?, ?, 1)`,
+      [userId, reg_num, name, degree ?? null, course ?? null, year_of_study ?? null]
+    );
+    return { studentId: sRes.insertId, userId };
+  } catch (err) {
+    if (err?.code === 'ER_DUP_ENTRY') {
+      const e = new Error('A student with this registration number already exists.');
+      e.status = 409;
+      throw e;
+    }
+    throw err;
+  }
+};
+
+export const getStudentUserId = async (studentId, conn) => {
+  const exec = studentExec(conn);
+  const [rows] = await exec.execute(
+    `SELECT user_id FROM students WHERE student_id = ?`,
+    [Number(studentId)]
+  );
+  return rows?.[0]?.user_id ?? null;
+};
+
+// Single-table UPDATE by key. reg_num is UNIQUE → ER_DUP_ENTRY mapped to 409.
+export const updateStudent = async (studentId, { reg_num, name, degree, course, year_of_study }, conn) => {
+  const exec = studentExec(conn);
+  try {
+    const [result] = await exec.execute(
+      `UPDATE students SET reg_num = ?, name = ?, degree = ?, course = ?, year_of_study = ?
+       WHERE student_id = ?`,
+      [reg_num, name, degree ?? null, course ?? null, year_of_study ?? null, Number(studentId)]
+    );
+    return result.affectedRows ?? 0;
+  } catch (err) {
+    if (err?.code === 'ER_DUP_ENTRY') {
+      const e = new Error('A student with this registration number already exists.');
+      e.status = 409;
+      throw e;
+    }
+    throw err;
+  }
+};
+
+// Single-table UPDATE by key. email is UNIQUE → ER_DUP_ENTRY mapped to 409.
+export const updateUserEmail = async (userId, email, conn) => {
+  const exec = studentExec(conn);
+  try {
+    const [result] = await exec.execute(
+      `UPDATE users SET email = ? WHERE user_id = ?`,
+      [email, Number(userId)]
+    );
+    return result.affectedRows ?? 0;
+  } catch (err) {
+    if (err?.code === 'ER_DUP_ENTRY') {
+      const e = new Error('A user with this email already exists.');
+      e.status = 409;
+      throw e;
+    }
+    throw err;
+  }
+};
+
+export const setStudentActiveRow = async (studentId, isActive, conn) => {
+  const exec = studentExec(conn);
+  const [result] = await exec.execute(
+    `UPDATE students SET is_active = ? WHERE student_id = ?`,
+    [isActive ? 1 : 0, Number(studentId)]
+  );
+  return result.affectedRows ?? 0;
+};
+
+export const setUserActiveRow = async (userId, isActive, conn) => {
+  const exec = studentExec(conn);
+  const [result] = await exec.execute(
+    `UPDATE users SET is_active = ? WHERE user_id = ?`,
+    [isActive ? 1 : 0, Number(userId)]
+  );
+  return result.affectedRows ?? 0;
+};
+
 export const listTrainingSkills = async () => {
   const [rows] = await db.execute(`
     SELECT 

@@ -19,6 +19,9 @@ export function DataProvider({ children }) {
   const [allVenues, setAllVenues] = useState([])
   const [faculty, setFaculty] = useState([])
   const [students, setStudents] = useState([])
+  // Admin management list — includes inactive students + email (active-only
+  // `students` stays the source for the points/read path).
+  const [allStudents, setAllStudents] = useState([])
   const [trainingSkills, setTrainingSkills] = useState([])
   // Admin management list — includes inactive courses/labs (active-only
   // `trainingSkills` stays the source for the points read & booking pickers).
@@ -78,6 +81,15 @@ export function DataProvider({ children }) {
     try {
       const res = await adminService.getStudents()
       setStudents(Array.isArray(res.data) ? res.data : [])
+    } catch (err) {
+      console.error(err)
+    }
+  }, [])
+
+  const fetchAllStudents = useCallback(async () => {
+    try {
+      const res = await adminService.getAllStudents()
+      setAllStudents(Array.isArray(res.data) ? res.data : [])
     } catch (err) {
       console.error(err)
     }
@@ -145,6 +157,7 @@ export function DataProvider({ children }) {
       fetchAllVenues(),
       fetchFaculty(),
       fetchStudents(),
+      fetchAllStudents(),
       fetchTrainingSkills(),
       fetchAllTrainingSkills(),
       fetchSkillCategories(),
@@ -153,7 +166,7 @@ export function DataProvider({ children }) {
       fetchBookingWindow()
     ])
     setLoading(false)
-  }, [fetchDashboardKPI, fetchVenues, fetchAllVenues, fetchFaculty, fetchStudents, fetchTrainingSkills, fetchAllTrainingSkills, fetchSkillCategories, fetchSlotTimings, fetchAllSlotTimings, fetchBookingWindow])
+  }, [fetchDashboardKPI, fetchVenues, fetchAllVenues, fetchFaculty, fetchStudents, fetchAllStudents, fetchTrainingSkills, fetchAllTrainingSkills, fetchSkillCategories, fetchSlotTimings, fetchAllSlotTimings, fetchBookingWindow])
 
   useEffect(() => {
     refreshAll()
@@ -325,6 +338,45 @@ export function DataProvider({ children }) {
         return { requiresConfirmation: true, message: data.message }
       }
       showToast(data?.message || 'Failed to update course/lab status', true)
+      return false
+    }
+  }
+
+  // ── Student management — Stage 5d ───────────────────────────
+  const refreshStudents = async () => {
+    await fetchStudents()
+    await fetchAllStudents()
+  }
+
+  const createStudent = async (payload) => {
+    try {
+      await adminService.createStudent(payload)
+      await refreshStudents()
+      return true
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to create student', true)
+      return false
+    }
+  }
+
+  const updateStudent = async (id, payload) => {
+    try {
+      await adminService.updateStudent(id, payload)
+      await refreshStudents()
+      return true
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to update student', true)
+      return false
+    }
+  }
+
+  const setStudentActive = async (id, isActive) => {
+    try {
+      await adminService.setStudentActive(id, isActive)
+      await refreshStudents()
+      return true
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to update student status', true)
       return false
     }
   }
@@ -659,6 +711,7 @@ export function DataProvider({ children }) {
         allVenues,
         faculty,
         students,
+        allStudents,
         trainingSkills,
         allTrainingSkills,
         skillCategories,
@@ -679,6 +732,10 @@ export function DataProvider({ children }) {
         createVenue,
         updateVenue,
         setVenueActive,
+        // student management (Stage 5d)
+        createStudent,
+        updateStudent,
+        setStudentActive,
         // training skill (course/lab) management
         getSkillCategories,
         createTrainingSkill,

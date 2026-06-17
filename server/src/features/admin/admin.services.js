@@ -272,6 +272,95 @@ export const getStudents = async () => {
     return await adminModel.listStudentsWithPoints();
 };
 
+// ── Student management (admin authoring) — Stage 5d ──────────
+// Create provisions users + students in ONE transaction (rollback → no orphan
+// user). Deactivate mirrors is_active across both tables so a deactivated
+// student also can't log in. Required: email, reg_num, name.
+const normEmail = (v) => (v != null ? String(v).trim().toLowerCase() : '');
+const normYear = (v) => (v != null && v !== '' ? Number(v) : null);
+const normOpt = (v) => (v != null && String(v).trim() !== '' ? String(v).trim() : null);
+
+export const getAllStudents = async () => {
+    return await adminModel.listAllStudents();
+};
+
+export const createStudent = async ({ email, reg_num, name, degree, course, year_of_study }) => {
+    const e = normEmail(email);
+    const reg = reg_num != null ? String(reg_num).trim() : '';
+    const nm = name != null ? String(name).trim() : '';
+    if (!e) throw new Error('Email is required');
+    if (!reg) throw new Error('Registration number is required');
+    if (!nm) throw new Error('Name is required');
+
+    const conn = await db.getConnection();
+    try {
+        await conn.beginTransaction();
+        const result = await adminModel.createStudentWithUser({
+            email: e, reg_num: reg, name: nm,
+            degree: normOpt(degree), course: normOpt(course), year_of_study: normYear(year_of_study),
+        }, conn);
+        await conn.commit();
+        return result;
+    } catch (error) {
+        await conn.rollback();
+        throw error;
+    } finally {
+        conn.release();
+    }
+};
+
+export const updateStudent = async (studentId, { email, reg_num, name, degree, course, year_of_study }) => {
+    if (!studentId) throw new Error('Student ID is required');
+    const reg = reg_num != null ? String(reg_num).trim() : '';
+    const nm = name != null ? String(name).trim() : '';
+    if (!reg) throw new Error('Registration number is required');
+    if (!nm) throw new Error('Name is required');
+    const e = email != null && String(email).trim() !== '' ? normEmail(email) : null;
+
+    const conn = await db.getConnection();
+    try {
+        await conn.beginTransaction();
+        // user_id linkage is immutable; only the email value may change.
+        if (e) {
+            const userId = await adminModel.getStudentUserId(studentId, conn);
+            if (!userId) throw Object.assign(new Error('Student not found'), { status: 404 });
+            await adminModel.updateUserEmail(userId, e, conn);
+        }
+        await adminModel.updateStudent(studentId, {
+            reg_num: reg, name: nm,
+            degree: normOpt(degree), course: normOpt(course), year_of_study: normYear(year_of_study),
+        }, conn);
+        await conn.commit();
+        return true;
+    } catch (error) {
+        await conn.rollback();
+        throw error;
+    } finally {
+        conn.release();
+    }
+};
+
+export const setStudentActive = async (studentId, isActive) => {
+    if (!studentId) throw new Error('Student ID is required');
+    const conn = await db.getConnection();
+    try {
+        await conn.beginTransaction();
+        const userId = await adminModel.getStudentUserId(studentId, conn);
+        if (!userId) throw Object.assign(new Error('Student not found'), { status: 404 });
+        await adminModel.setStudentActiveRow(studentId, isActive, conn);
+        // Mirror to users so a deactivated student can't log in (issueSessionForEmail
+        // already rejects inactive users).
+        await adminModel.setUserActiveRow(userId, isActive, conn);
+        await conn.commit();
+        return true;
+    } catch (error) {
+        await conn.rollback();
+        throw error;
+    } finally {
+        conn.release();
+    }
+};
+
 export const getTrainingSkills = async () => {
     return await adminModel.listTrainingSkills();
 };

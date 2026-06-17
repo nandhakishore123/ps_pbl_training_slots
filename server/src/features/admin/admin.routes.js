@@ -13,6 +13,11 @@ router.get('/venues', adminController.getVenues);
 router.get('/faculty', adminController.getFaculty);
 router.get('/faculty/search', adminController.searchFaculty);
 router.get('/students', adminController.getStudents);
+// ── Student management (Admin only — role_id 3) — Stage 5d ───
+router.get('/students/all', requireRole(3), adminController.getAllStudents);
+router.post('/students', requireRole(3), adminController.createStudent);
+router.put('/students/:id', requireRole(3), adminController.updateStudent);
+router.patch('/students/:id/active', requireRole(3), adminController.setStudentActive);
 router.get('/training-skills', adminController.getTrainingSkills);
 router.get('/slot-timings', adminController.getSlotTimings);
 router.post('/slot-timings', adminController.addSlotTiming);

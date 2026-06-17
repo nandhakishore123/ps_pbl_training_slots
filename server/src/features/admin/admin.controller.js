@@ -47,6 +47,49 @@ export const getStudents = async (req, res, next) => {
     }
 };
 
+// ── Student management (admin authoring) — Stage 5d ──────────
+
+export const getAllStudents = async (req, res, next) => {
+    try {
+        const data = await adminService.getAllStudents();
+        return successResponse(res, 'Students retrieved successfully', data);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const createStudent = async (req, res, next) => {
+    try {
+        const { email, reg_num, name, degree, course, year_of_study } = req.body;
+        const data = await adminService.createStudent({ email, reg_num, name, degree, course, year_of_study });
+        return successResponse(res, 'Student created successfully', data);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const updateStudent = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const { email, reg_num, name, degree, course, year_of_study } = req.body;
+        await adminService.updateStudent(id, { email, reg_num, name, degree, course, year_of_study });
+        return successResponse(res, 'Student updated successfully', null);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const setStudentActive = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const { isActive } = req.body;
+        await adminService.setStudentActive(id, !!isActive);
+        return successResponse(res, `Student ${isActive ? 'activated' : 'deactivated'} successfully`, null);
+    } catch (error) {
+        next(error);
+    }
+};
+
 export const getTrainingSkills = async (req, res, next) => {
     try {
         const data = await adminService.getTrainingSkills();

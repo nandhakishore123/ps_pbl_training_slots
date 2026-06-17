@@ -21,6 +21,25 @@ export const adminService = {
     return api.get('/admin/students');
   },
 
+  // ── Student management (admin-only) — Stage 5d ──────────────
+  getAllStudents() {
+    return api.get('/admin/students/all');
+  },
+
+  createStudent(payload) {
+    // payload: { email, reg_num, name, degree, course, year_of_study }
+    return api.post('/admin/students', payload);
+  },
+
+  updateStudent(id, payload) {
+    // payload: { email, reg_num, name, degree, course, year_of_study }
+    return api.put(`/admin/students/${id}`, payload);
+  },
+
+  setStudentActive(id, isActive) {
+    return api.patch(`/admin/students/${id}/active`, { isActive });
+  },
+
   getTrainingSkills() {
     return api.get('/admin/training-skills');
   },
