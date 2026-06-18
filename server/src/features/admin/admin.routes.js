@@ -100,6 +100,8 @@ router.post('/faculty/transfer-all', adminController.transferAllVenues);
 // ── Attendance (Admin only — role_id 3) ──────────────────────
 router.get('/attendance/mappings', requireRole(3), adminController.getAttendanceMappings);
 router.get('/attendance/mappings/:mappingId/students', requireRole(3), adminController.getAttendanceStudents);
+// venue_slots-model roster (per-date slot). Slot LIST reuses GET /admin/slots-by-date.
+router.get('/attendance/venue-slots/:venueSlotId/students', requireRole(3), adminController.getAttendanceStudentsByVenueSlot);
 router.post('/attendance/bookings/:bookingId', requireRole(3), adminController.markAttendance);
 
 // ── Booking-open time config (Admin only — role_id 3) ────────

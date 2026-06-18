@@ -33,37 +33,45 @@ function Toast({ message, type, onClose }) {
   )
 }
 
-// ── Venue Card (left sidebar) ──────────────────────────────────
-function VenueCard({ mapping, selected, onClick }) {
-  const isActive = selected?.mapping_id === mapping.mapping_id
+// ── Slot Card (left sidebar) — a real dated venue_slot ─────────
+function SlotCard({ slot, selected, onClick }) {
+  const isActive = selected?.venue_slot_id === slot.venue_slot_id
+  const inactive = Number(slot.is_active) === 0
   return (
     <button
-      onClick={() => onClick(mapping)}
+      onClick={() => onClick(slot)}
       style={{
         width: '100%', textAlign: 'left', padding: '14px 16px',
         background: isActive ? 'rgba(108,71,255,0.08)' : '#fff',
         border: `1.5px solid ${isActive ? 'rgba(108,71,255,0.4)' : '#e5e4eb'}`,
         borderRadius: 12, cursor: 'pointer', transition: 'all 0.2s',
+        opacity: inactive ? 0.6 : 1,
         fontFamily: "'Plus Jakarta Sans', sans-serif"
       }}
     >
       <div style={{ fontSize: 13, fontWeight: 700, color: '#1a1a2e', marginBottom: 2 }}>
-        {mapping.venue_name}
+        {slot.venue_name}
       </div>
       <div style={{ fontSize: 11, color: '#6b7280', fontWeight: 500 }}>
-        {mapping.location || 'No location'} · Cap: {mapping.capacity}
+        {slot.slot_date} · Cap: {slot.capacity}
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
         <span style={{
           padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 700,
           background: 'rgba(108,71,255,0.1)', color: P
         }}>
-          {formatTime(mapping.start_time)} – {formatTime(mapping.end_time)}
+          {formatTime(slot.start_time)} – {formatTime(slot.end_time)}
         </span>
-        {mapping.faculty_name && (
+        <span style={{ fontSize: 10, color: '#9ca3af', fontWeight: 600 }}>
+          {Number(slot.current_bookings) || 0} booked
+        </span>
+        {slot.faculty_name && (
           <span style={{ fontSize: 10, color: '#9ca3af', fontWeight: 600 }}>
-            {mapping.faculty_name}
+            {slot.faculty_name}
           </span>
+        )}
+        {inactive && (
+          <span style={{ fontSize: 10, color: '#ef4444', fontWeight: 700 }}>Inactive</span>
         )}
       </div>
     </button>
@@ -158,12 +166,18 @@ function StudentRow({ student, onMark, loading }) {
 }
 
 // ── Main Page ──────────────────────────────────────────────────
+const todayStr = () => {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 export default function AdminAttendance() {
   const navigate = useNavigate()
-  const [mappings, setMappings] = useState([])
+  const [date, setDate] = useState(todayStr())
+  const [slots, setSlots] = useState([])
   const [selected, setSelected] = useState(null)
   const [students, setStudents] = useState([])
-  const [loadingMappings, setLoadingMappings] = useState(true)
+  const [loadingSlots, setLoadingSlots] = useState(true)
   const [loadingStudents, setLoadingStudents] = useState(false)
   const [markingId, setMarkingId] = useState(null)
   const [search, setSearch] = useState('')
@@ -174,25 +188,26 @@ export default function AdminAttendance() {
     setTimeout(() => setToast(null), 3000)
   }
 
-  // Fetch all mappings
+  // Fetch the dated venue_slots for the selected date (reuses the Slot
+  // Scheduling endpoint). Empty slots are included (no bookings filter).
   useEffect(() => {
-    adminService.getAttendanceMappings()
-      .then(res => {
-        setMappings(res.data || [])
-      })
-      .catch(() => showToast('Failed to load venue mappings.', 'error'))
-      .finally(() => setLoadingMappings(false))
-  }, [])
+    setLoadingSlots(true)
+    setSelected(null)
+    adminService.getAllVenueSlotsByDate(date)
+      .then(res => setSlots(res.data?.slots || []))
+      .catch(() => showToast('Failed to load slots.', 'error'))
+      .finally(() => setLoadingSlots(false))
+  }, [date])
 
-  // Fetch students when mapping selected
+  // Fetch the roster for the selected venue_slot (by venue_slot_id).
   useEffect(() => {
     if (!selected) { setStudents([]); return }
     setLoadingStudents(true)
-    adminService.getAttendanceStudents(selected.mapping_id)
+    adminService.getAttendanceStudentsByVenueSlot(selected.venue_slot_id)
       .then(res => setStudents(res.data || []))
       .catch(() => showToast('Failed to load students.', 'error'))
       .finally(() => setLoadingStudents(false))
-  }, [selected?.mapping_id])
+  }, [selected?.venue_slot_id])
 
   const handleMark = async (student, status) => {
     setMarkingId(student.booking_id)
@@ -253,20 +268,33 @@ export default function AdminAttendance() {
           }}>
             <div style={{ fontSize: 14, fontWeight: 800, color: '#1a1a2e', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ width: 4, height: 16, borderRadius: 4, background: P, display: 'inline-block' }} />
-              Venues & Slots
+              Slots by Date
             </div>
 
-            {loadingMappings ? (
+            {/* Date picker — past & future dates both selectable */}
+            <input
+              type="date"
+              value={date}
+              onChange={e => setDate(e.target.value)}
+              style={{
+                width: '100%', marginBottom: 12, padding: '9px 12px',
+                border: '1.5px solid #e5e4eb', borderRadius: 10,
+                fontSize: 13, color: '#1a1a2e', outline: 'none',
+                fontFamily: "'Plus Jakarta Sans', sans-serif"
+              }}
+            />
+
+            {loadingSlots ? (
               <div style={{ padding: 20, textAlign: 'center', color: '#9ca3af', fontSize: 13 }}>Loading...</div>
-            ) : mappings.length === 0 ? (
+            ) : slots.length === 0 ? (
               <div style={{ padding: 20, textAlign: 'center', color: '#9ca3af', fontSize: 13 }}>
-                No venue mappings found.<br />
-                <span style={{ fontSize: 11 }}>Create venue mappings first.</span>
+                No slots scheduled for this date.<br />
+                <span style={{ fontSize: 11 }}>Pick another date or create slots in Slot Scheduling.</span>
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {mappings.map(m => (
-                  <VenueCard key={m.mapping_id} mapping={m} selected={selected} onClick={setSelected} />
+                {slots.map(s => (
+                  <SlotCard key={s.venue_slot_id} slot={s} selected={selected} onClick={setSelected} />
                 ))}
               </div>
             )}
@@ -285,8 +313,8 @@ export default function AdminAttendance() {
                     <path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
                   </svg>
                 </div>
-                <div style={{ fontSize: 15, fontWeight: 700, color: '#1a1a2e', marginBottom: 4 }}>Select a Venue</div>
-                <div style={{ fontSize: 13 }}>Pick a venue/slot from the left to view booked students.</div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: '#1a1a2e', marginBottom: 4 }}>Select a Slot</div>
+                <div style={{ fontSize: 13 }}>Pick a dated slot from the left to view its booked students.</div>
               </div>
             ) : (
               <>
@@ -299,7 +327,7 @@ export default function AdminAttendance() {
                     <div>
                       <div style={{ fontSize: 16, fontWeight: 800, color: '#1a1a2e' }}>{selected.venue_name}</div>
                       <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>
-                        {formatTime(selected.start_time)} – {formatTime(selected.end_time)}
+                        {selected.slot_date} · {formatTime(selected.start_time)} – {formatTime(selected.end_time)}
                         {selected.faculty_name ? ` · ${selected.faculty_name}` : ''}
                         {` · ${students.length} students`}
                       </div>

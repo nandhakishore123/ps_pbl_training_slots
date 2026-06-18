@@ -674,6 +674,16 @@ export const getAttendanceStudents = async (req, res, next) => {
     }
 };
 
+export const getAttendanceStudentsByVenueSlot = async (req, res, next) => {
+    try {
+        const { venueSlotId } = req.params;
+        const data = await adminService.getAttendanceStudentsByVenueSlot(venueSlotId);
+        return successResponse(res, 'Students retrieved successfully', data);
+    } catch (error) {
+        next(error);
+    }
+};
+
 export const markAttendance = async (req, res, next) => {
     try {
         const { bookingId } = req.params;

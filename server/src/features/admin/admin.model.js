@@ -1029,6 +1029,27 @@ export const getStudentsByMappingAdmin = async (mappingId) => {
   return rows;
 };
 
+// Admin attendance roster for a per-date venue_slot. Mirrors the faculty
+// getStudentsByVenueSlot roster SELECT exactly, but WITHOUT the ownership gate
+// (admin sees any slot) — same pattern as getStudentsByMappingAdmin. Keys on
+// venue_slot_id so newly scheduled (venue_slots) slots resolve their roster.
+export const getStudentsByVenueSlotAdmin = async (venueSlotId) => {
+  const [rows] = await db.execute(
+    `SELECT
+       sb.booking_id, sb.status, sb.is_present, sb.remarks,
+       DATE_FORMAT(sb.booking_date, '%Y-%m-%d') AS booking_date,
+       s.student_id, s.name, s.reg_num, s.course, s.year_of_study,
+       a.attendance_status
+     FROM student_booking sb
+     JOIN students s ON sb.student_id = s.student_id
+     LEFT JOIN attendance a ON sb.booking_id = a.booking_id
+     WHERE sb.venue_slot_id = ?
+     ORDER BY s.name ASC`,
+    [Number(venueSlotId)]
+  );
+  return rows ?? [];
+};
+
 export const markAttendanceAdmin = async (bookingId, status) => {
   // No ownership check — admin can mark any booking
   const [rows] = await db.execute(

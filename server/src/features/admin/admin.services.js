@@ -1030,6 +1030,15 @@ export const getAttendanceStudents = async (mappingId) => {
     return await adminModel.getStudentsByMappingAdmin(mappingId);
 };
 
+// Roster for a per-date venue_slot (the venue_slots model used app-wide). The
+// slot LIST is served by the existing /admin/slots-by-date endpoint.
+export const getAttendanceStudentsByVenueSlot = async (venueSlotId) => {
+    if (!venueSlotId) {
+        throw new Error('Venue slot ID is required');
+    }
+    return await adminModel.getStudentsByVenueSlotAdmin(venueSlotId);
+};
+
 export const markAttendance = async (bookingId, status) => {
     if (!bookingId) {
         throw new Error('Booking ID is required');
