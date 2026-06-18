@@ -115,6 +115,11 @@ export const adminService = {
     return api.get('/admin/skill-categories');
   },
 
+  // READ-ONLY bookable-status per course (Stage 7 diagnostic badge)
+  getTrainingSkillsStatus() {
+    return api.get('/admin/training-skills/status');
+  },
+
   createTrainingSkill(payload) {
     // payload: { skill_name, skill_type, category_id, image_url }
     return api.post('/admin/training-skills', payload);

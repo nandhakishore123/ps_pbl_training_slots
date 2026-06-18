@@ -43,6 +43,8 @@ router.patch('/venues/:venueId/active', requireRole(3), adminController.setVenue
 
 // ── Training skill (Course/Lab) management (Admin only — role_id 3) — Stage 5a ─
 router.get('/training-skills/all', requireRole(3), adminController.getAllTrainingSkills);
+// READ-ONLY bookable-status per course (Stage 7 diagnostic) — literal path, before any :id route
+router.get('/training-skills/status', requireRole(3), adminController.getTrainingSkillsStatus);
 router.get('/skill-categories', requireRole(3), adminController.getSkillCategories);
 router.post('/training-skills', requireRole(3), adminController.createTrainingSkill);
 router.put('/training-skills/:id', requireRole(3), adminController.updateTrainingSkill);

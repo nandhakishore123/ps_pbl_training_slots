@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import styles from './Settings.module.css'
 import Header from '../Header/Header'
 import { useData } from '../context/DataContext'
@@ -12,7 +12,52 @@ export default function Settings() {
   const {
     allSlotTimings, addSlotTiming, updateSlotTiming, setSlotActive,
     trainingSkills, allTrainingSkills, setTrainingSkillActive, loading,
+    getTrainingSkillsStatus,
   } = useData()
+
+  // ── Read-only bookable status per course (Stage 7 diagnostic badge) ──
+  const [statusMap, setStatusMap] = useState({})   // { [training_skill_id]: flags }
+  const [bookingOpen, setBookingOpen] = useState(false)
+  const [opensAt, setOpensAt] = useState('')
+
+  useEffect(() => {
+    let alive = true
+    ;(async () => {
+      const res = await getTrainingSkillsStatus()
+      if (!alive) return
+      const map = {}
+      for (const it of res.items || []) map[it.training_skill_id] = it
+      setStatusMap(map)
+      setBookingOpen(!!res.booking_open)
+      setOpensAt(res.opens_at || '')
+    })()
+    return () => { alive = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Derive the 4-state bookable badge for one course from its status flags.
+  const bookableBadge = (skillId) => {
+    const st = statusMap[skillId]
+    if (!st) return { label: '…', color: '#6b7280', bg: 'rgba(107,114,128,0.15)', reason: 'Checking…' }
+    if (!st.skill_active || !st.has_level || !st.has_active_allotment) {
+      const missing = []
+      if (!st.skill_active) missing.push('course inactive')
+      if (!st.has_level) missing.push('needs a level')
+      if (!st.has_active_allotment) missing.push('not assigned to a venue')
+      return { label: '🔴 Not set up', color: '#b91c1c', bg: 'rgba(239,68,68,0.12)', reason: missing.join(' · ') }
+    }
+    if (!st.has_active_slot) {
+      return { label: '🟠 No slots scheduled', color: '#b45309', bg: 'rgba(245,158,11,0.14)', reason: 'Set up, but no active venue slot exists yet' }
+    }
+    if (!st.has_future_bookable_slot) {
+      return { label: '🟡 No upcoming slot / full', color: '#a16207', bg: 'rgba(234,179,8,0.16)', reason: 'Has slots, but none upcoming with seats left' }
+    }
+    return {
+      label: bookingOpen ? '🟢 Bookable' : `🟢 Bookable · opens ${opensAt}`,
+      color: '#059669', bg: 'rgba(16,185,129,0.12)',
+      reason: bookingOpen ? 'Students can book now' : `Bookable when booking opens at ${opensAt}`,
+    }
+  }
 
   // Training skill (Course/Lab) management — Stage 5a
   const [showInactiveSkills, setShowInactiveSkills] = useState(false)
@@ -179,13 +224,14 @@ export default function Settings() {
                   <th style={{ width: '11%' }}>Max Reward Pts</th>
                   <th style={{ width: '11%' }}>Max Activity Pts</th>
                   <th style={{ width: '10%' }}>Status</th>
+                  <th style={{ width: '14%' }}>Bookable</th>
                   <th style={{ width: '10%' }}>Action</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={8} className={styles.empty}>Loading skills...</td>
+                    <td colSpan={9} className={styles.empty}>Loading skills...</td>
                   </tr>
                 ) : visibleSkills && visibleSkills.length > 0 ? (
                   visibleSkills.map((ts) => {
@@ -209,6 +255,23 @@ export default function Settings() {
                         </span>
                       </td>
                       <td>
+                        {(() => {
+                          const b = bookableBadge(ts.training_skill_id)
+                          return (
+                            <span
+                              title={b.reason}
+                              style={{
+                                display: 'inline-block', padding: '3px 10px', borderRadius: 20,
+                                fontSize: 11, fontWeight: 700, color: b.color, background: b.bg,
+                                whiteSpace: 'nowrap', cursor: 'help',
+                              }}
+                            >
+                              {b.label}
+                            </span>
+                          )
+                        })()}
+                      </td>
+                      <td>
                         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                           <button onClick={() => openEditSkill(ts)}>Edit</button>
                           <button onClick={() => openLevels(ts)}>Manage Levels</button>
@@ -224,7 +287,7 @@ export default function Settings() {
                   })
                 ) : (
                   <tr>
-                    <td colSpan={8} className={styles.empty}>No courses/labs found.</td>
+                    <td colSpan={9} className={styles.empty}>No courses/labs found.</td>
                   </tr>
                 )}
               </tbody>

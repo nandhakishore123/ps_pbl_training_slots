@@ -1,7 +1,7 @@
 import db from '../../config/db.js';
 import * as adminModel from './admin.model.js';
 import * as trainingModel from '../training/training.model.js';
-import { invalidateBookingWindowCache, computeBookingWindow } from '../training/training.services.js';
+import { invalidateBookingWindowCache, computeBookingWindow, computeBookingOpenState } from '../training/training.services.js';
 
 export const getDashboardKPI = async () => {
     return await adminModel.getDashboardKPI();
@@ -587,6 +587,30 @@ export const setVenueActive = async (venueId, isActive, force = false) => {
 // category_id (NOT NULL FK). Soft-deactivate only.
 export const getAllTrainingSkills = async () => {
     return await adminModel.listAllTrainingSkills();
+};
+
+// READ-ONLY bookable-status per course (Stage 7 diagnostic). Uses the SAME IST
+// clock + booking-open gate as the student path so the badge agrees with what
+// students actually see. Returns { items, booking_open, opens_at }.
+export const getTrainingSkillsBookableStatus = async () => {
+    const istNow = await trainingModel.getIstNow();
+    const cfg = await trainingModel.getBookingOpenConfig();
+    const openState = computeBookingOpenState(istNow, cfg); // { isOpen, nowDate, nowTime }
+
+    const rows = await adminModel.getTrainingSkillsBookableStatus(openState.nowDate, openState.nowTime);
+    const items = rows.map((r) => ({
+        training_skill_id: r.training_skill_id,
+        skill_active: !!Number(r.skill_active),
+        has_level: !!Number(r.has_level),
+        has_active_allotment: !!Number(r.has_active_allotment),
+        has_active_slot: !!Number(r.has_active_slot),
+        has_future_bookable_slot: !!Number(r.has_future_bookable_slot),
+    }));
+
+    const ampm = cfg.openHour >= 12 ? 'PM' : 'AM';
+    const opens_at = `${cfg.openHour % 12 || 12}:${String(cfg.openMinute).padStart(2, '0')} ${ampm}`;
+
+    return { items, booking_open: !!openState.isOpen, opens_at };
 };
 
 export const getSkillCategories = async () => {

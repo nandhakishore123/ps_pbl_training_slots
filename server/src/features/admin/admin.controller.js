@@ -255,6 +255,16 @@ export const getAllTrainingSkills = async (req, res, next) => {
     }
 };
 
+// READ-ONLY bookable-status per course (Stage 7 diagnostic badge source).
+export const getTrainingSkillsStatus = async (req, res, next) => {
+    try {
+        const data = await adminService.getTrainingSkillsBookableStatus();
+        return successResponse(res, 'Training skill bookable status retrieved successfully', data);
+    } catch (error) {
+        next(error);
+    }
+};
+
 export const getSkillCategories = async (req, res, next) => {
     try {
         const data = await adminService.getSkillCategories();
