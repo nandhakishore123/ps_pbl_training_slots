@@ -276,6 +276,11 @@ export const adminService = {
     return api.get(`/admin/attendance/mappings/${mappingId}/students`);
   },
 
+  // Roster for a per-date venue_slot (venue_slots model). Slot list reuses getAllVenueSlotsByDate.
+  getAttendanceStudentsByVenueSlot(venueSlotId) {
+    return api.get(`/admin/attendance/venue-slots/${venueSlotId}/students`);
+  },
+
   markAttendance(bookingId, status) {
     return api.post(`/admin/attendance/bookings/${bookingId}`, { status });
   },
