@@ -1,4 +1,5 @@
 import * as facultyModel from './faculty.model.js';
+import * as approvalsService from '../approvals/approvals.services.js';
 import { successResponse, errorResponse } from '../../utils/response.js';
 
 // ── Resolve faculty_id from token ────────────────────────────────────────────
@@ -230,6 +231,69 @@ export const verifyInchargeLabRecord = async (req, res, next) => {
         if (error.message?.includes('Forbidden')) {
             return errorResponse(res, error.message, 403);
         }
+        next(error);
+    }
+};
+
+// ── Lab Record approvals (faculty path — ownership-gated) — Stage 6a-i ──
+// Shared approvals service; faculty path passes the resolved facultyId so the
+// queries/writes are restricted to bookings in this faculty's venues.
+// approverUserId is still req.user.user_id (works for both faculty + admin).
+
+// GET /faculty/approvals/lab-records?status=pending|all
+export const getLabRecordApprovals = async (req, res, next) => {
+    try {
+        const facultyId = await resolveFacultyId(req, res);
+        if (!facultyId) return;
+        const { status } = req.query;
+        const data = await approvalsService.getLabRecords({ status, facultyId });
+        return successResponse(res, 'Lab records retrieved successfully', data);
+    } catch (error) {
+        next(error);
+    }
+};
+
+// GET /faculty/approvals/lab-records/:bookingId
+export const getLabRecordApprovalDetail = async (req, res, next) => {
+    try {
+        const facultyId = await resolveFacultyId(req, res);
+        if (!facultyId) return;
+        const { bookingId } = req.params;
+        const data = await approvalsService.getLabRecordDetail(bookingId, { facultyId });
+        return successResponse(res, 'Lab record detail retrieved successfully', data);
+    } catch (error) {
+        if (error.message?.includes('Forbidden')) return errorResponse(res, error.message, 403);
+        next(error);
+    }
+};
+
+// POST /faculty/approvals/lab-records/:bookingId/approve
+export const approveLabRecord = async (req, res, next) => {
+    try {
+        const facultyId = await resolveFacultyId(req, res);
+        if (!facultyId) return;
+        const { bookingId } = req.params;
+        const approverUserId = req.user?.user_id || req.user?.userId;
+        const data = await approvalsService.approveLabRecord(bookingId, approverUserId, { facultyId });
+        return successResponse(res, 'Lab record approved', data);
+    } catch (error) {
+        if (error.message?.includes('Forbidden')) return errorResponse(res, error.message, 403);
+        next(error);
+    }
+};
+
+// POST /faculty/approvals/lab-records/:bookingId/reject
+export const rejectLabRecord = async (req, res, next) => {
+    try {
+        const facultyId = await resolveFacultyId(req, res);
+        if (!facultyId) return;
+        const { bookingId } = req.params;
+        const { reason } = req.body || {};
+        const approverUserId = req.user?.user_id || req.user?.userId;
+        const data = await approvalsService.rejectLabRecord(bookingId, approverUserId, { facultyId, reason });
+        return successResponse(res, 'Lab record rejected', data);
+    } catch (error) {
+        if (error.message?.includes('Forbidden')) return errorResponse(res, error.message, 403);
         next(error);
     }
 };

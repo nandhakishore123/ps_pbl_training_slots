@@ -70,4 +70,34 @@ export const facultyService = {
   verifyInchargeLabRecord(bookingId) {
     return api.patch(`/faculty/bookings/${bookingId}/verify-incharge`);
   },
+
+  // ── Lab Record approvals (faculty path — ownership-gated) — Stage 6a-i ──
+  getLabRecordApprovals(status = 'pending') {
+    return api.get('/faculty/approvals/lab-records', { params: { status } });
+  },
+
+  getLabRecordApprovalDetail(bookingId) {
+    return api.get(`/faculty/approvals/lab-records/${bookingId}`);
+  },
+
+  approveLabRecord(bookingId) {
+    return api.post(`/faculty/approvals/lab-records/${bookingId}/approve`);
+  },
+
+  rejectLabRecord(bookingId, reason) {
+    return api.post(`/faculty/approvals/lab-records/${bookingId}/reject`, { reason });
+  },
+
+  // ── Activity Points pass/fail view (ownership-gated; PASSED-only confirm) ──
+  getActivityPointsSlotStudents(venueSlotId) {
+    return api.get(`/faculty/activity-points/slots/${venueSlotId}/students`);
+  },
+
+  approveActivityPoint(bookingId) {
+    return api.post(`/faculty/activity-points/bookings/${bookingId}/approve`);
+  },
+
+  disapproveActivityPoint(bookingId) {
+    return api.post(`/faculty/activity-points/bookings/${bookingId}/disapprove`);
+  },
 };

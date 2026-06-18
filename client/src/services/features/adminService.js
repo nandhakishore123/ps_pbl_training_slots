@@ -1,4 +1,5 @@
 import { api } from '../core/apiMethods';
+import { apiClient } from '../core/apiClient';
 
 export const adminService = {
   getDashboardKPI() {
@@ -145,6 +146,18 @@ export const adminService = {
 
   deleteLevel(levelId) {
     return api.delete(`/admin/levels/${levelId}`);
+  },
+
+  // ── Points per level (skill_points) — DISPLAY config (no awarding) ──
+  getSkillPoints(skillId, levelId) {
+    return api.get(`/admin/training-skills/${skillId}/levels/${levelId}/points`);
+  },
+
+  setSkillPoints(skillId, levelId, pointType, pointsAlloted) {
+    return api.put(`/admin/training-skills/${skillId}/levels/${levelId}/points`, {
+      point_type: pointType,
+      points_alloted: pointsAlloted,
+    });
   },
 
   // ── Assessment management (admin-only) — Stage 5c-i ─────────
@@ -308,5 +321,48 @@ export const adminService = {
 
   revokeMalpractice(bookingId) {
     return api.post(`/admin/bookings/${bookingId}/revoke-malpractice`);
+  },
+
+  // ── Lab Record approvals (admin path) — Stage 6a-i ───────────
+  getLabRecordApprovals(status = 'pending') {
+    return api.get('/admin/approvals/lab-records', { params: { status } });
+  },
+
+  getLabRecordApprovalDetail(bookingId) {
+    return api.get(`/admin/approvals/lab-records/${bookingId}`);
+  },
+
+  approveLabRecord(bookingId) {
+    return api.post(`/admin/approvals/lab-records/${bookingId}/approve`);
+  },
+
+  rejectLabRecord(bookingId, reason) {
+    return api.post(`/admin/approvals/lab-records/${bookingId}/reject`, { reason });
+  },
+
+  // ── Activity Points (drill-down + pass/fail confirmation; no awarding) ──
+  getActivityPointsCourses() {
+    return api.get('/admin/activity-points/courses');
+  },
+
+  getActivityPointsSlots(skillId) {
+    return api.get(`/admin/activity-points/courses/${skillId}/slots`);
+  },
+
+  getActivityPointsSlotStudents(venueSlotId) {
+    return api.get(`/admin/activity-points/slots/${venueSlotId}/students`);
+  },
+
+  approveActivityPoint(bookingId) {
+    return api.post(`/admin/activity-points/bookings/${bookingId}/approve`);
+  },
+
+  disapproveActivityPoint(bookingId) {
+    return api.post(`/admin/activity-points/bookings/${bookingId}/disapprove`);
+  },
+
+  // CSV export (admin only) — returns a Blob response for file download.
+  exportActivityPointsCsv(venueSlotId) {
+    return apiClient.get(`/admin/activity-points/slots/${venueSlotId}/export`, { responseType: 'blob' });
   }
 };

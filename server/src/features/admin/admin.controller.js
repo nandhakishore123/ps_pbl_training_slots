@@ -1,4 +1,5 @@
 import * as adminService from './admin.services.js';
+import * as approvalsService from '../approvals/approvals.services.js';
 import { successResponse, createdResponse, errorResponse } from '../../utils/response.js';
 
 export const getDashboardKPI = async (req, res, next) => {
@@ -331,6 +332,30 @@ export const deleteLevel = async (req, res, next) => {
     } catch (error) {
         // Guard rejections carry status 409 + a human message; the global error
         // handler surfaces both so the client can toast the reason.
+        next(error);
+    }
+};
+
+// ── Points per level (skill_points) — admin DISPLAY config ───
+// DISPLAY-ONLY: configures the fixed points students SEE per level. No awarding.
+
+export const getSkillPointsForLevel = async (req, res, next) => {
+    try {
+        const { skillId, levelId } = req.params;
+        const data = await adminService.getSkillPointsForLevel(skillId, levelId);
+        return successResponse(res, 'Level points retrieved successfully', data);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const setSkillPointsForLevel = async (req, res, next) => {
+    try {
+        const { skillId, levelId } = req.params;
+        const { point_type, points_alloted } = req.body;
+        await adminService.setSkillPointsForLevel(skillId, levelId, { point_type, points_alloted });
+        return successResponse(res, 'Level points saved successfully', null);
+    } catch (error) {
         next(error);
     }
 };
@@ -739,6 +764,52 @@ export const bulkBook = async (req, res, next) => {
         const { studentIds, venueSlotId, trainingSkillId, levelId } = req.body;
         const data = await adminService.adminBulkBook({ studentIds, venueSlotId, trainingSkillId, levelId });
         return successResponse(res, 'Bulk booking processed', data);
+    } catch (error) {
+        next(error);
+    }
+};
+
+// ── Lab Record approvals (admin path — no ownership) — Stage 6a-i ────
+// Shared approvals service; admin path passes facultyId = null (open).
+
+export const getLabRecordApprovals = async (req, res, next) => {
+    try {
+        const { status } = req.query;
+        const data = await approvalsService.getLabRecords({ status, facultyId: null });
+        return successResponse(res, 'Lab records retrieved successfully', data);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const getLabRecordApprovalDetail = async (req, res, next) => {
+    try {
+        const { bookingId } = req.params;
+        const data = await approvalsService.getLabRecordDetail(bookingId, { facultyId: null });
+        return successResponse(res, 'Lab record detail retrieved successfully', data);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const approveLabRecord = async (req, res, next) => {
+    try {
+        const { bookingId } = req.params;
+        const approverUserId = req.user?.user_id || req.user?.userId;
+        const data = await approvalsService.approveLabRecord(bookingId, approverUserId, { facultyId: null });
+        return successResponse(res, 'Lab record approved', data);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const rejectLabRecord = async (req, res, next) => {
+    try {
+        const { bookingId } = req.params;
+        const { reason } = req.body || {};
+        const approverUserId = req.user?.user_id || req.user?.userId;
+        const data = await approvalsService.rejectLabRecord(bookingId, approverUserId, { facultyId: null, reason });
+        return successResponse(res, 'Lab record rejected', data);
     } catch (error) {
         next(error);
     }

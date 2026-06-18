@@ -712,6 +712,30 @@ export const deleteLevelGuarded = async (levelId) => {
     return await adminModel.deleteLevel(levelId);
 };
 
+// ── Points per level (skill_points) — admin DISPLAY config ───────────────────
+// DISPLAY-ONLY: sets the fixed points students SEE per level. No points are ever
+// awarded (no points / point_transactions writes anywhere in this path).
+const VALID_POINT_TYPES = ['REWARD_POINTS', 'ACTIVITY_POINTS'];
+
+export const getSkillPointsForLevel = async (skillId, levelId) => {
+    if (!skillId) throw new Error('Training skill ID is required');
+    if (!levelId) throw new Error('Level ID is required');
+    return await adminModel.getSkillPointsForLevel(skillId, levelId);
+};
+
+export const setSkillPointsForLevel = async (skillId, levelId, { point_type, points_alloted }) => {
+    if (!skillId) throw new Error('Training skill ID is required');
+    if (!levelId) throw new Error('Level ID is required');
+    if (!VALID_POINT_TYPES.includes(point_type)) {
+        throw new Error('point_type must be REWARD_POINTS or ACTIVITY_POINTS');
+    }
+    const pts = Number(points_alloted);
+    if (!Number.isFinite(pts) || pts < 0) {
+        throw new Error('points_alloted must be a number >= 0');
+    }
+    return await adminModel.setSkillPointsForLevel(skillId, levelId, point_type, Math.trunc(pts));
+};
+
 // ── Assessment management (admin authoring) — Stage 5c-i ─────
 // ADD-ONLY. Validation: marks > 0, passing ≤ total, duration > 0, count ≥ 0.
 const VALID_ASSESSMENT_TYPES = ['MCQ', 'CODING'];

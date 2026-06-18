@@ -7,12 +7,19 @@ import AssessmentModal from './AssessmentModal'
 // Inline level list for one course/lab. Mirrors VenueDateSlotsModal:
 // load on open, add via the top form, per-row inline edit + guard-delete.
 export default function LevelsModal({ isOpen, onClose, skill }) {
-  const { getLevels, createLevel, updateLevel, deleteLevel } = useData()
+  const { getLevels, createLevel, updateLevel, deleteLevel, getSkillPoints, setSkillPoints } = useData()
   const { showToast } = useApp()
 
   const [levels, setLevels] = useState([])
   const [loading, setLoading] = useState(false)
   const [busy, setBusy] = useState(false)
+
+  // Points per level (skill_points) — DISPLAY config only (no awarding).
+  // pointsMap: { [level_id]: { reward_points, activity_points } }
+  const [pointsMap, setPointsMap] = useState({})
+  const [editingPointsId, setEditingPointsId] = useState(null)
+  const [ptActivity, setPtActivity] = useState('')
+  const [ptReward, setPtReward] = useState('')
 
   // new-level form
   const [levelName, setLevelName] = useState('')
@@ -34,8 +41,43 @@ export default function LevelsModal({ isOpen, onClose, skill }) {
     if (!skill) return
     setLoading(true)
     const data = await getLevels(skill.training_skill_id)
-    setLevels(Array.isArray(data) ? data : [])
+    const list = Array.isArray(data) ? data : []
+    setLevels(list)
+    // Load the per-level display points (skill_points) in parallel.
+    const entries = await Promise.all(
+      list.map((lv) =>
+        getSkillPoints(skill.training_skill_id, lv.level_id).then((p) => [lv.level_id, p])
+      )
+    )
+    setPointsMap(Object.fromEntries(entries))
     setLoading(false)
+  }
+
+  const startEditPoints = (lv) => {
+    const p = pointsMap[lv.level_id] || { reward_points: 0, activity_points: 0 }
+    setEditingPointsId(lv.level_id)
+    setPtActivity(String(p.activity_points ?? 0))
+    setPtReward(String(p.reward_points ?? 0))
+  }
+
+  const cancelEditPoints = () => setEditingPointsId(null)
+
+  const savePoints = async (lv) => {
+    const act = Number(ptActivity)
+    const rew = Number(ptReward)
+    if (!Number.isFinite(act) || act < 0 || !Number.isFinite(rew) || rew < 0) {
+      showToast('Points must be numbers ≥ 0', true)
+      return
+    }
+    setBusy(true)
+    const ok1 = await setSkillPoints(skill.training_skill_id, lv.level_id, 'ACTIVITY_POINTS', Math.trunc(act))
+    const ok2 = await setSkillPoints(skill.training_skill_id, lv.level_id, 'REWARD_POINTS', Math.trunc(rew))
+    setBusy(false)
+    if (ok1 && ok2) {
+      showToast('Level points saved')
+      setPointsMap((m) => ({ ...m, [lv.level_id]: { activity_points: Math.trunc(act), reward_points: Math.trunc(rew) } }))
+      setEditingPointsId(null)
+    }
   }
 
   useEffect(() => {
@@ -169,9 +211,33 @@ export default function LevelsModal({ isOpen, onClose, skill }) {
                           <span className={styles.attemptsTxt}>
                             {lv.max_attempts != null ? `${lv.max_attempts} attempt(s)` : 'Unlimited attempts'}
                           </span>
+                          {/* Points per level (skill_points) — DISPLAY config only */}
+                          {editingPointsId === lv.level_id ? (
+                            <span style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
+                              <label style={{ fontSize: 12, color: '#6b7280', display: 'flex', alignItems: 'center', gap: 4 }}>
+                                Activity
+                                <input type="number" min="0" style={{ width: 80, padding: '4px 8px', border: '1.5px solid #e5e4eb', borderRadius: 8 }}
+                                  value={ptActivity} onChange={(e) => setPtActivity(e.target.value)} />
+                              </label>
+                              <label style={{ fontSize: 12, color: '#6b7280', display: 'flex', alignItems: 'center', gap: 4 }}>
+                                Reward
+                                <input type="number" min="0" style={{ width: 80, padding: '4px 8px', border: '1.5px solid #e5e4eb', borderRadius: 8 }}
+                                  value={ptReward} onChange={(e) => setPtReward(e.target.value)} />
+                              </label>
+                              <button onClick={() => savePoints(lv)} disabled={busy}>Save Points</button>
+                              <button onClick={cancelEditPoints} disabled={busy}>Cancel</button>
+                            </span>
+                          ) : (
+                            <span style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>
+                              Activity Points: <b style={{ color: '#1a1a2e' }}>{pointsMap[lv.level_id]?.activity_points ?? 0}</b>
+                              {'  ·  '}
+                              Reward Points: <b style={{ color: '#1a1a2e' }}>{pointsMap[lv.level_id]?.reward_points ?? 0}</b>
+                            </span>
+                          )}
                         </div>
                         <div className={styles.rowActions}>
                           <button onClick={() => startEdit(lv)} disabled={busy}>Edit</button>
+                          <button onClick={() => startEditPoints(lv)} disabled={busy}>Set Points</button>
                           <button onClick={() => openAssessment(lv)} disabled={busy}>Manage Assessment</button>
                           <button className={styles.delBtn} onClick={() => handleDelete(lv)} disabled={busy}>Delete</button>
                         </div>

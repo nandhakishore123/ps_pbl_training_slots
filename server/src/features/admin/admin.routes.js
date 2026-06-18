@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import * as adminController from './admin.controller.js';
+import * as apController from '../activitypoints/activitypoints.controller.js';
 import { authMiddleware } from '../../middleware/auth.middleware.js';
 import { requireRole } from '../../middleware/role.middleware.js';
 
@@ -53,6 +54,11 @@ router.get('/training-skills/:skillId/levels', requireRole(3), adminController.g
 router.post('/training-skills/:skillId/levels', requireRole(3), adminController.createLevel);
 router.put('/levels/:levelId', requireRole(3), adminController.updateLevel);
 router.delete('/levels/:levelId', requireRole(3), adminController.deleteLevel);
+
+// ── Points per level (skill_points) — admin DISPLAY config (role_id 3) ──
+// DISPLAY-ONLY: set the fixed points students see per level. NO points awarded.
+router.get('/training-skills/:skillId/levels/:levelId/points', requireRole(3), adminController.getSkillPointsForLevel);
+router.put('/training-skills/:skillId/levels/:levelId/points', requireRole(3), adminController.setSkillPointsForLevel);
 
 // ── Assessment management (Admin only — role_id 3) — Stage 5c-i ─────
 router.get('/training-skills/:skillId/levels/:levelId/assessments', requireRole(3), adminController.getAssessmentsForLevel);
@@ -112,5 +118,22 @@ router.post('/bookings/bulk', requireRole(3), adminController.bulkBook);
 router.patch('/bookings/:bookingId/result', requireRole(3), adminController.overrideResult);
 router.post('/bookings/:bookingId/malpractice', requireRole(3), adminController.markMalpractice);
 router.post('/bookings/:bookingId/revoke-malpractice', requireRole(3), adminController.revokeMalpractice);
+
+// ── Lab Record approvals (Admin only — role_id 3, no ownership) — Stage 6a-i ──
+router.get('/approvals/lab-records', requireRole(3), adminController.getLabRecordApprovals);
+router.get('/approvals/lab-records/:bookingId', requireRole(3), adminController.getLabRecordApprovalDetail);
+router.post('/approvals/lab-records/:bookingId/approve', requireRole(3), adminController.approveLabRecord);
+router.post('/approvals/lab-records/:bookingId/reject', requireRole(3), adminController.rejectLabRecord);
+
+// ── Activity-Points drill-down + pass/fail confirmation (Admin only) ──
+// Courses → slot timings → pass/fail list → approve/disapprove (passed OR
+// failed) → CSV export. "Approve" is a confirmation flag for the points export
+// handoff — NO points are awarded anywhere.
+router.get('/activity-points/courses', requireRole(3), apController.adminGetCourses);
+router.get('/activity-points/courses/:skillId/slots', requireRole(3), apController.adminGetSlots);
+router.get('/activity-points/slots/:venueSlotId/students', requireRole(3), apController.adminGetSlotStudents);
+router.post('/activity-points/bookings/:bookingId/approve', requireRole(3), apController.adminApprove);
+router.post('/activity-points/bookings/:bookingId/disapprove', requireRole(3), apController.adminDisapprove);
+router.get('/activity-points/slots/:venueSlotId/export', requireRole(3), apController.adminExportCsv);
 
 export default router;

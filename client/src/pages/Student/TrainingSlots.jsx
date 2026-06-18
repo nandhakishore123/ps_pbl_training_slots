@@ -1376,11 +1376,18 @@ function PSLevelSelect({ course, rawBookings = [], onBack, onSelectLevel }) {
                 )}
               </div>
 
-              {/* Points (skill_points) & Attempts */}
+              {/* Points (skill_points) & Attempts — once completed, show
+                  "Completed" INSTEAD of the points value (no awarded status). */}
               <div className="ptl-points-row" style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                <span className="ptl-point-badge reward">
-                  Reward Points: <span className="ptl-point-val">{rewardPoints}</span>
-                </span>
+                {isFinished ? (
+                  <span className="ptl-point-badge" style={{ background: 'rgba(16,185,129,0.1)', color: 'var(--green)', borderColor: 'rgba(16,185,129,0.3)', fontWeight: 700 }}>
+                    ✓ Completed
+                  </span>
+                ) : (
+                  <span className="ptl-point-badge reward">
+                    Reward Points: <span className="ptl-point-val">{rewardPoints}</span>
+                  </span>
+                )}
                 <span className="ptl-point-badge" style={{ background: 'rgba(108,71,255,0.07)', color: 'var(--purple)', borderColor: 'rgba(108,71,255,0.22)' }}>
                   Attempts: <span className="ptl-point-val" style={{ fontWeight: 800 }}>{attemptsCount}</span>
                 </span>
@@ -2204,11 +2211,18 @@ function PBLLevelSelect({ lab, rawBookings = [], onBack, onSelectActivity }) {
                 )}
               </div>
 
-              {/* Points (skill_points) & Attempts */}
+              {/* Points (skill_points) & Attempts — once completed, show
+                  "Completed" INSTEAD of the points value (no awarded status). */}
               <div className="ptl-points-row" style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                <span className="ptl-point-badge activity">
-                  Activity Points: <span className="ptl-point-val">{activityPoints}</span>
-                </span>
+                {isFinished ? (
+                  <span className="ptl-point-badge" style={{ background: 'rgba(16,185,129,0.1)', color: 'var(--green)', borderColor: 'rgba(16,185,129,0.3)', fontWeight: 700 }}>
+                    ✓ Completed
+                  </span>
+                ) : (
+                  <span className="ptl-point-badge activity">
+                    Activity Points: <span className="ptl-point-val">{activityPoints}</span>
+                  </span>
+                )}
                 <span className="ptl-point-badge" style={{ background: 'rgba(108,71,255,0.07)', color: 'var(--purple)', borderColor: 'rgba(108,71,255,0.22)' }}>
                   Attempts: <span className="ptl-point-val" style={{ fontWeight: 800 }}>{attemptsCount}</span>
                 </span>

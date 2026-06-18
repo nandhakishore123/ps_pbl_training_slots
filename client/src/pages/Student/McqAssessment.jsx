@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { trainingService } from "../../services/features/trainingService";
+import LabRecordModal from "./LabRecordModal";
 
 function useIsNarrow(maxWidthPx = 640) {
   const [isNarrow, setIsNarrow] = useState(() => {
@@ -170,6 +171,15 @@ export default function MCQAssessment() {
   const [autoSubmit, setAutoSubmit] = useState(false);
   const [result, setResult] = useState(null);
 
+  // ── Lab record auto-open (PBL only) ─────────────────────────
+  // skill_type + survey_submitted are captured from the booking row in the
+  // slot-gate fetch below. The lab record applies to PBL, so the auto-open is
+  // gated on skill_type === 'PBL'.
+  const [skillType, setSkillType] = useState(null);          // 'PS' | 'PBL'
+  const [surveySubmitted, setSurveySubmitted] = useState(false);
+  const [showLabRecord, setShowLabRecord] = useState(false);
+  const [labRecordHandled, setLabRecordHandled] = useState(false); // submitted or skipped
+
   const timerRef = useRef(null);
   const isFinishingRef = useRef(false); // true while submitting; suppresses our own exitFullscreen() from counting as a violation
 
@@ -217,6 +227,9 @@ export default function MCQAssessment() {
         const match = list.find((b) => Number(b.booking_id) === Number(bookingId));
         if (ignore) return;
         if (match) {
+          // Capture skill_type (PBL gate) + whether a lab record already exists.
+          setSkillType(match.skill_type || null);
+          setSurveySubmitted(Number(match.survey_submitted) === 1);
           setSlotGate({
             startTime: match.start_time || startTime || null,
             endTime: match.end_time || endTime || null,
@@ -233,6 +246,20 @@ export default function MCQAssessment() {
     })();
     return () => { ignore = true; };
   }, [bookingId, startTime, endTime, bookingDate]);
+
+  // ── Auto-open the lab record once the score is shown (PBL only) ──
+  // The student sees their score first; after a short beat the lab-record form
+  // opens so it isn't forgotten. Fail-safe skips: missing bookingId (direct
+  // navigation), malpractice auto-submit, non-PBL skills, or already submitted.
+  useEffect(() => {
+    if (phase !== "done") return;
+    if (!bookingId) return;                       // direct nav → no booking → skip
+    if (autoSubmit) return;                        // malpractice auto-submit → skip
+    if (skillType !== "PBL") return;               // PBL-only gate
+    if (surveySubmitted || labRecordHandled) return;
+    const t = setTimeout(() => setShowLabRecord(true), 800); // let the score land first
+    return () => clearTimeout(t);
+  }, [phase, bookingId, autoSubmit, skillType, surveySubmitted, labRecordHandled]);
 
   // ── Tick IST clock while on the intro screen so the gate opens live ──
   useEffect(() => {
@@ -763,6 +790,18 @@ export default function MCQAssessment() {
                   </button>
                 </div>
               </>
+            )}
+
+            {/* Auto-opened lab record (PBL only) — overlays the score screen. */}
+            {showLabRecord && bookingId && (
+              <LabRecordModal
+                bookingId={bookingId}
+                onClose={(submitted) => {
+                  setShowLabRecord(false);
+                  setLabRecordHandled(true);
+                  if (submitted) setSurveySubmitted(true);
+                }}
+              />
             )}
           </>
         )}
