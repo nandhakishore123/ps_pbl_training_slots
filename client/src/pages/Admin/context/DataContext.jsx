@@ -342,6 +342,19 @@ export function DataProvider({ children }) {
     }
   }
 
+  // ── Course bookable-status (read-only diagnostic) — Stage 7 ─
+  // Fetched on demand by the Settings/Courses page. Returns
+  // { items: [...per-skill flags...], booking_open, opens_at }.
+  const getTrainingSkillsStatus = async () => {
+    try {
+      const res = await adminService.getTrainingSkillsStatus()
+      return res.data || { items: [], booking_open: false, opens_at: '' }
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to load course bookable status', true)
+      return { items: [], booking_open: false, opens_at: '' }
+    }
+  }
+
   // ── Reports & Analytics (read-only) — Stage 6b ──────────────
   // Fetched on demand by the Reports page (not held in global state).
   const getReportsSummary = async () => {
@@ -911,6 +924,7 @@ export function DataProvider({ children }) {
         updateStudent,
         setStudentActive,
         // reports & analytics (Stage 6b, read-only)
+        getTrainingSkillsStatus,
         getReportsSummary,
         getReportsBySkill,
         getReportsByCourse,

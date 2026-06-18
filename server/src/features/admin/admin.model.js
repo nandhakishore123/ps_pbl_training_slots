@@ -505,6 +505,56 @@ export const listAllTrainingSkills = async () => {
   return rows;
 };
 
+// READ-ONLY bookable-status aggregation (Stage 7 diagnostic). One pass over
+// training_skills with correlated EXISTS subqueries (TiDB-safe equality joins),
+// mirroring the real student bookable query (training.model.js listSkillSlots).
+// Does NOT modify or reuse listAllTrainingSkills. :now/:nowTime are IST now
+// (passed in from the service via the SAME getIstNow helper the student path uses).
+export const getTrainingSkillsBookableStatus = async (nowDate, nowTime) => {
+  const [rows] = await db.execute(
+    `SELECT
+        ts.training_skill_id,
+        (ts.is_active = 1) AS skill_active,
+        EXISTS (
+          SELECT 1 FROM skill_levels sl
+          WHERE sl.training_skill_id = ts.training_skill_id
+        ) AS has_level,
+        EXISTS (
+          SELECT 1 FROM venue_alloted_skills vas
+          JOIN venues v ON v.venue_id = vas.venue_id
+          WHERE vas.training_skill_id = ts.training_skill_id
+            AND vas.is_active = 1
+            AND v.is_active = 1
+        ) AS has_active_allotment,
+        EXISTS (
+          SELECT 1 FROM venue_slots vs
+          JOIN venue_mapping vm ON vm.mapping_id = vs.mapping_id
+          JOIN venues v ON v.venue_id = vm.venue_id
+          JOIN venue_alloted_skills vas ON vas.venue_id = v.venue_id
+                                       AND vas.training_skill_id = ts.training_skill_id
+          WHERE vs.is_active = 1
+            AND v.is_active = 1
+            AND vas.is_active = 1
+        ) AS has_active_slot,
+        EXISTS (
+          SELECT 1 FROM venue_slots vs
+          JOIN venue_mapping vm ON vm.mapping_id = vs.mapping_id
+          JOIN venues v ON v.venue_id = vm.venue_id
+          JOIN venue_alloted_skills vas ON vas.venue_id = v.venue_id
+                                       AND vas.training_skill_id = ts.training_skill_id
+          WHERE vs.is_active = 1
+            AND v.is_active = 1
+            AND vas.is_active = 1
+            AND ( vs.slot_date > ? OR (vs.slot_date = ? AND vs.start_time > ?) )
+            AND (COALESCE(v.capacity, 0) - COALESCE(vs.current_bookings, 0)) > 0
+        ) AS has_future_bookable_slot
+     FROM training_skills ts
+     ORDER BY ts.training_skill_id ASC`,
+    [nowDate, nowDate, nowTime]
+  );
+  return rows ?? [];
+};
+
 export const listSkillCategories = async () => {
   const [rows] = await db.execute(
     `SELECT category_id, category_name FROM training_skill_category ORDER BY category_name ASC`
