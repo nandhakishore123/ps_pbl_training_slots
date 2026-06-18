@@ -147,6 +147,18 @@ export const adminService = {
     return api.delete(`/admin/levels/${levelId}`);
   },
 
+  // ── Points per level (skill_points) — DISPLAY config (no awarding) ──
+  getSkillPoints(skillId, levelId) {
+    return api.get(`/admin/training-skills/${skillId}/levels/${levelId}/points`);
+  },
+
+  setSkillPoints(skillId, levelId, pointType, pointsAlloted) {
+    return api.put(`/admin/training-skills/${skillId}/levels/${levelId}/points`, {
+      point_type: pointType,
+      points_alloted: pointsAlloted,
+    });
+  },
+
   // ── Assessment management (admin-only) — Stage 5c-i ─────────
   getAssessments(skillId, levelId) {
     return api.get(`/admin/training-skills/${skillId}/levels/${levelId}/assessments`);

@@ -613,6 +613,52 @@ export const deleteLevel = async (levelId) => {
   return result.affectedRows ?? 0;
 };
 
+// ── Points per level (skill_points) — admin DISPLAY config ───────────────────
+// DISPLAY-ONLY config: the fixed points_alloted shown to students per level.
+// This portal NEVER awards points — there are NO writes to points /
+// point_transactions here, only to skill_points. Lookup key is
+// (training_skill_id, level_id, point_type). skill_points has NO unique on that
+// triple, so the upsert is select-then-update/insert; each is a single-table
+// write by key (TiDB-safe).
+export const getSkillPointsForLevel = async (trainingSkillId, levelId) => {
+  const [rows] = await db.execute(
+    `SELECT point_type, points_alloted
+       FROM skill_points
+      WHERE training_skill_id = ? AND level_id = ?`,
+    [Number(trainingSkillId), Number(levelId)]
+  );
+  // Always return both types (0 when unset) so the UI has a stable shape.
+  const out = { reward_points: 0, activity_points: 0 };
+  for (const r of rows ?? []) {
+    if (r.point_type === 'REWARD_POINTS') out.reward_points = Number(r.points_alloted ?? 0);
+    if (r.point_type === 'ACTIVITY_POINTS') out.activity_points = Number(r.points_alloted ?? 0);
+  }
+  return out;
+};
+
+export const setSkillPointsForLevel = async (trainingSkillId, levelId, pointType, pointsAlloted) => {
+  // Find the existing (skill, level, type) row, if any (keyed select).
+  const [rows] = await db.execute(
+    `SELECT skill_point_id FROM skill_points
+      WHERE training_skill_id = ? AND level_id = ? AND point_type = ?
+      LIMIT 1`,
+    [Number(trainingSkillId), Number(levelId), pointType]
+  );
+  if (rows && rows.length > 0) {
+    await db.execute(
+      `UPDATE skill_points SET points_alloted = ? WHERE skill_point_id = ?`,
+      [Number(pointsAlloted), Number(rows[0].skill_point_id)]
+    );
+    return rows[0].skill_point_id;
+  }
+  const [result] = await db.execute(
+    `INSERT INTO skill_points (training_skill_id, level_id, point_type, points_alloted)
+     VALUES (?, ?, ?, ?)`,
+    [Number(trainingSkillId), Number(levelId), pointType, Number(pointsAlloted)]
+  );
+  return result.insertId;
+};
+
 // ── Assessment management (admin authoring) — Stage 5c-i ─────
 // ADD-ONLY admin CRUD. The student read path (getAssessmentForLevel /
 // getAssessmentMcqTypeConfig in training.model.js) is NOT touched — those still

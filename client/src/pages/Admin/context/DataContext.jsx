@@ -512,6 +512,27 @@ export function DataProvider({ children }) {
     }
   }
 
+  // ── Points per level (skill_points) — DISPLAY config (no awarding) ──
+  const getSkillPoints = async (skillId, levelId) => {
+    try {
+      const res = await adminService.getSkillPoints(skillId, levelId)
+      return res.data || { reward_points: 0, activity_points: 0 }
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to load level points', true)
+      return { reward_points: 0, activity_points: 0 }
+    }
+  }
+
+  const setSkillPoints = async (skillId, levelId, pointType, pointsAlloted) => {
+    try {
+      await adminService.setSkillPoints(skillId, levelId, pointType, pointsAlloted)
+      return true
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to save level points', true)
+      return false
+    }
+  }
+
   // ── Assessment management — Stage 5c-i ──────────────────────
   // Loaded on demand per skill+level / per assessment (not in global state).
   const getAssessments = async (skillId, levelId) => {
@@ -840,6 +861,9 @@ export function DataProvider({ children }) {
         createLevel,
         updateLevel,
         deleteLevel,
+        // points per level (skill_points) — display config
+        getSkillPoints,
+        setSkillPoints,
         // assessment management (Stage 5c-i)
         getAssessments,
         createAssessment,

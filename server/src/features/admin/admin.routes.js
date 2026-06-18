@@ -54,6 +54,11 @@ router.post('/training-skills/:skillId/levels', requireRole(3), adminController.
 router.put('/levels/:levelId', requireRole(3), adminController.updateLevel);
 router.delete('/levels/:levelId', requireRole(3), adminController.deleteLevel);
 
+// ── Points per level (skill_points) — admin DISPLAY config (role_id 3) ──
+// DISPLAY-ONLY: set the fixed points students see per level. NO points awarded.
+router.get('/training-skills/:skillId/levels/:levelId/points', requireRole(3), adminController.getSkillPointsForLevel);
+router.put('/training-skills/:skillId/levels/:levelId/points', requireRole(3), adminController.setSkillPointsForLevel);
+
 // ── Assessment management (Admin only — role_id 3) — Stage 5c-i ─────
 router.get('/training-skills/:skillId/levels/:levelId/assessments', requireRole(3), adminController.getAssessmentsForLevel);
 router.post('/training-skills/:skillId/levels/:levelId/assessments', requireRole(3), adminController.createAssessment);

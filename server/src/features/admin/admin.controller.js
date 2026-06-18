@@ -336,6 +336,30 @@ export const deleteLevel = async (req, res, next) => {
     }
 };
 
+// ── Points per level (skill_points) — admin DISPLAY config ───
+// DISPLAY-ONLY: configures the fixed points students SEE per level. No awarding.
+
+export const getSkillPointsForLevel = async (req, res, next) => {
+    try {
+        const { skillId, levelId } = req.params;
+        const data = await adminService.getSkillPointsForLevel(skillId, levelId);
+        return successResponse(res, 'Level points retrieved successfully', data);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const setSkillPointsForLevel = async (req, res, next) => {
+    try {
+        const { skillId, levelId } = req.params;
+        const { point_type, points_alloted } = req.body;
+        await adminService.setSkillPointsForLevel(skillId, levelId, { point_type, points_alloted });
+        return successResponse(res, 'Level points saved successfully', null);
+    } catch (error) {
+        next(error);
+    }
+};
+
 // ── Assessment management (admin authoring) — Stage 5c-i ─────
 
 export const getAssessmentsForLevel = async (req, res, next) => {
