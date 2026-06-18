@@ -162,6 +162,30 @@ export const testConnection = async () => {
             console.error(chalk.red('  ✗ Migration/Check for venue_mapping_transfer_log failed:'), migErr.message);
         }
 
+        // ── Activity-Points confirmation flag (decoupled, additive) ──
+        // Per-booking confirmation that a student's result is confirmed for the
+        // Activity-Points export handoff. NO points are awarded — this is just a
+        // flag. Fully decoupled from the seat/booking engine (no FK, the engine
+        // never reads/writes it). Single-table writes keyed by booking_id.
+        try {
+            console.log(chalk.yellow('  Checking activity_point_confirmations table...'));
+            await connection.execute(`
+                CREATE TABLE IF NOT EXISTS activity_point_confirmations (
+                  booking_id bigint NOT NULL,
+                  status enum('PENDING','APPROVED','REJECTED') COLLATE utf8mb4_0900_ai_ci DEFAULT 'PENDING',
+                  confirmed_by bigint DEFAULT NULL,
+                  confirmed_at timestamp NULL DEFAULT NULL,
+                  created_at timestamp DEFAULT CURRENT_TIMESTAMP,
+                  updated_at timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                  PRIMARY KEY (booking_id),
+                  KEY idx_apc_status (status)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+            `);
+            console.log(chalk.green('  ✓ activity_point_confirmations schema is ready.'));
+        } catch (migErr) {
+            console.error(chalk.red('  ✗ Migration/Check for activity_point_confirmations failed:'), migErr.message);
+        }
+
         connection.release();
         return true;
     } catch (error) {

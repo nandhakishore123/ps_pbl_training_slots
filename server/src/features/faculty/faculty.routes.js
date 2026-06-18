@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import * as facultyController from './faculty.controller.js';
+import * as apController from '../activitypoints/activitypoints.controller.js';
 import { authMiddleware } from '../../middleware/auth.middleware.js';
 import { requireRole } from '../../middleware/role.middleware.js';
 
@@ -34,6 +35,14 @@ router.get('/approvals/lab-records', facultyController.getLabRecordApprovals);
 router.get('/approvals/lab-records/:bookingId', facultyController.getLabRecordApprovalDetail);
 router.post('/approvals/lab-records/:bookingId/approve', facultyController.approveLabRecord);
 router.post('/approvals/lab-records/:bookingId/reject', facultyController.rejectLabRecord);
+
+// ── Activity-Points pass/fail view (faculty — ownership-gated) ──
+// Same pass/fail list for their own venue slots. Approve/disapprove is allowed
+// only for students who PASSED (service enforces 403 on non-passed). NO CSV
+// export for faculty. NO points awarded.
+router.get('/activity-points/slots/:venueSlotId/students', apController.facultyGetSlotStudents);
+router.post('/activity-points/bookings/:bookingId/approve', apController.facultyApprove);
+router.post('/activity-points/bookings/:bookingId/disapprove', apController.facultyDisapprove);
 
 // ── Transfer Requests ─────────────────────────────────────────────────
 router.get('/transfer-requests', facultyController.getMyTransferRequests);

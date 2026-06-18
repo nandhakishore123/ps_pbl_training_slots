@@ -18,6 +18,7 @@ import TrainingSlots from '../pages/Student/TrainingSlots.jsx';
 //admin
 import AdminDashboard from '../pages/Admin/Dashboard/Dashboard.jsx'
 import Approvals from '../pages/Admin/Approvals/Approvals.jsx'
+import ActivityPoints from '../pages/Admin/ActivityPoints/ActivityPoints.jsx'
 import Reports from '../pages/Admin/Reports/Reports.jsx'
 import Settings from '../pages/Admin/Settings/Settings.jsx'
 import Notifications from '../pages/Admin/Notifications/Notifications.jsx'
@@ -35,6 +36,7 @@ import FacultyDashboard from '../pages/Faculty/FacultyDashboard.jsx';
 import RequestTransfer from '../pages/Faculty/RequestTransfer.jsx';
 import MyVenues from '../pages/Faculty/MyVenues.jsx';
 import FacultyApprovals from '../pages/Faculty/FacultyApprovals.jsx';
+import FacultyActivityPoints from '../pages/Faculty/FacultyActivityPoints.jsx';
 
 
 function useBootstrapAuth() {
@@ -141,6 +143,7 @@ function AppNavigator() {
                 {/* Admin routes */}
                 <Route path="/admin-dashboard" element={<RequireAuth><RequireRole allowedRoles={[3]}><AdminProviders><AdminDashboard/></AdminProviders></RequireRole></RequireAuth>} />
                 <Route path="/approvals" element={<RequireAuth><RequireRole allowedRoles={[3]}><AdminProviders><Approvals/></AdminProviders></RequireRole></RequireAuth>} />
+                <Route path="/activity-points" element={<RequireAuth><RequireRole allowedRoles={[3]}><AdminProviders><ActivityPoints/></AdminProviders></RequireRole></RequireAuth>} />
                 <Route path="/reports" element={<RequireAuth><RequireRole allowedRoles={[3]}><AdminProviders><Reports/></AdminProviders></RequireRole></RequireAuth>} />
                 <Route path="/settings" element={<RequireAuth><RequireRole allowedRoles={[3]}><AdminProviders><Settings/></AdminProviders></RequireRole></RequireAuth>} />
                 <Route path="/notification" element={<RequireAuth><RequireRole allowedRoles={[3]}><AdminProviders><Notifications/></AdminProviders></RequireRole></RequireAuth>} />
@@ -156,6 +159,7 @@ function AppNavigator() {
                 <Route path="/my-venues" element={<RequireAuth><RequireRole allowedRoles={[2]}><MyVenues/></RequireRole></RequireAuth>} />
                 <Route path="/request-transfer" element={<RequireAuth><RequireRole allowedRoles={[2]}><RequestTransfer/></RequireRole></RequireAuth>} />
                 <Route path="/faculty-approvals" element={<RequireAuth><RequireRole allowedRoles={[2]}><FacultyApprovals/></RequireRole></RequireAuth>} />
+                <Route path="/faculty-activity-points" element={<RequireAuth><RequireRole allowedRoles={[2]}><FacultyActivityPoints/></RequireRole></RequireAuth>} />
 
 
                 <Route path="/not-found" element={<FileNotFound/>}/>

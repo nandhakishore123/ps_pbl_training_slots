@@ -426,6 +426,75 @@ export function DataProvider({ children }) {
     }
   }
 
+  // ── Activity Points drill-down + confirmation (no awarding) ──
+  const getActivityPointsCourses = async () => {
+    try {
+      const res = await adminService.getActivityPointsCourses()
+      return Array.isArray(res.data) ? res.data : []
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to load courses', true)
+      return []
+    }
+  }
+
+  const getActivityPointsSlots = async (skillId) => {
+    try {
+      const res = await adminService.getActivityPointsSlots(skillId)
+      return Array.isArray(res.data) ? res.data : []
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to load slot timings', true)
+      return []
+    }
+  }
+
+  const getActivityPointsSlotStudents = async (venueSlotId) => {
+    try {
+      const res = await adminService.getActivityPointsSlotStudents(venueSlotId)
+      return Array.isArray(res.data) ? res.data : []
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to load student list', true)
+      return []
+    }
+  }
+
+  const approveActivityPoint = async (bookingId) => {
+    try {
+      await adminService.approveActivityPoint(bookingId)
+      return true
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to confirm result', true)
+      return false
+    }
+  }
+
+  const disapproveActivityPoint = async (bookingId) => {
+    try {
+      await adminService.disapproveActivityPoint(bookingId)
+      return true
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to update confirmation', true)
+      return false
+    }
+  }
+
+  const exportActivityPointsCsv = async (venueSlotId) => {
+    try {
+      const res = await adminService.exportActivityPointsCsv(venueSlotId)
+      const url = window.URL.createObjectURL(new Blob([res.data], { type: 'text/csv' }))
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `activity-points-slot-${venueSlotId}.csv`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      window.URL.revokeObjectURL(url)
+      return true
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to export CSV', true)
+      return false
+    }
+  }
+
   // ── Student management — Stage 5d ───────────────────────────
   const refreshStudents = async () => {
     await fetchStudents()
@@ -864,6 +933,13 @@ export function DataProvider({ children }) {
         // points per level (skill_points) — display config
         getSkillPoints,
         setSkillPoints,
+        // activity points drill-down + confirmation (no awarding)
+        getActivityPointsCourses,
+        getActivityPointsSlots,
+        getActivityPointsSlotStudents,
+        approveActivityPoint,
+        disapproveActivityPoint,
+        exportActivityPointsCsv,
         // assessment management (Stage 5c-i)
         getAssessments,
         createAssessment,

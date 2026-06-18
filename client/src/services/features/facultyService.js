@@ -87,4 +87,17 @@ export const facultyService = {
   rejectLabRecord(bookingId, reason) {
     return api.post(`/faculty/approvals/lab-records/${bookingId}/reject`, { reason });
   },
+
+  // ── Activity Points pass/fail view (ownership-gated; PASSED-only confirm) ──
+  getActivityPointsSlotStudents(venueSlotId) {
+    return api.get(`/faculty/activity-points/slots/${venueSlotId}/students`);
+  },
+
+  approveActivityPoint(bookingId) {
+    return api.post(`/faculty/activity-points/bookings/${bookingId}/approve`);
+  },
+
+  disapproveActivityPoint(bookingId) {
+    return api.post(`/faculty/activity-points/bookings/${bookingId}/disapprove`);
+  },
 };

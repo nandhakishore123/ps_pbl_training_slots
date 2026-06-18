@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import * as adminController from './admin.controller.js';
+import * as apController from '../activitypoints/activitypoints.controller.js';
 import { authMiddleware } from '../../middleware/auth.middleware.js';
 import { requireRole } from '../../middleware/role.middleware.js';
 
@@ -123,5 +124,16 @@ router.get('/approvals/lab-records', requireRole(3), adminController.getLabRecor
 router.get('/approvals/lab-records/:bookingId', requireRole(3), adminController.getLabRecordApprovalDetail);
 router.post('/approvals/lab-records/:bookingId/approve', requireRole(3), adminController.approveLabRecord);
 router.post('/approvals/lab-records/:bookingId/reject', requireRole(3), adminController.rejectLabRecord);
+
+// ── Activity-Points drill-down + pass/fail confirmation (Admin only) ──
+// Courses → slot timings → pass/fail list → approve/disapprove (passed OR
+// failed) → CSV export. "Approve" is a confirmation flag for the points export
+// handoff — NO points are awarded anywhere.
+router.get('/activity-points/courses', requireRole(3), apController.adminGetCourses);
+router.get('/activity-points/courses/:skillId/slots', requireRole(3), apController.adminGetSlots);
+router.get('/activity-points/slots/:venueSlotId/students', requireRole(3), apController.adminGetSlotStudents);
+router.post('/activity-points/bookings/:bookingId/approve', requireRole(3), apController.adminApprove);
+router.post('/activity-points/bookings/:bookingId/disapprove', requireRole(3), apController.adminDisapprove);
+router.get('/activity-points/slots/:venueSlotId/export', requireRole(3), apController.adminExportCsv);
 
 export default router;
