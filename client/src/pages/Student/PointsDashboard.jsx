@@ -333,6 +333,10 @@ const DEPT_NAMES = {
   IT:'Information Technology', MECH:'Mechanical Engg', MTRS:'Mechatronics',
 }
 
+// BASE_API: Google Apps Script leaderboard (by ?dept=) — used ONLY to read the
+// logged-in student's own balance row (filtered to their reg_num). No others shown.
+const BASE_API = 'https://script.google.com/macros/s/AKfycbwUdK6oQZwo6SC-1eNUtQIyrNYp-RcKHSy-wBy-5RDonSuQaNDs_hdNfeXxpFnxsAx5/exec'
+
 // ── getCatGroupStyle ──────────────────────────────────────────
 function getCatGroupStyle(cat) {
   const c = (cat||'').toUpperCase()
@@ -514,22 +518,72 @@ function highlight(text, search) {
 }
 
 // ── RewardPoints: inline details via PRANESH_BASE Gradio API ────
-function RewardPoints({ user }) {
-  const [status, setStatus] = useState('loading') // loading | done | error
-  const [raw,    setRaw]    = useState('')
-  const [errMsg, setErrMsg] = useState('')
+// Student Reward Points — department-locked leaderboard. Dept is detected from
+// the logged-in student's EMAIL (no dept dropdown). Year filter (1st–4th) +
+// search (faded reference placeholder). Per-student Details modal via SSE.
+// Full reward-points leaderboard (all departments) — same experience as the
+// admin Reward Points page: department dropdown + year filter + search + ranked
+// table + per-student Details modal (SSE). No detection / locking / own-only.
+function RewardPoints() {
+  const [dept, setDept]       = useState('BT')
+  const [year, setYear]       = useState('ALL')
+  const [search, setSearch]   = useState('')
+  const [rpData, setRpData]   = useState([])
+  const [rpStatus, setRpStatus] = useState('loading') // loading | loaded | error
 
-  const fetchData = useCallback(async (r) => {
+  // details modal state
+  const [dOpen, setDOpen]       = useState(false)
+  const [dName, setDName]       = useState('')
+  const [dRoll, setDRoll]       = useState('')
+  const [dStatus, setDStatus]   = useState('loading') // loading | empty | nocourse | error | data
+  const [dCourses, setDCourses] = useState([])
+  const [dTotal, setDTotal]     = useState(0)
+  const [dErr, setDErr]         = useState('')
+
+  const reqRef = useRef(0)
+  const esRef  = useRef(null)
+
+  // Department leaderboard fetch (reused loadRP pattern, by ?dept=).
+  const loadRP = useCallback(async (d) => {
+    const id = ++reqRef.current
+    setRpStatus('loading')
+    try {
+      const res = await fetch(`${BASE_API}?dept=${encodeURIComponent(d)}`)
+      const json = await res.json()
+      if (id !== reqRef.current) return
+      setRpData(json.data || [])
+      setRpStatus('loaded')
+    } catch {
+      if (id !== reqRef.current) return
+      setRpStatus('error')
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!dept) return
+    loadRP(dept)
+  }, [dept, loadRP])
+
+  // lock background scroll while the details modal is open
+  useEffect(() => {
+    document.body.style.overflow = dOpen ? 'hidden' : ''
+    return () => { document.body.style.overflow = '' }
+  }, [dOpen])
+
+  // Per-student course-completion details (SSE) — same pipeline as before.
+  const fetchDetails = useCallback(async (roll) => {
     try {
       const submitRes = await fetch(`${PRANESH_BASE}/gradio_api/call/search_student`, {
         method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ data:[r] }),
+        body: JSON.stringify({ data:[roll] }),
       })
       if (!submitRes.ok) throw new Error(`HTTP ${submitRes.status}`)
       const { event_id } = await submitRes.json()
       if (!event_id) throw new Error('No event_id')
       const rawText = await new Promise((resolve, reject) => {
+        if (esRef.current) { try { esRef.current.close() } catch {} }
         const src   = new EventSource(`${PRANESH_BASE}/gradio_api/call/search_student/${event_id}`)
+        esRef.current = src
         const timer = setTimeout(() => { src.close(); reject(new Error('Timeout')) }, 30000)
         src.addEventListener('complete', (e) => {
           clearTimeout(timer); src.close()
@@ -546,78 +600,159 @@ function RewardPoints({ user }) {
         }
         src.onerror = () => { clearTimeout(timer); src.close(); reject(new Error('Stream error')) }
       })
-      if (!rawText || rawText.trim().length < 10) {
-        setErrMsg(`No data found for ${r}.`); setStatus('error')
-      } else {
-        setRaw(rawText); setStatus('done')
+      if (!rawText || rawText.toLowerCase().includes('not found') || rawText.trim().length < 10) {
+        setDStatus('empty'); return
       }
-    } catch(err) {
-      setErrMsg(err.message||'Failed to fetch.'); setStatus('error')
+      const { courses, totalPoints } = parseCourseDetails(rawText)
+      if (!courses.length) { setDStatus('nocourse'); return }
+      setDCourses(courses); setDTotal(totalPoints); setDStatus('data')
+    } catch (err) {
+      setDErr(err.message || 'Failed to fetch.'); setDStatus('error')
     }
   }, [])
 
-  useEffect(() => {
-    if (!user?.reg_num) return
-    setStatus('loading'); setRaw(''); setErrMsg('')
-    fetchData(user.reg_num)
-  }, [user?.reg_num, fetchData])
+  const openDetails = (roll, name) => {
+    setDName(name); setDRoll(roll); setDStatus('loading')
+    setDCourses([]); setDTotal(0); setDErr(''); setDOpen(true)
+    fetchDetails(roll)
+  }
+  const closeDetails = () => {
+    if (esRef.current) { try { esRef.current.close() } catch {} }
+    setDOpen(false)
+  }
 
-  const { courses, totalPoints } = status==='done' ? parseCourseDetails(raw) : { courses:[], totalPoints:0 }
+  // derivations — sort by points, filter by year, then search
+  const sorted = [...rpData].sort((a,b) => (b.balance||0) - (a.balance||0))
+  const byYear = year === 'ALL' ? sorted : sorted.filter((s) => String(s.roll).substring(4,6) === year)
+  const su = search.trim().toUpperCase()
+  const filtered = byYear.filter((s) => !su || String(s.name).toUpperCase().includes(su) || String(s.roll).toUpperCase().includes(su))
+
+  const yearText = (yr) => yr === '25' ? '1st Year' : yr === '24' ? '2nd Year' : yr === '23' ? '3rd Year' : yr === '22' ? '4th Year' : ''
+
   const grouped = {}
-  for (const c of courses) {
+  for (const c of dCourses) {
     if (!grouped[c.category]) grouped[c.category] = []
     grouped[c.category].push(c)
   }
 
   return (
     <div style={{ marginTop: 16 }}>
-      <div className="pt-count" style={{ marginBottom: 12 }}>
-        Your Reward Points Details
+      {/* Filters: DEPARTMENT dropdown (all depts) + YEAR dropdown + search */}
+      <div className="pt-filters">
+        <select className="pt-select" value={dept} onChange={(e) => setDept(e.target.value)}>
+          {DEPTS.map((d) => (
+            <option key={d} value={d}>{DEPT_NAMES[d] || d}</option>
+          ))}
+        </select>
+        <select className="pt-select" value={year} onChange={(e) => setYear(e.target.value)}>
+          <option value="ALL">All Years</option>
+          <option value="25">1st Year</option>
+          <option value="24">2nd Year</option>
+          <option value="23">3rd Year</option>
+          <option value="22">4th Year</option>
+        </select>
+        <input
+          type="text"
+          className="pt-search"
+          placeholder="e.g. 7376242BT192 — SASWATH KUMAR J"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
       </div>
 
-      {status === 'loading' && (
-        <Spinner text="Fetching your detailed reward points..." />
-      )}
+      <div className="pt-count">
+        {rpStatus === 'loaded' ? `Showing ${filtered.length} of ${byYear.length} students` : ''}
+      </div>
 
-      {status === 'error' && (
-        <div className="pt-empty" style={{ color: 'var(--red)' }}>{errMsg}</div>
-      )}
+      <div className="pt-table-card">
+        {/* Student leaderboard — no Details column (rank, student, year, points) */}
+        <div className="pt-table-head">
+          <span>RANK</span>
+          <span>STUDENT</span>
+          <span>YEAR</span>
+          <span className="pt-table-head-pts">POINTS</span>
+        </div>
 
-      {status === 'done' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {!courses.length ? (
-            <div className="pt-empty">No course activity found.</div>
-          ) : (
-            <>
-              {totalPoints > 0 && (
-                <div className="pt-details-total">
-                  <span className="pt-details-total-label">Total Points from Activities</span>
-                  <span className="pt-details-total-val">{totalPoints.toLocaleString()} pts</span>
-                </div>
-              )}
-              {Object.entries(grouped).map(([cat, items]) => {
-                const s = getCatGroupStyle(cat)
-                const grpTotal = items.reduce((a,c)=>a+c.points,0)
-                return (
-                  <div className="pt-details-group" key={cat}>
-                    <div className="pt-details-group-hdr" style={{background:s.bg, color:s.hdr, borderBottom:`1px solid ${s.border}`}}>
-                      <span>{cat}</span>
-                      <span className="pt-details-group-total">{grpTotal.toLocaleString()} PTS</span>
-                    </div>
-                    {items.map((c,i)=>(
-                      <div className="pt-details-item" key={i}>
-                        <div>
-                          <div className="pt-details-item-name">{c.name}</div>
-                          {c.dateRange && <div className="pt-details-item-date">{c.dateRange}</div>}
-                        </div>
-                        <div className="pt-details-item-pts">+{c.points.toLocaleString()} pts</div>
-                      </div>
-                    ))}
-                  </div>
-                )
-              })}
-            </>
+        <div>
+          {rpStatus === 'loading' && (
+            <Spinner text={`Loading ${DEPT_NAMES[dept] || dept} rankings...`} />
           )}
+
+          {rpStatus === 'error' && (
+            <div className="pt-empty">Failed to load. Check connection.</div>
+          )}
+
+          {rpStatus === 'loaded' && filtered.length === 0 && (
+            <div className="pt-empty">No students found.</div>
+          )}
+
+          {rpStatus === 'loaded' && filtered.map((s, i) => {
+            const gr = byYear.indexOf(s)
+            const yr = String(s.roll).substring(4,6)
+            return (
+              <div className="pt-table-row" key={s.roll + i} style={{ animationDelay: `${Math.min(i*12,350)}ms` }}>
+                <div className="pt-rank">{gr + 1}</div>
+                <div>
+                  <div className="pt-name">{highlight(s.name, su)}</div>
+                  <div className="pt-roll">{highlight(s.roll, su)}</div>
+                </div>
+                <div className="pt-dept">{yearText(yr)}</div>
+                <div className="pt-pts">{Number(s.balance || 0).toLocaleString()}</div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Per-student Details modal (SSE) */}
+      {dOpen && (
+        <div className="pt-details-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) closeDetails() }}>
+          <div className="pt-details-modal">
+            <div className="pt-details-header">
+              <div>
+                <div className="pt-details-name">{dName || '—'}</div>
+                <div className="pt-details-roll">{dRoll || '—'}</div>
+              </div>
+              <button className="pt-details-close" onClick={closeDetails}>×</button>
+            </div>
+            <div className="pt-details-body">
+              {dStatus === 'loading' && <Spinner text={`Fetching details for ${dRoll}...`} />}
+              {dStatus === 'empty' && <div className="pt-empty">No data found for {dRoll}.</div>}
+              {dStatus === 'nocourse' && <div className="pt-empty">No course activity found.</div>}
+              {dStatus === 'error' && <div className="pt-empty" style={{ color: 'var(--red)' }}>Failed to fetch details. {dErr}</div>}
+              {dStatus === 'data' && (
+                <>
+                  {dTotal > 0 && (
+                    <div className="pt-details-total">
+                      <span className="pt-details-total-label">Total Points from Activities</span>
+                      <span className="pt-details-total-val">{dTotal.toLocaleString()} pts</span>
+                    </div>
+                  )}
+                  {Object.entries(grouped).map(([cat, items]) => {
+                    const st = getCatGroupStyle(cat)
+                    const catTotal = items.reduce((a,c) => a + c.points, 0)
+                    return (
+                      <div className="pt-details-group" key={cat}>
+                        <div className="pt-details-group-hdr" style={{ background: st.bg, color: st.hdr, borderBottom: `1px solid ${st.border}` }}>
+                          <span>{cat}</span>
+                          <span className="pt-details-group-total">{catTotal.toLocaleString()} PTS</span>
+                        </div>
+                        {items.map((c, i) => (
+                          <div className="pt-details-item" key={i}>
+                            <div>
+                              <div className="pt-details-item-name">{c.name}</div>
+                              {c.dateRange && <div className="pt-details-item-date">{c.dateRange}</div>}
+                            </div>
+                            <div className="pt-details-item-pts">+{c.points.toLocaleString()} pts</div>
+                          </div>
+                        ))}
+                      </div>
+                    )
+                  })}
+                </>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -853,10 +988,20 @@ export default function PointsDashboard({ onBack }) {
 
         <div className="pt-tabs">
           <button className={`pt-tab${tab==='rp'?' active':''}`} onClick={()=>setTab('rp')}>Reward Points</button>
-          <button className={`pt-tab${tab==='ap'?' active':''}`} onClick={()=>setTab('ap')}>Activity Points</button>
+          {/* Activity Points — Coming Soon: disabled, does not open the old view */}
+          <button
+            className="pt-tab"
+            disabled
+            title="Coming Soon"
+            style={{ cursor:'not-allowed', opacity:0.6, display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}
+          >
+            Activity Points
+            <span style={{ fontSize:9, fontWeight:800, letterSpacing:0.5, textTransform:'uppercase', background:'rgba(245,158,11,0.16)', color:'#b45309', border:'1px solid rgba(245,158,11,0.4)', borderRadius:20, padding:'2px 8px' }}>
+              Coming Soon
+            </span>
+          </button>
         </div>
-        {tab==='rp' && <RewardPoints user={user}/>}
-        {tab==='ap' && <ActivityPoints onOpenGroup={(g)=>{setSelectedGroup(g);setGroupOpen(true)}}/>}
+        {tab==='rp' && <RewardPoints/>}
       </div>
 
       {/* ── Modals ── */}
