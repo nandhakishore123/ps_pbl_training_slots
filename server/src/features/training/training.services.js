@@ -486,7 +486,7 @@ export const submitAssessment = async ({ studentAssessmentId, answers, passingMa
   const answerRows = (answers || []).map((a) => {
     const isCorrect = a.selected_option != null && a.selected_option === a.correct_option;
     const marksAwarded = isCorrect ? Number(a.marks || 1) : 0;
-    scoreObtained += marksAwarded;
+    scoreObtained += marksAwarded; // score is computed over ALL questions (unanswered = 0)
     return {
       student_assessment_id: Number(studentAssessmentId),
       mcq_question_id: Number(a.mcq_question_id),
@@ -496,8 +496,15 @@ export const submitAssessment = async ({ studentAssessmentId, answers, passingMa
     };
   });
 
-  if (answerRows.length) {
-    await trainingModel.insertStudentMcqAnswers(answerRows);
+  // Only persist rows for questions the student actually answered. Unanswered
+  // questions (selected_option null/'') are already counted as 0 in the score
+  // above; inserting them would push NULL into student_mcq_answers.selected_option,
+  // which fails where that column is NOT NULL (LIVE). Filtering keeps scoring
+  // identical while letting submission succeed. Zero answered → no INSERT, but the
+  // student_assessments row below is still updated with score 0 + status.
+  const rowsToInsert = answerRows.filter((r) => r.selected_option != null && r.selected_option !== '');
+  if (rowsToInsert.length) {
+    await trainingModel.insertStudentMcqAnswers(rowsToInsert);
   }
 
   const status = scoreObtained >= Number(passingMarks) ? 'PASSED' : 'FAILED';
