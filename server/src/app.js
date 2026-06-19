@@ -11,6 +11,7 @@ import adminRoutes from './features/admin/admin.routes.js';
 import facultyRoutes from './features/faculty/faculty.routes.js';
 import superAdminRoutes from './features/superadmin/superadmin.routes.js';
 import announcementsRoutes from './features/announcements/announcements.routes.js';
+import feedbackRoutes from './features/feedback/feedback.routes.js';
 
 const app = express();
 
@@ -65,6 +66,7 @@ app.use('/api/faculty', facultyRoutes);
 app.use('/api/superadmin', superAdminRoutes);
 // Announcements router defines full subpaths (/announcements, /student-announcements)
 app.use('/api', announcementsRoutes);
+app.use('/api/feedback', feedbackRoutes);
 
 // Global error handler
 app.use((err, req, res, next) => {

@@ -9,6 +9,7 @@ import { useNavigate } from 'react-router-dom'
 import { authService } from '../../services/features/authService'
 import { trainingService } from '../../services/features/trainingService'
 import { useAuthStore } from '../../store/authStore'
+import { useStore } from '../../store/useStore'
 
 function formatAnnDate(ts) {
   if (!ts) return ''
@@ -346,6 +347,52 @@ const CSS = `
     cursor: pointer; font-family: var(--font-body);
   }
   .pt-pop-btn:hover { opacity: 0.92; }
+  .pt-pop-btn:disabled { opacity: 0.6; cursor: default; }
+
+  /* ── FEEDBACK MODAL ── */
+  .pt-fb-textarea {
+    margin-top: 16px;
+    width: 100%;
+    padding: 12px 14px;
+    border: 1.5px solid var(--border);
+    border-radius: 10px;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-body);
+    font-size: 14px;
+    line-height: 1.5;
+    resize: vertical;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .pt-fb-textarea:focus { border-color: var(--purple); }
+  .pt-fb-textarea::placeholder { color: var(--text3); }
+
+  .pt-fb-devs {
+    margin-top: 14px;
+    padding: 12px 14px;
+    background: var(--purple-dim);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+  }
+  .pt-fb-devs-head { font-size: 12px; font-weight: 700; color: var(--text2); margin-bottom: 6px; }
+  .pt-fb-dev { font-size: 11px; color: var(--text3); font-weight: 600; line-height: 1.6; }
+
+  .pt-fb-actions { display: flex; gap: 10px; margin-top: 20px; }
+  .pt-fb-cancel {
+    background: none;
+    border: 1.5px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 18px;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text2);
+    cursor: pointer;
+    font-family: var(--font-body);
+    transition: all 0.2s;
+  }
+  .pt-fb-cancel:hover { border-color: var(--purple); color: var(--purple); }
+  .pt-fb-cancel:disabled { opacity: 0.6; cursor: default; }
 
   @media (max-width: 640px) {
     .pt-bell-panel { top: 60px; right: 16px; }
@@ -365,7 +412,31 @@ export default function FrontPage({ onSelectPoints, onSelectTraining }) {
 
   const unreadCount = announcements.filter((a) => !a.read_at).length
 
+  // ── Feedback: modal + form ──
+  const [feedbackOpen, setFeedbackOpen] = useState(false)
+  const [feedbackText, setFeedbackText] = useState('')
+  const [fbSubmitting, setFbSubmitting] = useState(false)
+
+  const store = useStore()
+  const showToast = store?.showToast
+
   const navigate = useNavigate();
+
+  const submitFeedback = async () => {
+    const msg = feedbackText.trim()
+    if (!msg) { showToast?.('Please write your feedback first', true); return }
+    setFbSubmitting(true)
+    try {
+      await trainingService.submitFeedback(msg)
+      showToast?.('Thank you! Feedback submitted')
+      setFeedbackText('')
+      setFeedbackOpen(false)
+    } catch (err) {
+      showToast?.(err?.response?.data?.message || 'Failed to submit feedback', true)
+    } finally {
+      setFbSubmitting(false)
+    }
+  }
 
   const handleLogout = async () => {
     try {
@@ -567,6 +638,49 @@ export default function FrontPage({ onSelectPoints, onSelectTraining }) {
         </div>
       )}
 
+      {/* ── Feedback modal ── */}
+      {feedbackOpen && (
+        <div className="pt-pop-overlay" onClick={() => !fbSubmitting && setFeedbackOpen(false)}>
+          <div className="pt-pop-card" onClick={(e) => e.stopPropagation()}>
+            <div className="pt-pop-badge">💬 Feedback</div>
+            <div className="pt-pop-title">Share your feedback</div>
+            <div className="pt-pop-body" style={{ marginTop: 8 }}>
+              Tell us what's working, what's not, or what you'd like to see.
+            </div>
+            <textarea
+              className="pt-fb-textarea"
+              value={feedbackText}
+              onChange={(e) => setFeedbackText(e.target.value)}
+              placeholder="Type your feedback here…"
+              rows={5}
+              maxLength={2000}
+            />
+            <div className="pt-fb-devs">
+              <div className="pt-fb-devs-head">Feel free to message directly to the developers</div>
+              <div className="pt-fb-dev">MAIN 1: SASWATH KUMAR J</div>
+              <div className="pt-fb-dev">MAIN 2: GOWTHAM J</div>
+            </div>
+            <div className="pt-fb-actions">
+              <button
+                className="pt-fb-cancel"
+                onClick={() => setFeedbackOpen(false)}
+                disabled={fbSubmitting}
+              >
+                Cancel
+              </button>
+              <button
+                className="pt-pop-btn"
+                style={{ marginTop: 0, flex: 1 }}
+                onClick={submitFeedback}
+                disabled={fbSubmitting}
+              >
+                {fbSubmitting ? 'Submitting…' : 'Submit'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Two Boxes ── */}
       <div className="pt-boxes-col">
 
@@ -605,6 +719,23 @@ export default function FrontPage({ onSelectPoints, onSelectTraining }) {
           <div className="pt-box-info">
             <div className="pt-box-label">Training Slots</div>
             <div className="pt-box-desc">PS &amp; PBL Lab Booking</div>
+          </div>
+          <span className="pt-box-arrow">›</span>
+        </div>
+
+        {/* Feedback box */}
+        <div
+          className="pt-box"
+          onClick={() => setFeedbackOpen(true)}
+        >
+          <div className="pt-box-icon-wrap">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+            </svg>
+          </div>
+          <div className="pt-box-info">
+            <div className="pt-box-label">Feedback</div>
+            <div className="pt-box-desc">Share suggestions with the developers</div>
           </div>
           <span className="pt-box-arrow">›</span>
         </div>

@@ -393,5 +393,14 @@ export const adminService = {
   deleteAnnouncement(id) {
     // soft-delete (is_active=0) — vanishes from students instantly
     return api.delete(`/announcements/${id}`);
+  },
+
+  // ── Student Feedback (admin view + verify) ──────────────────
+  getFeedback() {
+    return api.get('/feedback');
+  },
+
+  setFeedbackVerified(id, isVerified) {
+    return api.patch(`/feedback/${id}`, { isVerified });
   }
 };

@@ -43,6 +43,7 @@ export function AppProvider({ children }) {
         notification: '/notification',
         notifications: '/notification',
         announcements: '/announcements',
+        feedback: '/feedback',
         students: '/view-students',
         'venue-allocation': '/venue-allocation',
         'slot-scheduling': '/slot-scheduling',

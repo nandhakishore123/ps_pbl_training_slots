@@ -223,6 +223,29 @@ export const testConnection = async () => {
             console.error(chalk.red('  ✗ Migration/Check for announcements failed:'), migErr.message);
         }
 
+        // ── Student feedback (additive, decoupled) ──
+        // Free-text feedback from students; admin views with credentials and a
+        // verified flag. TiDB-safe: no FKs, equality-keyed by student_id.
+        try {
+            console.log(chalk.yellow('  Checking feedback table...'));
+            await connection.execute(`
+                CREATE TABLE IF NOT EXISTS feedback (
+                  feedback_id bigint NOT NULL AUTO_INCREMENT,
+                  student_id bigint NOT NULL,
+                  message text NOT NULL,
+                  is_verified tinyint(1) NOT NULL DEFAULT 0,
+                  created_at timestamp DEFAULT CURRENT_TIMESTAMP,
+                  updated_at timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                  PRIMARY KEY (feedback_id),
+                  KEY idx_fb_student (student_id),
+                  KEY idx_fb_verified (is_verified)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+            `);
+            console.log(chalk.green('  ✓ feedback schema is ready.'));
+        } catch (migErr) {
+            console.error(chalk.red('  ✗ Migration/Check for feedback failed:'), migErr.message);
+        }
+
         connection.release();
         return true;
     } catch (error) {

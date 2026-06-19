@@ -14,6 +14,15 @@ export const trainingService = {
     return api.post(`/student-announcements/${id}/read`);
   },
 
+  // ── Feedback (student-facing) ───────────────────────────────
+  submitFeedback(message) {
+    return api.post('/feedback', { message });
+  },
+
+  getMyFeedback() {
+    return api.get('/feedback/mine');
+  },
+
   getCategories() {
     return api.get('/training/categories');
   },
