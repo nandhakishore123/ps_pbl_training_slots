@@ -534,10 +534,14 @@ export const submitStudentAssessment = async (studentAssessmentId, scoreObtained
 };
 
 export const insertStudentMcqAnswers = async (answers, conn = null) => {
-  if (!answers?.length) return 0;
+  // Robust to all callers: drop unanswered rows (null/'' selected_option) which
+  // would violate student_mcq_answers.selected_option NOT NULL on LIVE, and
+  // no-op cleanly if nothing remains to insert.
+  const rows = (answers || []).filter((a) => a?.selected_option != null && a.selected_option !== '');
+  if (!rows.length) return 0;
   const exec = getExec(conn);
-  const placeholders = answers.map(() => '(?, ?, ?, ?, ?)').join(',');
-  const params = answers.flatMap((a) => [
+  const placeholders = rows.map(() => '(?, ?, ?, ?, ?)').join(',');
+  const params = rows.flatMap((a) => [
     Number(a.student_assessment_id),
     Number(a.mcq_question_id),
     a.selected_option || null,
