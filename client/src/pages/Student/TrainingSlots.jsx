@@ -519,12 +519,17 @@ function PSCourseCard({ course, index, isMalpractice, onOpen }) {
     <div className="pt-ccard" onClick={() => onOpen(course)}>
       <div
         className="pt-ccard-img"
-        style={{
-          background: img
-            ? `url(${img}) center/cover no-repeat, linear-gradient(135deg,${bg1},${bg2})`
-            : `linear-gradient(135deg,${bg1},${bg2})`,
-        }}
+        style={{ background: `linear-gradient(135deg,${bg1},${bg2})` }}
       >
+        {img && (
+          <img
+            src={img}
+            alt=""
+            aria-hidden="true"
+            onError={(e) => { e.currentTarget.style.display = 'none' }}
+            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+          />
+        )}
         <div className="pt-ccard-overlay" />
         <div className="pt-ccard-badge" style={{ background: cs.bg, color: cs.color, border: `1px solid ${cs.border}` }}>{course.category}</div>
         <div className="pt-ccard-slots-badge">{Number(course.slots || 0)} Slots</div>
@@ -555,12 +560,17 @@ function PBLLabCard({ lab, index, isMalpractice, onOpen }) {
     <div className="pt-ccard" onClick={() => onOpen(lab)}>
       <div
         className="pt-ccard-img"
-        style={{
-          background: img
-            ? `url(${img}) center/cover no-repeat, linear-gradient(135deg,${bg1},${bg2})`
-            : `linear-gradient(135deg,${bg1},${bg2})`,
-        }}
+        style={{ background: `linear-gradient(135deg,${bg1},${bg2})` }}
       >
+        {img && (
+          <img
+            src={img}
+            alt=""
+            aria-hidden="true"
+            onError={(e) => { e.currentTarget.style.display = 'none' }}
+            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+          />
+        )}
         <div className="pt-ccard-overlay" />
         <div className="pt-ccard-badge" style={{ background: dc.bg, color: dc.color, border: `1px solid ${dc.border}` }}>{lab.dept}</div>
         <div className="pt-ccard-slots-badge" style={isWarn ? { background: 'rgba(239,68,68,0.18)', border: '1px solid rgba(239,68,68,0.4)', color: '#ef4444' } : {}}>{lab.slots} Slots</div>
