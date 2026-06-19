@@ -1,25 +1,6 @@
 import * as trainingServices from './training.services.js';
 import { successResponse, createdResponse, errorResponse, internalServerErrorResponse } from '../../utils/response.js';
 
-const normalizeSkillImagePath = (imageUrl, skillType) => {
-  if (!imageUrl) return imageUrl;
-  let raw = String(imageUrl).trim();
-  if (!raw) return imageUrl;
-
-  // Strip protocol and domain if present
-  raw = raw.replace(/^https?:\/\//i, '');
-  raw = raw.replace(/^\/\//, '');
-  raw = raw.replace(/^pcdp\.bitsathy\.ac\.in\//i, '');
-
-  if (raw.startsWith('/')) raw = raw.slice(1);
-  if (raw.startsWith('courses/')) return `/${raw}`;
-  if (raw.startsWith('ps_courses/')) return `/courses/${raw}`;
-  if (raw.startsWith('pbl_courses/')) return `/courses/${raw}`;
-
-  const folder = String(skillType || '').toUpperCase() === 'PBL' ? 'pbl_courses' : 'ps_courses';
-  return `/courses/${folder}/${raw}`;
-};
-
 export const getCategories = async (req, res) => {
   try {
     const data = await trainingServices.getCategories();
@@ -34,12 +15,7 @@ export const getSkills = async (req, res) => {
   try {
     const { type, categoryId, search, limit, offset, all } = req.query;
     const data = await trainingServices.getSkills({ type, categoryId, search, limit, offset, all });
-    const rows = Array.isArray(data) ? data : [];
-    const mapped = rows.map((row) => ({
-      ...row,
-      image_url: normalizeSkillImagePath(row.image_url, row.skill_type),
-    }));
-    return successResponse(res, 'Training skills fetched', mapped);
+    return successResponse(res, 'Training skills fetched', data);
   } catch (error) {
     console.error('Error in getSkills:', error);
     return internalServerErrorResponse(res, error.message || 'Failed to fetch training skills');
@@ -50,13 +26,7 @@ export const getSkillDetails = async (req, res) => {
   try {
     const { id } = req.params;
     const data = await trainingServices.getSkillDetails(id);
-    const mapped = data
-      ? {
-          ...data,
-          image_url: normalizeSkillImagePath(data.image_url, data.skill_type),
-        }
-      : data;
-    return successResponse(res, 'Training skill details fetched', mapped);
+    return successResponse(res, 'Training skill details fetched', data);
   } catch (error) {
     console.error('Error in getSkillDetails:', error);
     return internalServerErrorResponse(res, error.message || 'Failed to fetch training skill details');
@@ -86,7 +56,7 @@ export const createBooking = async (req, res) => {
       levelId: levelId || null,
     });
 
-    return createdResponse(res, 'Training slot booked', data);
+    res.status(201).json({ success: true, data });
   } catch (error) {
     console.error('Error in createBooking:', error);
     if (error?.status) {
@@ -225,3 +195,4 @@ export const getLabRecordByBooking = async (req, res) => {
     return internalServerErrorResponse(res, error.message || 'Failed to fetch lab record');
   }
 };
+
