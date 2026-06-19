@@ -1,6 +1,19 @@
 import { api } from '../core/apiMethods';
 
 export const trainingService = {
+  // ── Announcements (student-facing) ──────────────────────────
+  getStudentAnnouncements() {
+    return api.get('/student-announcements');
+  },
+
+  markAnnouncementSeen(id) {
+    return api.post(`/student-announcements/${id}/seen`);
+  },
+
+  markAnnouncementRead(id) {
+    return api.post(`/student-announcements/${id}/read`);
+  },
+
   getCategories() {
     return api.get('/training/categories');
   },

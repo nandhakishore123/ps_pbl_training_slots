@@ -186,6 +186,43 @@ export const testConnection = async () => {
             console.error(chalk.red('  ✗ Migration/Check for activity_point_confirmations failed:'), migErr.message);
         }
 
+        // ── Admin → Student announcements (additive, decoupled) ──
+        // Admin-authored broadcast messages targeted by department (course)
+        // and/or year. TiDB-safe: no FKs, equality-keyed. announcement_reads
+        // tracks per-student popup (seen_at) + bell read (read_at).
+        try {
+            console.log(chalk.yellow('  Checking announcements tables...'));
+            await connection.execute(`
+                CREATE TABLE IF NOT EXISTS announcements (
+                  announcement_id bigint NOT NULL AUTO_INCREMENT,
+                  title varchar(255) NOT NULL,
+                  body text NOT NULL,
+                  target_course varchar(50) DEFAULT NULL,
+                  target_year int DEFAULT NULL,
+                  is_active tinyint(1) NOT NULL DEFAULT 1,
+                  created_by bigint NOT NULL,
+                  created_at timestamp DEFAULT CURRENT_TIMESTAMP,
+                  updated_at timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                  PRIMARY KEY (announcement_id),
+                  KEY idx_ann_active (is_active),
+                  KEY idx_ann_target (target_course, target_year)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+            `);
+            await connection.execute(`
+                CREATE TABLE IF NOT EXISTS announcement_reads (
+                  announcement_id bigint NOT NULL,
+                  student_id bigint NOT NULL,
+                  seen_at timestamp NULL DEFAULT NULL,
+                  read_at timestamp NULL DEFAULT NULL,
+                  PRIMARY KEY (announcement_id, student_id),
+                  KEY idx_anr_student (student_id)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+            `);
+            console.log(chalk.green('  ✓ announcements schema is ready.'));
+        } catch (migErr) {
+            console.error(chalk.red('  ✗ Migration/Check for announcements failed:'), migErr.message);
+        }
+
         connection.release();
         return true;
     } catch (error) {

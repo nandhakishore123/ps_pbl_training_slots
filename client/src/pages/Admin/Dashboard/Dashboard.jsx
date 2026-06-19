@@ -243,7 +243,7 @@ export default function Dashboard() {
         {/* ALERTS */}
         <div className={styles.group}>
           <div className={styles.groupLabel}>Alerts</div>
-          <div className={styles.boxesGridSingle}>
+          <div className={styles.boxesGrid}>
             <NavBox
               iconColor="gold"
               icon={
@@ -257,6 +257,18 @@ export default function Dashboard() {
               notifDot={true}
               badge={{ count: 7 }}
               onClick={() => navigate('notifications')}
+            />
+            <NavBox
+              iconColor="purple"
+              icon={
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M3 11l18-5v12L3 14v-3z" />
+                  <path d="M11.6 16.8a3 3 0 1 1-5.8-1.6" />
+                </svg>
+              }
+              label="Announcements"
+              desc="Broadcast messages to students by dept/year"
+              onClick={() => navigate('announcements')}
             />
           </div>
         </div>

@@ -7,7 +7,17 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { authService } from '../../services/features/authService'
+import { trainingService } from '../../services/features/trainingService'
 import { useAuthStore } from '../../store/authStore'
+
+function formatAnnDate(ts) {
+  if (!ts) return ''
+  try {
+    return new Date(ts).toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' })
+  } catch {
+    return String(ts)
+  }
+}
 
 function UserIdentity({ user }) {
   if (!user) return null
@@ -248,6 +258,98 @@ const CSS = `
       display: flex !important;
     }
   }
+
+  /* ── BELL + UNREAD BADGE ── */
+  .pt-bell-badge {
+    position: absolute;
+    top: -5px; right: -5px;
+    min-width: 17px; height: 17px;
+    padding: 0 4px;
+    background: var(--red);
+    color: #fff;
+    border-radius: 9px;
+    font-size: 10px;
+    font-weight: 800;
+    line-height: 1;
+    display: flex; align-items: center; justify-content: center;
+    border: 2px solid var(--white);
+  }
+  body.dark-mode .pt-bell-badge { border-color: #151525; }
+
+  /* ── BELL DROPDOWN PANEL ── */
+  .pt-bell-backdrop { position: fixed; inset: 0; z-index: 200; background: transparent; }
+  .pt-bell-panel {
+    position: fixed;
+    top: 70px; right: 24px;
+    width: 340px; max-width: calc(100vw - 32px);
+    max-height: 70vh; overflow-y: auto;
+    background: var(--white);
+    border: 1.5px solid var(--border);
+    border-radius: 14px;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.18);
+    z-index: 201;
+  }
+  .pt-bell-panel-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 16px;
+    font-size: 14px; font-weight: 800; color: var(--text);
+    border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; background: var(--white);
+  }
+  .pt-bell-panel-count {
+    font-size: 11px; font-weight: 700; color: var(--purple);
+    background: var(--purple-dim); border-radius: 20px; padding: 2px 8px;
+  }
+  .pt-bell-item {
+    padding: 12px 16px; border-bottom: 1px solid var(--border);
+    cursor: pointer; transition: background 0.15s;
+  }
+  .pt-bell-item:last-child { border-bottom: none; }
+  .pt-bell-item:hover { background: var(--purple-dim); }
+  .pt-bell-item.unread { background: rgba(108,71,255,0.05); }
+  .pt-bell-item-top { display: flex; align-items: center; gap: 7px; }
+  .pt-bell-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--purple); flex-shrink: 0; }
+  .pt-bell-item-title { font-size: 13px; font-weight: 800; color: var(--text); }
+  .pt-bell-item-body { font-size: 12px; color: var(--text2); margin-top: 4px; line-height: 1.5; white-space: pre-wrap; }
+  .pt-bell-item-date { font-size: 11px; color: var(--text3); margin-top: 6px; font-weight: 600; }
+  .pt-bell-empty { padding: 30px 16px; text-align: center; color: var(--text3); font-size: 13px; font-weight: 600; }
+
+  /* ── ONE-TIME ANNOUNCEMENT POPUP ── */
+  .pt-pop-overlay {
+    position: fixed; inset: 0; z-index: 1000;
+    background: rgba(0,0,0,0.5);
+    display: flex; align-items: center; justify-content: center;
+    padding: 20px;
+  }
+  .pt-pop-card {
+    background: var(--white);
+    border: 1.5px solid var(--border);
+    border-radius: 18px;
+    padding: 28px 26px;
+    width: 100%; max-width: 440px;
+    box-shadow: 0 24px 60px rgba(0,0,0,0.3);
+    max-height: 85vh; overflow-y: auto;
+  }
+  .pt-pop-badge {
+    display: inline-block; font-size: 11px; font-weight: 800;
+    text-transform: uppercase; letter-spacing: 1px;
+    color: var(--purple); background: var(--purple-dim);
+    border-radius: 20px; padding: 5px 12px; margin-bottom: 14px;
+  }
+  .pt-pop-title { font-size: 20px; font-weight: 800; color: var(--text); font-family: var(--font-head); line-height: 1.25; }
+  .pt-pop-body { font-size: 14px; color: var(--text2); line-height: 1.6; margin-top: 12px; white-space: pre-wrap; }
+  .pt-pop-date { font-size: 12px; color: var(--text3); font-weight: 600; margin-top: 14px; }
+  .pt-pop-btn {
+    margin-top: 22px; width: 100%;
+    background: var(--purple); color: #fff; border: none;
+    border-radius: 10px; padding: 12px; font-size: 14px; font-weight: 700;
+    cursor: pointer; font-family: var(--font-body);
+  }
+  .pt-pop-btn:hover { opacity: 0.92; }
+
+  @media (max-width: 640px) {
+    .pt-bell-panel { top: 60px; right: 16px; }
+  }
 `
 
 // ── Main FrontPage Component ──────────────────────────────────
@@ -255,6 +357,13 @@ export default function FrontPage({ onSelectPoints, onSelectTraining }) {
   const [activeBox, setActiveBox] = useState(null)
   const [darkMode,  setDarkMode]  = useState(() => localStorage.getItem('pt-dark') === '1')
   const { user } = useAuthStore()
+
+  // ── Announcements: bell dropdown + one-time login popup ──
+  const [announcements, setAnnouncements] = useState([])
+  const [bellOpen, setBellOpen] = useState(false)
+  const [popup, setPopup] = useState(null)
+
+  const unreadCount = announcements.filter((a) => !a.read_at).length
 
   const navigate = useNavigate();
 
@@ -281,6 +390,45 @@ export default function FrontPage({ onSelectPoints, onSelectTraining }) {
     localStorage.setItem('pt-dark', darkMode ? '1' : '0')
   }, [darkMode])
 
+  // Fetch this student's announcements on mount; auto-pop the newest unseen one.
+  useEffect(() => {
+    let alive = true
+    ;(async () => {
+      try {
+        const res = await trainingService.getStudentAnnouncements()
+        if (!alive) return
+        const items = res?.data?.items || []
+        setAnnouncements(items)
+        // Server returns newest-first; show the first one never shown as a popup.
+        const unseen = items.find((a) => !a.seen_at)
+        if (unseen) setPopup(unseen)
+      } catch {
+        /* silent — announcements are non-critical */
+      }
+    })()
+    return () => { alive = false }
+  }, [])
+
+  // Close the one-time popup and persist seen_at so it never auto-pops again.
+  const closePopup = async () => {
+    const a = popup
+    setPopup(null)
+    if (!a) return
+    setAnnouncements((prev) =>
+      prev.map((x) => (x.announcement_id === a.announcement_id ? { ...x, seen_at: new Date().toISOString() } : x))
+    )
+    try { await trainingService.markAnnouncementSeen(a.announcement_id) } catch { /* ignore */ }
+  }
+
+  // Open an announcement from the bell → mark read (decrements unread count).
+  const openAnnouncement = async (a) => {
+    if (a.read_at) return
+    setAnnouncements((prev) =>
+      prev.map((x) => (x.announcement_id === a.announcement_id ? { ...x, read_at: new Date().toISOString() } : x))
+    )
+    try { await trainingService.markAnnouncementRead(a.announcement_id) } catch { /* ignore */ }
+  }
+
   // selectBox — extracted from selectBox() in original
   function selectBox(box) {
     setActiveBox(box)
@@ -303,9 +451,23 @@ export default function FrontPage({ onSelectPoints, onSelectTraining }) {
           </div>
         </div>
 
-        {/* Right: desktop (UserIdentity + dark toggle + logout) */}
+        {/* Right: desktop (UserIdentity + bell + dark toggle + logout) */}
         <div className="pt-header-right-desktop" style={{ alignItems:'center', gap:10 }}>
           <UserIdentity user={user} />
+          <button
+            type="button"
+            className="pt-icon-btn"
+            onClick={() => setBellOpen((o) => !o)}
+            aria-label="Announcements"
+            title="Announcements"
+            style={{ position:'relative' }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+              <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+            </svg>
+            {unreadCount > 0 && <span className="pt-bell-badge">{unreadCount > 9 ? '9+' : unreadCount}</span>}
+          </button>
           <button className="pt-dark-toggle" onClick={() => setDarkMode(d => !d)}>
             {darkMode ? '☀ Light' : '🌙 Dark'}
           </button>
@@ -324,9 +486,23 @@ export default function FrontPage({ onSelectPoints, onSelectTraining }) {
           </button>
         </div>
 
-        {/* Right: mobile (user pill + dark toggle) */}
+        {/* Right: mobile (user pill + bell + dark toggle) */}
         <div className="pt-header-right-mobile">
           <UserIdentityMobile user={user} />
+          <button
+            type="button"
+            className="pt-icon-btn"
+            onClick={() => setBellOpen((o) => !o)}
+            aria-label="Announcements"
+            title="Announcements"
+            style={{ position:'relative' }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+              <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+            </svg>
+            {unreadCount > 0 && <span className="pt-bell-badge">{unreadCount > 9 ? '9+' : unreadCount}</span>}
+          </button>
           <button className="pt-dark-toggle" onClick={() => setDarkMode(d => !d)}>
             {darkMode ? '☀ Light' : 'Dark'}
           </button>
@@ -346,6 +522,50 @@ export default function FrontPage({ onSelectPoints, onSelectTraining }) {
         </div>
 
       </div>
+
+      {/* ── Bell dropdown panel ── */}
+      {bellOpen && (
+        <>
+          <div className="pt-bell-backdrop" onClick={() => setBellOpen(false)} />
+          <div className="pt-bell-panel">
+            <div className="pt-bell-panel-head">
+              <span>Announcements</span>
+              {unreadCount > 0 && <span className="pt-bell-panel-count">{unreadCount} unread</span>}
+            </div>
+            {announcements.length === 0 ? (
+              <div className="pt-bell-empty">No announcements</div>
+            ) : (
+              announcements.map((a) => (
+                <div
+                  key={a.announcement_id}
+                  className={`pt-bell-item${!a.read_at ? ' unread' : ''}`}
+                  onClick={() => openAnnouncement(a)}
+                >
+                  <div className="pt-bell-item-top">
+                    {!a.read_at && <span className="pt-bell-dot" />}
+                    <span className="pt-bell-item-title">{a.title}</span>
+                  </div>
+                  <div className="pt-bell-item-body">{a.body}</div>
+                  <div className="pt-bell-item-date">{formatAnnDate(a.created_at)}</div>
+                </div>
+              ))
+            )}
+          </div>
+        </>
+      )}
+
+      {/* ── One-time announcement popup ── */}
+      {popup && (
+        <div className="pt-pop-overlay" onClick={closePopup}>
+          <div className="pt-pop-card" onClick={(e) => e.stopPropagation()}>
+            <div className="pt-pop-badge">📢 Announcement</div>
+            <div className="pt-pop-title">{popup.title}</div>
+            <div className="pt-pop-body">{popup.body}</div>
+            <div className="pt-pop-date">{formatAnnDate(popup.created_at)}</div>
+            <button className="pt-pop-btn" onClick={closePopup}>Got it</button>
+          </div>
+        </div>
+      )}
 
       {/* ── Two Boxes ── */}
       <div className="pt-boxes-col">
