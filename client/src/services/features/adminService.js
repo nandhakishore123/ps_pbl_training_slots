@@ -374,5 +374,33 @@ export const adminService = {
   // CSV export (admin only) — returns a Blob response for file download.
   exportActivityPointsCsv(venueSlotId) {
     return apiClient.get(`/admin/activity-points/slots/${venueSlotId}/export`, { responseType: 'blob' });
+  },
+
+  // ── Announcements (admin-authored broadcasts to students) ───
+  getAnnouncements() {
+    return api.get('/announcements');
+  },
+
+  createAnnouncement(payload) {
+    // payload: { title, body, target_course (null=all), target_year (null=all) }
+    return api.post('/announcements', payload);
+  },
+
+  setAnnouncementActive(id, isActive) {
+    return api.patch(`/announcements/${id}`, { isActive });
+  },
+
+  deleteAnnouncement(id) {
+    // soft-delete (is_active=0) — vanishes from students instantly
+    return api.delete(`/announcements/${id}`);
+  },
+
+  // ── Student Feedback (admin view + verify) ──────────────────
+  getFeedback() {
+    return api.get('/feedback');
+  },
+
+  setFeedbackVerified(id, isVerified) {
+    return api.patch(`/feedback/${id}`, { isVerified });
   }
 };

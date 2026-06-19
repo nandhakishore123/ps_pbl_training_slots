@@ -1,6 +1,28 @@
 import { api } from '../core/apiMethods';
 
 export const trainingService = {
+  // ── Announcements (student-facing) ──────────────────────────
+  getStudentAnnouncements() {
+    return api.get('/student-announcements');
+  },
+
+  markAnnouncementSeen(id) {
+    return api.post(`/student-announcements/${id}/seen`);
+  },
+
+  markAnnouncementRead(id) {
+    return api.post(`/student-announcements/${id}/read`);
+  },
+
+  // ── Feedback (student-facing) ───────────────────────────────
+  submitFeedback(message) {
+    return api.post('/feedback', { message });
+  },
+
+  getMyFeedback() {
+    return api.get('/feedback/mine');
+  },
+
   getCategories() {
     return api.get('/training/categories');
   },

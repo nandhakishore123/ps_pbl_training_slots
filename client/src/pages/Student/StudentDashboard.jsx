@@ -7,7 +7,18 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { authService } from '../../services/features/authService'
+import { trainingService } from '../../services/features/trainingService'
 import { useAuthStore } from '../../store/authStore'
+import { useStore } from '../../store/useStore'
+
+function formatAnnDate(ts) {
+  if (!ts) return ''
+  try {
+    return new Date(ts).toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' })
+  } catch {
+    return String(ts)
+  }
+}
 
 function UserIdentity({ user }) {
   if (!user) return null
@@ -248,6 +259,144 @@ const CSS = `
       display: flex !important;
     }
   }
+
+  /* ── BELL + UNREAD BADGE ── */
+  .pt-bell-badge {
+    position: absolute;
+    top: -5px; right: -5px;
+    min-width: 17px; height: 17px;
+    padding: 0 4px;
+    background: var(--red);
+    color: #fff;
+    border-radius: 9px;
+    font-size: 10px;
+    font-weight: 800;
+    line-height: 1;
+    display: flex; align-items: center; justify-content: center;
+    border: 2px solid var(--white);
+  }
+  body.dark-mode .pt-bell-badge { border-color: #151525; }
+
+  /* ── BELL DROPDOWN PANEL ── */
+  .pt-bell-backdrop { position: fixed; inset: 0; z-index: 200; background: transparent; }
+  .pt-bell-panel {
+    position: fixed;
+    top: 70px; right: 24px;
+    width: 340px; max-width: calc(100vw - 32px);
+    max-height: 70vh; overflow-y: auto;
+    background: var(--white);
+    border: 1.5px solid var(--border);
+    border-radius: 14px;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.18);
+    z-index: 201;
+  }
+  .pt-bell-panel-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 16px;
+    font-size: 14px; font-weight: 800; color: var(--text);
+    border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; background: var(--white);
+  }
+  .pt-bell-panel-count {
+    font-size: 11px; font-weight: 700; color: var(--purple);
+    background: var(--purple-dim); border-radius: 20px; padding: 2px 8px;
+  }
+  .pt-bell-item {
+    padding: 12px 16px; border-bottom: 1px solid var(--border);
+    cursor: pointer; transition: background 0.15s;
+  }
+  .pt-bell-item:last-child { border-bottom: none; }
+  .pt-bell-item:hover { background: var(--purple-dim); }
+  .pt-bell-item.unread { background: rgba(108,71,255,0.05); }
+  .pt-bell-item-top { display: flex; align-items: center; gap: 7px; }
+  .pt-bell-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--purple); flex-shrink: 0; }
+  .pt-bell-item-title { font-size: 13px; font-weight: 800; color: var(--text); }
+  .pt-bell-item-body { font-size: 12px; color: var(--text2); margin-top: 4px; line-height: 1.5; white-space: pre-wrap; }
+  .pt-bell-item-date { font-size: 11px; color: var(--text3); margin-top: 6px; font-weight: 600; }
+  .pt-bell-empty { padding: 30px 16px; text-align: center; color: var(--text3); font-size: 13px; font-weight: 600; }
+
+  /* ── ONE-TIME ANNOUNCEMENT POPUP ── */
+  .pt-pop-overlay {
+    position: fixed; inset: 0; z-index: 1000;
+    background: rgba(0,0,0,0.5);
+    display: flex; align-items: center; justify-content: center;
+    padding: 20px;
+  }
+  .pt-pop-card {
+    background: var(--white);
+    border: 1.5px solid var(--border);
+    border-radius: 18px;
+    padding: 28px 26px;
+    width: 100%; max-width: 440px;
+    box-shadow: 0 24px 60px rgba(0,0,0,0.3);
+    max-height: 85vh; overflow-y: auto;
+  }
+  .pt-pop-badge {
+    display: inline-block; font-size: 11px; font-weight: 800;
+    text-transform: uppercase; letter-spacing: 1px;
+    color: var(--purple); background: var(--purple-dim);
+    border-radius: 20px; padding: 5px 12px; margin-bottom: 14px;
+  }
+  .pt-pop-title { font-size: 20px; font-weight: 800; color: var(--text); font-family: var(--font-head); line-height: 1.25; }
+  .pt-pop-body { font-size: 14px; color: var(--text2); line-height: 1.6; margin-top: 12px; white-space: pre-wrap; }
+  .pt-pop-date { font-size: 12px; color: var(--text3); font-weight: 600; margin-top: 14px; }
+  .pt-pop-btn {
+    margin-top: 22px; width: 100%;
+    background: var(--purple); color: #fff; border: none;
+    border-radius: 10px; padding: 12px; font-size: 14px; font-weight: 700;
+    cursor: pointer; font-family: var(--font-body);
+  }
+  .pt-pop-btn:hover { opacity: 0.92; }
+  .pt-pop-btn:disabled { opacity: 0.6; cursor: default; }
+
+  /* ── FEEDBACK MODAL ── */
+  .pt-fb-textarea {
+    margin-top: 16px;
+    width: 100%;
+    padding: 12px 14px;
+    border: 1.5px solid var(--border);
+    border-radius: 10px;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-body);
+    font-size: 14px;
+    line-height: 1.5;
+    resize: vertical;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .pt-fb-textarea:focus { border-color: var(--purple); }
+  .pt-fb-textarea::placeholder { color: var(--text3); }
+
+  .pt-fb-devs {
+    margin-top: 14px;
+    padding: 12px 14px;
+    background: var(--purple-dim);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+  }
+  .pt-fb-devs-head { font-size: 12px; font-weight: 700; color: var(--text2); margin-bottom: 6px; }
+  .pt-fb-dev { font-size: 11px; color: var(--text3); font-weight: 600; line-height: 1.6; }
+
+  .pt-fb-actions { display: flex; gap: 10px; margin-top: 20px; }
+  .pt-fb-cancel {
+    background: none;
+    border: 1.5px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 18px;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text2);
+    cursor: pointer;
+    font-family: var(--font-body);
+    transition: all 0.2s;
+  }
+  .pt-fb-cancel:hover { border-color: var(--purple); color: var(--purple); }
+  .pt-fb-cancel:disabled { opacity: 0.6; cursor: default; }
+
+  @media (max-width: 640px) {
+    .pt-bell-panel { top: 60px; right: 16px; }
+  }
 `
 
 // ── Main FrontPage Component ──────────────────────────────────
@@ -256,7 +405,38 @@ export default function FrontPage({ onSelectPoints, onSelectTraining }) {
   const [darkMode,  setDarkMode]  = useState(() => localStorage.getItem('pt-dark') === '1')
   const { user } = useAuthStore()
 
+  // ── Announcements: bell dropdown + one-time login popup ──
+  const [announcements, setAnnouncements] = useState([])
+  const [bellOpen, setBellOpen] = useState(false)
+  const [popup, setPopup] = useState(null)
+
+  const unreadCount = announcements.filter((a) => !a.read_at).length
+
+  // ── Feedback: modal + form ──
+  const [feedbackOpen, setFeedbackOpen] = useState(false)
+  const [feedbackText, setFeedbackText] = useState('')
+  const [fbSubmitting, setFbSubmitting] = useState(false)
+
+  const store = useStore()
+  const showToast = store?.showToast
+
   const navigate = useNavigate();
+
+  const submitFeedback = async () => {
+    const msg = feedbackText.trim()
+    if (!msg) { showToast?.('Please write your feedback first', true); return }
+    setFbSubmitting(true)
+    try {
+      await trainingService.submitFeedback(msg)
+      showToast?.('Thank you! Feedback submitted')
+      setFeedbackText('')
+      setFeedbackOpen(false)
+    } catch (err) {
+      showToast?.(err?.response?.data?.message || 'Failed to submit feedback', true)
+    } finally {
+      setFbSubmitting(false)
+    }
+  }
 
   const handleLogout = async () => {
     try {
@@ -281,6 +461,45 @@ export default function FrontPage({ onSelectPoints, onSelectTraining }) {
     localStorage.setItem('pt-dark', darkMode ? '1' : '0')
   }, [darkMode])
 
+  // Fetch this student's announcements on mount; auto-pop the newest unseen one.
+  useEffect(() => {
+    let alive = true
+    ;(async () => {
+      try {
+        const res = await trainingService.getStudentAnnouncements()
+        if (!alive) return
+        const items = res?.data?.items || []
+        setAnnouncements(items)
+        // Server returns newest-first; show the first one never shown as a popup.
+        const unseen = items.find((a) => !a.seen_at)
+        if (unseen) setPopup(unseen)
+      } catch {
+        /* silent — announcements are non-critical */
+      }
+    })()
+    return () => { alive = false }
+  }, [])
+
+  // Close the one-time popup and persist seen_at so it never auto-pops again.
+  const closePopup = async () => {
+    const a = popup
+    setPopup(null)
+    if (!a) return
+    setAnnouncements((prev) =>
+      prev.map((x) => (x.announcement_id === a.announcement_id ? { ...x, seen_at: new Date().toISOString() } : x))
+    )
+    try { await trainingService.markAnnouncementSeen(a.announcement_id) } catch { /* ignore */ }
+  }
+
+  // Open an announcement from the bell → mark read (decrements unread count).
+  const openAnnouncement = async (a) => {
+    if (a.read_at) return
+    setAnnouncements((prev) =>
+      prev.map((x) => (x.announcement_id === a.announcement_id ? { ...x, read_at: new Date().toISOString() } : x))
+    )
+    try { await trainingService.markAnnouncementRead(a.announcement_id) } catch { /* ignore */ }
+  }
+
   // selectBox — extracted from selectBox() in original
   function selectBox(box) {
     setActiveBox(box)
@@ -303,9 +522,23 @@ export default function FrontPage({ onSelectPoints, onSelectTraining }) {
           </div>
         </div>
 
-        {/* Right: desktop (UserIdentity + dark toggle + logout) */}
+        {/* Right: desktop (UserIdentity + bell + dark toggle + logout) */}
         <div className="pt-header-right-desktop" style={{ alignItems:'center', gap:10 }}>
           <UserIdentity user={user} />
+          <button
+            type="button"
+            className="pt-icon-btn"
+            onClick={() => setBellOpen((o) => !o)}
+            aria-label="Announcements"
+            title="Announcements"
+            style={{ position:'relative' }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+              <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+            </svg>
+            {unreadCount > 0 && <span className="pt-bell-badge">{unreadCount > 9 ? '9+' : unreadCount}</span>}
+          </button>
           <button className="pt-dark-toggle" onClick={() => setDarkMode(d => !d)}>
             {darkMode ? '☀ Light' : '🌙 Dark'}
           </button>
@@ -324,9 +557,23 @@ export default function FrontPage({ onSelectPoints, onSelectTraining }) {
           </button>
         </div>
 
-        {/* Right: mobile (user pill + dark toggle) */}
+        {/* Right: mobile (user pill + bell + dark toggle) */}
         <div className="pt-header-right-mobile">
           <UserIdentityMobile user={user} />
+          <button
+            type="button"
+            className="pt-icon-btn"
+            onClick={() => setBellOpen((o) => !o)}
+            aria-label="Announcements"
+            title="Announcements"
+            style={{ position:'relative' }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+              <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+            </svg>
+            {unreadCount > 0 && <span className="pt-bell-badge">{unreadCount > 9 ? '9+' : unreadCount}</span>}
+          </button>
           <button className="pt-dark-toggle" onClick={() => setDarkMode(d => !d)}>
             {darkMode ? '☀ Light' : 'Dark'}
           </button>
@@ -346,6 +593,93 @@ export default function FrontPage({ onSelectPoints, onSelectTraining }) {
         </div>
 
       </div>
+
+      {/* ── Bell dropdown panel ── */}
+      {bellOpen && (
+        <>
+          <div className="pt-bell-backdrop" onClick={() => setBellOpen(false)} />
+          <div className="pt-bell-panel">
+            <div className="pt-bell-panel-head">
+              <span>Announcements</span>
+              {unreadCount > 0 && <span className="pt-bell-panel-count">{unreadCount} unread</span>}
+            </div>
+            {announcements.length === 0 ? (
+              <div className="pt-bell-empty">No announcements</div>
+            ) : (
+              announcements.map((a) => (
+                <div
+                  key={a.announcement_id}
+                  className={`pt-bell-item${!a.read_at ? ' unread' : ''}`}
+                  onClick={() => openAnnouncement(a)}
+                >
+                  <div className="pt-bell-item-top">
+                    {!a.read_at && <span className="pt-bell-dot" />}
+                    <span className="pt-bell-item-title">{a.title}</span>
+                  </div>
+                  <div className="pt-bell-item-body">{a.body}</div>
+                  <div className="pt-bell-item-date">{formatAnnDate(a.created_at)}</div>
+                </div>
+              ))
+            )}
+          </div>
+        </>
+      )}
+
+      {/* ── One-time announcement popup ── */}
+      {popup && (
+        <div className="pt-pop-overlay" onClick={closePopup}>
+          <div className="pt-pop-card" onClick={(e) => e.stopPropagation()}>
+            <div className="pt-pop-badge">📢 Announcement</div>
+            <div className="pt-pop-title">{popup.title}</div>
+            <div className="pt-pop-body">{popup.body}</div>
+            <div className="pt-pop-date">{formatAnnDate(popup.created_at)}</div>
+            <button className="pt-pop-btn" onClick={closePopup}>Got it</button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Feedback modal ── */}
+      {feedbackOpen && (
+        <div className="pt-pop-overlay" onClick={() => !fbSubmitting && setFeedbackOpen(false)}>
+          <div className="pt-pop-card" onClick={(e) => e.stopPropagation()}>
+            <div className="pt-pop-badge">💬 Feedback</div>
+            <div className="pt-pop-title">Share your feedback</div>
+            <div className="pt-pop-body" style={{ marginTop: 8 }}>
+              Tell us what's working, what's not, or what you'd like to see.
+            </div>
+            <textarea
+              className="pt-fb-textarea"
+              value={feedbackText}
+              onChange={(e) => setFeedbackText(e.target.value)}
+              placeholder="Type your feedback here…"
+              rows={5}
+              maxLength={2000}
+            />
+            <div className="pt-fb-devs">
+              <div className="pt-fb-devs-head">Feel free to message directly to the developers</div>
+              <div className="pt-fb-dev">MAIN 1: SASWATH KUMAR J</div>
+              <div className="pt-fb-dev">MAIN 2: GOWTHAM J</div>
+            </div>
+            <div className="pt-fb-actions">
+              <button
+                className="pt-fb-cancel"
+                onClick={() => setFeedbackOpen(false)}
+                disabled={fbSubmitting}
+              >
+                Cancel
+              </button>
+              <button
+                className="pt-pop-btn"
+                style={{ marginTop: 0, flex: 1 }}
+                onClick={submitFeedback}
+                disabled={fbSubmitting}
+              >
+                {fbSubmitting ? 'Submitting…' : 'Submit'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Two Boxes ── */}
       <div className="pt-boxes-col">
@@ -385,6 +719,23 @@ export default function FrontPage({ onSelectPoints, onSelectTraining }) {
           <div className="pt-box-info">
             <div className="pt-box-label">Training Slots</div>
             <div className="pt-box-desc">PS &amp; PBL Lab Booking</div>
+          </div>
+          <span className="pt-box-arrow">›</span>
+        </div>
+
+        {/* Feedback box */}
+        <div
+          className="pt-box"
+          onClick={() => setFeedbackOpen(true)}
+        >
+          <div className="pt-box-icon-wrap">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+            </svg>
+          </div>
+          <div className="pt-box-info">
+            <div className="pt-box-label">Feedback</div>
+            <div className="pt-box-desc">Share suggestions with the developers</div>
           </div>
           <span className="pt-box-arrow">›</span>
         </div>

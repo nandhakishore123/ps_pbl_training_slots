@@ -1,0 +1,153 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.content {
+  flex: 1;
+  padding: 24px;
+}
+
+.pageTitle {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--text);
+  font-family: var(--font-head);
+  margin-bottom: 4px;
+}
+
+.pageSub {
+  font-size: 13px;
+  color: var(--text2);
+  margin-bottom: 18px;
+}
+
+.select {
+  padding: 8px 28px 8px 12px;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  background: var(--white);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  outline: none;
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236B7280' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  font-family: var(--font-body);
+  transition: border-color 0.2s;
+}
+
+.select:focus { border-color: var(--purple); }
+
+/* ── LIST ── */
+.list {
+  display: flex;
+  flex-direction: column;
+}
+
+.item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.item:last-child { border-bottom: none; }
+
+.itemMain {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cred {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.name {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.reg {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--purple);
+  background: var(--purple-dim);
+  border-radius: 20px;
+  padding: 2px 9px;
+}
+
+.meta {
+  font-size: 12px;
+  color: var(--text2);
+  font-weight: 600;
+}
+
+.message {
+  font-size: 13px;
+  color: var(--text2);
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+.date {
+  font-size: 11px;
+  color: var(--text3);
+  font-weight: 600;
+}
+
+/* ── VERIFY TICK ── */
+.tick {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  background: var(--white);
+  border: 1.5px solid var(--border);
+  border-radius: 20px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text2);
+  cursor: pointer;
+  font-family: var(--font-body);
+  transition: all 0.2s;
+}
+
+.tick:hover { border-color: var(--green); color: var(--green); }
+
+.tickOn {
+  background: rgba(16, 185, 129, 0.12);
+  border-color: var(--green);
+  color: #059669;
+}
+
+.tickLabel { white-space: nowrap; }
+
+.empty {
+  text-align: center;
+  padding: 40px 16px;
+  color: var(--text3);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+@media (max-width: 640px) {
+  .content { padding: 16px; }
+  .pageTitle { font-size: 18px; }
+  .item { flex-direction: column; gap: 12px; }
+  .tick { align-self: flex-start; }
+}
