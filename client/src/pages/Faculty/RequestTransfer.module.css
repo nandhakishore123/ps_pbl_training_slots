@@ -329,6 +329,7 @@
 .folderVenue {
   border: 1.5px solid var(--border);
   border-radius: 12px;
+  flex-shrink: 0;
   overflow: hidden;
   background: var(--white);
   transition: border-color 0.2s ease;
