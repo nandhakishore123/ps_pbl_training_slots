@@ -68,16 +68,22 @@ export const listSkills = async ({ type, categoryId, search, limit, offset, all 
     LEFT JOIN (
       SELECT
         vas.training_skill_id,
-        COUNT(DISTINCT vm.mapping_id) AS slots_total,
-        MAX(CASE WHEN v.is_active = 1 THEN COALESCE(v.capacity, 0) ELSE 0 END) AS capacity_total
-      FROM slot_timings st
-      JOIN venue_mapping vm ON vm.slot_id = st.slot_id
-      JOIN venues v ON v.venue_id = vm.venue_id
+        COUNT(DISTINCT vs.venue_slot_id) AS slots_total,
+        MAX(COALESCE(v.capacity, 0)) AS capacity_total
+      FROM venue_slots vs
+      JOIN venue_mapping vmap ON vmap.mapping_id = vs.mapping_id
+      JOIN venues v ON v.venue_id = vmap.venue_id
       JOIN venue_alloted_skills vas ON vas.venue_id = v.venue_id
-      WHERE st.is_active = 1
+      WHERE vs.is_active = 1
         AND vas.is_active = 1
         AND v.is_active = 1
-        AND st.end_time > TIME(CONVERT_TZ(UTC_TIMESTAMP(), '+00:00', '+05:30'))
+        AND (
+          vs.slot_date > DATE(CONVERT_TZ(UTC_TIMESTAMP(), '+00:00', '+05:30'))
+          OR (
+            vs.slot_date = DATE(CONVERT_TZ(UTC_TIMESTAMP(), '+00:00', '+05:30'))
+            AND vs.start_time > TIME(CONVERT_TZ(UTC_TIMESTAMP(), '+00:00', '+05:30'))
+          )
+        )
       GROUP BY vas.training_skill_id
     ) vm ON vm.training_skill_id = ts.training_skill_id
     ${whereSql}
