@@ -2387,7 +2387,7 @@ function PBLSection({ bookedSlots, rawBookings = [], onBookSlot, onFillLabRecord
   const finishedBookingRow = selectedLevel ? (rawBookings || []).find(
     (b) => Number(b.training_skill_id) === Number(details.id) &&
            Number(b.level_id) === Number(selectedLevel.level_id) &&
-           (b.status === 'PASS' || b.status === 'COMPLETED' || b.status === 'FAIL')
+           (b.status === 'PASS' || b.status === 'COMPLETED')
   ) : null
   const finishedBooking = finishedBookingRow ? normalizeBookingRow(finishedBookingRow)?.booking : null
 
