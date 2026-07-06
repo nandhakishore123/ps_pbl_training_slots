@@ -402,5 +402,38 @@ export const adminService = {
 
   setFeedbackVerified(id, isVerified) {
     return api.patch(`/feedback/${id}`, { isVerified });
+  },
+
+  // ── Surveys (admin-authored, targeted by dept/year) ─────────
+  getSurveys() {
+    return api.get('/survey');
+  },
+
+  createSurvey(payload) {
+    // payload: { title, description, target_course (null=all), target_year (null=all),
+    //            questions: [ { question_text, question_type 'single'|'multi', options: [text,...] } ] }
+    return api.post('/survey', payload);
+  },
+
+  getSurveyDetail(id) {
+    return api.get(`/survey/${id}`);
+  },
+
+  getSurveyResponses(id) {
+    return api.get(`/survey/${id}/responses`);
+  },
+
+  // CSV export (admin only) — returns a Blob response for file download.
+  exportSurveyResponsesCsv(id) {
+    return apiClient.get(`/survey/${id}/responses/export`, { responseType: 'blob' });
+  },
+
+  setSurveyStatus(id, status) {
+    // status: 'active' | 'closed'
+    return api.patch(`/survey/${id}/status`, { status });
+  },
+
+  deleteSurvey(id) {
+    return api.delete(`/survey/${id}`);
   }
 };

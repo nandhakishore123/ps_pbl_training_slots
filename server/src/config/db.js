@@ -246,6 +246,75 @@ export const testConnection = async () => {
             console.error(chalk.red('  ✗ Migration/Check for feedback failed:'), migErr.message);
         }
 
+        // ── Surveys (additive, decoupled) ──
+        // Admin-authored surveys with single/multi-choice questions, targeted by
+        // department (course) and/or year (reuses announcement targeting). Students
+        // submit one response per survey. TiDB-safe: no FKs, equality-keyed.
+        try {
+            console.log(chalk.yellow('  Checking survey tables...'));
+            await connection.execute(`
+                CREATE TABLE IF NOT EXISTS surveys (
+                  survey_id bigint NOT NULL AUTO_INCREMENT,
+                  title varchar(255) NOT NULL,
+                  description text DEFAULT NULL,
+                  target_course varchar(50) DEFAULT NULL,
+                  target_year int DEFAULT NULL,
+                  status varchar(20) NOT NULL DEFAULT 'active',
+                  created_by bigint NOT NULL,
+                  created_at timestamp DEFAULT CURRENT_TIMESTAMP,
+                  updated_at timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                  PRIMARY KEY (survey_id),
+                  KEY idx_survey_status (status),
+                  KEY idx_survey_target (target_course, target_year)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+            `);
+            await connection.execute(`
+                CREATE TABLE IF NOT EXISTS survey_questions (
+                  question_id bigint NOT NULL AUTO_INCREMENT,
+                  survey_id bigint NOT NULL,
+                  question_text text NOT NULL,
+                  question_type varchar(10) NOT NULL DEFAULT 'single',
+                  display_order int NOT NULL DEFAULT 0,
+                  PRIMARY KEY (question_id),
+                  KEY idx_sq_survey (survey_id)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+            `);
+            await connection.execute(`
+                CREATE TABLE IF NOT EXISTS survey_options (
+                  option_id bigint NOT NULL AUTO_INCREMENT,
+                  question_id bigint NOT NULL,
+                  option_text varchar(500) NOT NULL,
+                  display_order int NOT NULL DEFAULT 0,
+                  PRIMARY KEY (option_id),
+                  KEY idx_so_question (question_id)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+            `);
+            await connection.execute(`
+                CREATE TABLE IF NOT EXISTS survey_responses (
+                  response_id bigint NOT NULL AUTO_INCREMENT,
+                  survey_id bigint NOT NULL,
+                  student_id bigint NOT NULL,
+                  submitted_at timestamp DEFAULT CURRENT_TIMESTAMP,
+                  PRIMARY KEY (response_id),
+                  UNIQUE KEY uq_sr (survey_id, student_id),
+                  KEY idx_sr_survey (survey_id)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+            `);
+            await connection.execute(`
+                CREATE TABLE IF NOT EXISTS survey_answers (
+                  answer_id bigint NOT NULL AUTO_INCREMENT,
+                  response_id bigint NOT NULL,
+                  question_id bigint NOT NULL,
+                  option_id bigint NOT NULL,
+                  PRIMARY KEY (answer_id),
+                  KEY idx_sa_response (response_id)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+            `);
+            console.log(chalk.green('  ✓ survey schema is ready.'));
+        } catch (migErr) {
+            console.error(chalk.red('  ✗ Migration/Check for survey failed:'), migErr.message);
+        }
+
         connection.release();
         return true;
     } catch (error) {
