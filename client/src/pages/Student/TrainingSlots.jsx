@@ -553,7 +553,6 @@ function PSCourseCard({ course, index, isMalpractice, onOpen }) {
 
 function PBLLabCard({ lab, index, isMalpractice, onOpen }) {
   const dc = getDeptStyle(lab.dept)
-  const isWarn = lab.slots < 6
   const [bg1, bg2] = GRADIENTS[(index + 3) % GRADIENTS.length]
   const img = resolveSkillImageUrl(lab.image_url, 'PBL')
   return (
@@ -573,15 +572,11 @@ function PBLLabCard({ lab, index, isMalpractice, onOpen }) {
         )}
         <div className="pt-ccard-overlay" />
         <div className="pt-ccard-badge" style={{ background: dc.bg, color: dc.color, border: `1px solid ${dc.border}` }}>{lab.dept}</div>
-        <div className="pt-ccard-slots-badge" style={isWarn ? { background: 'rgba(239,68,68,0.18)', border: '1px solid rgba(239,68,68,0.4)', color: '#ef4444' } : {}}>{lab.slots} Slots</div>
+        <div className="pt-ccard-slots-badge">{lab.slots} Slots</div>
       </div>
       <div className="pt-ccard-body">
         <div className="pt-ccard-name">{lab.name}</div>
         <div className="pt-ccard-footer">
-          <div className="pt-ccard-meta">Cap: {lab.capacity}</div>
-          <div className={`pt-ccard-status ${isMalpractice ? 'warn' : isWarn ? 'warn' : ''}`}>
-            {isMalpractice ? '❌ Malpractice' : isWarn ? '⚠ Few Slots' : '● Available'}
-          </div>
         </div>
         <div className="pt-ccard-cta" style={isMalpractice ? { background: 'rgba(239,68,68,0.1)', color: '#ef4444', borderColor: 'rgba(239,68,68,0.3)' } : {}}>
           <span>{isMalpractice ? 'Blocked' : 'View Lab & Book'}</span>
