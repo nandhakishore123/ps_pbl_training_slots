@@ -25,6 +25,8 @@ import Settings from '../pages/Admin/Settings/Settings.jsx'
 import Notifications from '../pages/Admin/Notifications/Notifications.jsx'
 import Announcements from '../pages/Admin/Announcements/Announcements.jsx'
 import Feedback from '../pages/Admin/Feedback/Feedback.jsx'
+import Survey from '../pages/Admin/Survey/Survey.jsx'
+import SurveyResponses from '../pages/Admin/Survey/SurveyResponses.jsx'
 import Students from '../pages/Admin/StudentManagement/StudentManagement.jsx'
 import VenueAllocation from '../pages/Admin/VenueAllocation/VenueAllocation.jsx'
 import SlotScheduling from '../pages/Admin/SlotScheduling/SlotScheduling.jsx'
@@ -153,6 +155,8 @@ function AppNavigator() {
                 <Route path="/notification" element={<RequireAuth><RequireRole allowedRoles={[3]}><AdminProviders><Notifications/></AdminProviders></RequireRole></RequireAuth>} />
                 <Route path="/announcements" element={<RequireAuth><RequireRole allowedRoles={[3]}><AdminProviders><Announcements/></AdminProviders></RequireRole></RequireAuth>} />
                 <Route path="/feedback" element={<RequireAuth><RequireRole allowedRoles={[3]}><AdminProviders><Feedback/></AdminProviders></RequireRole></RequireAuth>} />
+                <Route path="/survey" element={<RequireAuth><RequireRole allowedRoles={[3]}><AdminProviders><Survey/></AdminProviders></RequireRole></RequireAuth>} />
+                <Route path="/survey-responses/:id" element={<RequireAuth><RequireRole allowedRoles={[3]}><AdminProviders><SurveyResponses/></AdminProviders></RequireRole></RequireAuth>} />
                 <Route path="/view-students" element={<RequireAuth><RequireRole allowedRoles={[3]}><AdminProviders><Students/></AdminProviders></RequireRole></RequireAuth>} />
                 <Route path="/venue-allocation" element={<RequireAuth><RequireRole allowedRoles={[3]}><AdminProviders><VenueAllocation/></AdminProviders></RequireRole></RequireAuth>} />
                 <Route path="/slot-scheduling" element={<RequireAuth><RequireRole allowedRoles={[3]}><AdminProviders><SlotScheduling/></AdminProviders></RequireRole></RequireAuth>} />

@@ -412,6 +412,17 @@ export default function FrontPage({ onSelectPoints, onSelectTraining }) {
 
   const unreadCount = announcements.filter((a) => !a.read_at).length
 
+  // ── Surveys: bell dropdown + take-survey modal ──
+  const [surveys, setSurveys] = useState([])
+  const [surveyBellOpen, setSurveyBellOpen] = useState(false)
+  const [activeSurvey, setActiveSurvey] = useState(null)   // full detail loaded in the modal
+  const [surveyAnswers, setSurveyAnswers] = useState({})   // question_id -> array of option_ids
+  const [surveyLoading, setSurveyLoading] = useState(false)
+  const [surveySubmitting, setSurveySubmitting] = useState(false)
+
+  // Badge = surveys not yet submitted by this student.
+  const pendingSurveyCount = surveys.filter((s) => !s.submitted).length
+
   // ── Feedback: modal + form ──
   const [feedbackOpen, setFeedbackOpen] = useState(false)
   const [feedbackText, setFeedbackText] = useState('')
@@ -500,6 +511,107 @@ export default function FrontPage({ onSelectPoints, onSelectTraining }) {
     try { await trainingService.markAnnouncementRead(a.announcement_id) } catch { /* ignore */ }
   }
 
+  // Fetch this student's targeted surveys on mount (non-critical, silent on error).
+  useEffect(() => {
+    let alive = true
+    ;(async () => {
+      try {
+        const res = await trainingService.getStudentSurveys()
+        if (!alive) return
+        setSurveys(res?.data?.items || [])
+      } catch {
+        /* silent — surveys are non-critical */
+      }
+    })()
+    return () => { alive = false }
+  }, [])
+
+  // Open a survey from the bell → load full detail into the modal. Seed selections
+  // from any prior submission (selected_option_ids) so submitted surveys render read-only.
+  const openSurvey = async (s) => {
+    setSurveyBellOpen(false)
+    setSurveyLoading(true)
+    setActiveSurvey({ survey_id: s.survey_id, title: s.title, description: s.description, submitted: s.submitted, questions: null })
+    try {
+      const res = await trainingService.getStudentSurvey(s.survey_id)
+      const detail = res?.data
+      if (!detail) throw new Error('empty')
+      const seeded = {}
+      for (const q of detail.questions || []) {
+        seeded[q.question_id] = Array.isArray(q.selected_option_ids) ? [...q.selected_option_ids] : []
+      }
+      setSurveyAnswers(seeded)
+      setActiveSurvey(detail)
+    } catch {
+      showToast?.('Failed to load survey', true)
+      setActiveSurvey(null)
+    } finally {
+      setSurveyLoading(false)
+    }
+  }
+
+  const closeSurveyModal = () => {
+    if (surveySubmitting) return
+    setActiveSurvey(null)
+    setSurveyAnswers({})
+  }
+
+  // Toggle an option. single → replace with the single choice; multi → add/remove.
+  const toggleSurveyOption = (question, optionId) => {
+    if (activeSurvey?.submitted) return
+    setSurveyAnswers((prev) => {
+      const current = prev[question.question_id] || []
+      if (question.question_type === 'single') {
+        return { ...prev, [question.question_id]: [optionId] }
+      }
+      const has = current.includes(optionId)
+      return {
+        ...prev,
+        [question.question_id]: has ? current.filter((id) => id !== optionId) : [...current, optionId],
+      }
+    })
+  }
+
+  // Required-all: every question must have at least one selected option.
+  const allSurveyAnswered =
+    Array.isArray(activeSurvey?.questions) &&
+    activeSurvey.questions.length > 0 &&
+    activeSurvey.questions.every((q) => (surveyAnswers[q.question_id] || []).length > 0)
+
+  const submitSurvey = async () => {
+    if (!activeSurvey || !Array.isArray(activeSurvey.questions)) return
+    if (!allSurveyAnswered) { showToast?.('Please answer every question', true); return }
+    const surveyId = activeSurvey.survey_id
+    const answers = activeSurvey.questions.map((q) => ({
+      question_id: q.question_id,
+      option_ids: [...(surveyAnswers[q.question_id] || [])],
+    }))
+    setSurveySubmitting(true)
+    try {
+      await trainingService.submitStudentSurvey(surveyId, answers)
+      showToast?.('Survey submitted. Thank you!')
+      // Optimistic: flip this survey to submitted so the badge decrements.
+      setSurveys((prev) =>
+        prev.map((s) => (s.survey_id === surveyId ? { ...s, submitted: true, submitted_at: new Date().toISOString() } : s))
+      )
+      setActiveSurvey(null)
+      setSurveyAnswers({})
+    } catch (err) {
+      if (err?.response?.status === 409) {
+        showToast?.('You have already submitted this survey', true)
+        setSurveys((prev) =>
+          prev.map((s) => (s.survey_id === surveyId ? { ...s, submitted: true } : s))
+        )
+        setActiveSurvey(null)
+        setSurveyAnswers({})
+      } else {
+        showToast?.(err?.response?.data?.message || 'Failed to submit survey', true)
+      }
+    } finally {
+      setSurveySubmitting(false)
+    }
+  }
+
   // selectBox — extracted from selectBox() in original
   function selectBox(box) {
     setActiveBox(box)
@@ -539,6 +651,21 @@ export default function FrontPage({ onSelectPoints, onSelectTraining }) {
             </svg>
             {unreadCount > 0 && <span className="pt-bell-badge">{unreadCount > 9 ? '9+' : unreadCount}</span>}
           </button>
+          <button
+            type="button"
+            className="pt-icon-btn"
+            onClick={() => setSurveyBellOpen((o) => !o)}
+            aria-label="Surveys"
+            title="Surveys"
+            style={{ position:'relative' }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M9 2h6a1 1 0 0 1 1 1v1h1a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h1V3a1 1 0 0 1 1-1z" />
+              <path d="M9 12h6" />
+              <path d="M9 16h6" />
+            </svg>
+            {pendingSurveyCount > 0 && <span className="pt-bell-badge">{pendingSurveyCount > 9 ? '9+' : pendingSurveyCount}</span>}
+          </button>
           <button className="pt-dark-toggle" onClick={() => setDarkMode(d => !d)}>
             {darkMode ? '☀ Light' : '🌙 Dark'}
           </button>
@@ -573,6 +700,21 @@ export default function FrontPage({ onSelectPoints, onSelectTraining }) {
               <path d="M13.73 21a2 2 0 0 1-3.46 0" />
             </svg>
             {unreadCount > 0 && <span className="pt-bell-badge">{unreadCount > 9 ? '9+' : unreadCount}</span>}
+          </button>
+          <button
+            type="button"
+            className="pt-icon-btn"
+            onClick={() => setSurveyBellOpen((o) => !o)}
+            aria-label="Surveys"
+            title="Surveys"
+            style={{ position:'relative' }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M9 2h6a1 1 0 0 1 1 1v1h1a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h1V3a1 1 0 0 1 1-1z" />
+              <path d="M9 12h6" />
+              <path d="M9 16h6" />
+            </svg>
+            {pendingSurveyCount > 0 && <span className="pt-bell-badge">{pendingSurveyCount > 9 ? '9+' : pendingSurveyCount}</span>}
           </button>
           <button className="pt-dark-toggle" onClick={() => setDarkMode(d => !d)}>
             {darkMode ? '☀ Light' : 'Dark'}
@@ -623,6 +765,124 @@ export default function FrontPage({ onSelectPoints, onSelectTraining }) {
             )}
           </div>
         </>
+      )}
+
+      {/* ── Survey dropdown panel ── */}
+      {surveyBellOpen && (
+        <>
+          <div className="pt-bell-backdrop" onClick={() => setSurveyBellOpen(false)} />
+          <div className="pt-bell-panel">
+            <div className="pt-bell-panel-head">
+              <span>Surveys</span>
+              {pendingSurveyCount > 0 && <span className="pt-bell-panel-count">{pendingSurveyCount} pending</span>}
+            </div>
+            {surveys.length === 0 ? (
+              <div className="pt-bell-empty">No surveys</div>
+            ) : (
+              surveys.map((s) => (
+                <div
+                  key={s.survey_id}
+                  className={`pt-bell-item${!s.submitted ? ' unread' : ''}`}
+                  onClick={() => openSurvey(s)}
+                >
+                  <div className="pt-bell-item-top">
+                    {!s.submitted && <span className="pt-bell-dot" />}
+                    <span className="pt-bell-item-title">{s.title}</span>
+                  </div>
+                  {s.description && <div className="pt-bell-item-body">{s.description}</div>}
+                  <div className="pt-bell-item-date">{s.submitted ? '✓ Submitted' : 'Not answered'}</div>
+                </div>
+              ))
+            )}
+          </div>
+        </>
+      )}
+
+      {/* ── Take-survey modal ── */}
+      {activeSurvey && (
+        <div className="pt-pop-overlay" onClick={closeSurveyModal}>
+          <div className="pt-pop-card" onClick={(e) => e.stopPropagation()}>
+            <div className="pt-pop-badge">📋 Survey</div>
+            <div className="pt-pop-title">{activeSurvey.title}</div>
+            {activeSurvey.description && (
+              <div className="pt-pop-body" style={{ marginTop: 8 }}>{activeSurvey.description}</div>
+            )}
+
+            {surveyLoading || !Array.isArray(activeSurvey.questions) ? (
+              <div className="pt-bell-empty">Loading…</div>
+            ) : (
+              <>
+                {activeSurvey.submitted && (
+                  <div className="pt-pop-date" style={{ marginTop: 14, color: 'var(--green)' }}>
+                    ✓ You have already submitted this survey
+                  </div>
+                )}
+
+                <div style={{ marginTop: 18, display: 'flex', flexDirection: 'column', gap: 20 }}>
+                  {activeSurvey.questions.map((q, qi) => {
+                    const selected = surveyAnswers[q.question_id] || []
+                    const isMulti = q.question_type === 'multi'
+                    return (
+                      <div key={q.question_id}>
+                        <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>
+                          {qi + 1}. {q.question_text}
+                          <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text3)', marginLeft: 6 }}>
+                            {isMulti ? '(select all that apply)' : '(select one)'}
+                          </span>
+                        </div>
+                        <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                          {q.options.map((opt) => {
+                            const checked = selected.includes(opt.option_id)
+                            return (
+                              <label
+                                key={opt.option_id}
+                                style={{
+                                  display: 'flex', alignItems: 'center', gap: 10,
+                                  padding: '10px 12px',
+                                  border: `1.5px solid ${checked ? 'var(--purple)' : 'var(--border)'}`,
+                                  borderRadius: 10,
+                                  background: checked ? 'var(--purple-dim)' : 'var(--bg)',
+                                  cursor: activeSurvey.submitted ? 'default' : 'pointer',
+                                  fontSize: 13, color: 'var(--text)',
+                                }}
+                              >
+                                <input
+                                  type={isMulti ? 'checkbox' : 'radio'}
+                                  name={`survey-q-${q.question_id}`}
+                                  checked={checked}
+                                  disabled={activeSurvey.submitted}
+                                  onChange={() => toggleSurveyOption(q, opt.option_id)}
+                                  style={{ accentColor: 'var(--purple)', width: 16, height: 16, flexShrink: 0 }}
+                                />
+                                <span>{opt.option_text}</span>
+                              </label>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+
+                <div className="pt-fb-actions">
+                  <button className="pt-fb-cancel" onClick={closeSurveyModal} disabled={surveySubmitting}>
+                    {activeSurvey.submitted ? 'Close' : 'Cancel'}
+                  </button>
+                  {!activeSurvey.submitted && (
+                    <button
+                      className="pt-pop-btn"
+                      style={{ marginTop: 0, flex: 1 }}
+                      onClick={submitSurvey}
+                      disabled={surveySubmitting || !allSurveyAnswered}
+                    >
+                      {surveySubmitting ? 'Submitting…' : 'Submit'}
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
       )}
 
       {/* ── One-time announcement popup ── */}

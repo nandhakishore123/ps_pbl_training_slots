@@ -14,6 +14,19 @@ export const trainingService = {
     return api.post(`/student-announcements/${id}/read`);
   },
 
+  // ── Surveys (student-facing) ────────────────────────────────
+  getStudentSurveys() {
+    return api.get('/survey/student/list');
+  },
+
+  getStudentSurvey(id) {
+    return api.get(`/survey/student/${id}`);
+  },
+
+  submitStudentSurvey(id, answers) {
+    return api.post(`/survey/student/${id}/submit`, { answers });
+  },
+
   // ── Feedback (student-facing) ───────────────────────────────
   submitFeedback(message) {
     return api.post('/feedback', { message });
