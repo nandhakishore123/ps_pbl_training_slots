@@ -1,0 +1,150 @@
+/* FacultyActivityPoints — premium token-based styling (matches Lab Approvals / MyVenues). */
+
+/* ── Page shell ────────────────────────────────────────────── */
+.page {
+  min-height: 100vh;
+  background: var(--bg);
+  font-family: var(--font-body);
+}
+
+.container {
+  max-width: none;
+  margin: 0 auto;
+  padding: 24px 24px 48px;
+}
+
+/* ── Header block ──────────────────────────────────────────── */
+.backBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 10px;
+  border: 1.5px solid var(--border);
+  background: var(--white);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text2);
+  cursor: pointer;
+  font-family: var(--font-body);
+  margin-bottom: 16px;
+  transition: border-color 0.2s ease, color 0.2s ease, background 0.2s ease;
+}
+.backBtn:hover {
+  border-color: var(--purple);
+  color: var(--purple);
+  background: var(--purple-dim);
+}
+
+.title {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--text);
+  font-family: var(--font-head);
+  margin: 0;
+}
+.subtitle {
+  font-size: 13px;
+  color: var(--text2);
+  margin-top: 2px;
+  margin-bottom: 18px;
+}
+
+/* ── Card / table ──────────────────────────────────────────── */
+.card {
+  background: var(--white);
+  border: 1.5px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+.accentPurple { border-top: 3px solid var(--purple); }
+.accentGreen  { border-top: 3px solid var(--green); }
+.accentGold   { border-top: 3px solid var(--gold); }
+.accentRed    { border-top: 3px solid var(--red); }
+
+.tableWrap { overflow-x: auto; }
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.table thead tr { background: var(--purple-dim); }
+.table th {
+  text-align: left;
+  padding: 12px 14px;
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--text3);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  white-space: nowrap;
+  border-bottom: 1.5px solid var(--border);
+}
+.table td {
+  padding: 12px 14px;
+  font-size: 13px;
+  color: var(--text);
+  border-top: 1px solid var(--border);
+  vertical-align: middle;
+}
+.table tbody tr:nth-child(even) td { background: rgba(108, 71, 255, 0.035); }
+.table tbody tr:hover td { background: var(--purple-dim); }
+
+.cellName { font-weight: 700; }
+.cellMono { font-family: monospace; color: var(--text2); }
+.passedOnly { font-size: 11px; color: var(--text3); }
+
+/* ── Empty state ───────────────────────────────────────────── */
+.empty {
+  background: var(--white);
+  border: 1.5px solid var(--border);
+  border-radius: 14px;
+  padding: 32px;
+  text-align: center;
+  color: var(--text3);
+  font-size: 14px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+/* ── Status pills ──────────────────────────────────────────── */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 9999px;
+  font-weight: 700;
+}
+.pillLg { font-size: 11px; }
+.pillSm { font-size: 10px; text-transform: uppercase; letter-spacing: 0.3px; }
+.pillGold  { background: rgba(245, 158, 11, 0.16); color: var(--gold); }
+.pillGreen { background: rgba(16, 185, 129, 0.15); color: var(--green); }
+.pillRed   { background: rgba(239, 68, 68, 0.15);  color: var(--red); }
+.pillGray  { background: rgba(107, 114, 128, 0.15); color: var(--text2); }
+
+/* ── Buttons ───────────────────────────────────────────────── */
+.actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.btn {
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1.5px solid transparent;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: var(--font-body);
+  transition: filter 0.15s ease, box-shadow 0.15s ease, background 0.15s ease,
+    border-color 0.15s ease, transform 0.1s ease;
+}
+.btn:active { transform: scale(0.97); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; filter: none; box-shadow: none; }
+
+.btnGreen { background: var(--green); color: #fff; }
+.btnGreen:hover { filter: brightness(0.94); box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3); }
+
+.btnRed { background: var(--red); color: #fff; }
+.btnRed:hover { filter: brightness(0.94); box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3); }
+
+.btnOutlinePurple { background: var(--white); border-color: var(--purple-glow); color: var(--purple); }
+.btnOutlinePurple:hover { background: var(--purple-dim); border-color: var(--purple); }
+
+.btnMuted { background: var(--white); border-color: var(--border); color: var(--text2); }
+.btnMuted:hover { border-color: var(--purple); color: var(--purple); background: var(--purple-dim); }

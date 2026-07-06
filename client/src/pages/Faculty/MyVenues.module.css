@@ -1,0 +1,146 @@
+/* MyVenues — premium token-based styling (dashboard color language).
+   Colors only where possible; Tailwind layout utilities stay on the elements. */
+
+/* ── Premium cards ─────────────────────────────────────────── */
+.card {
+  background: var(--white);
+  border: 1.5px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease;
+}
+
+.cardHover:hover {
+  border-color: var(--purple);
+  box-shadow: 0 4px 16px var(--purple-dim);
+  transform: translateY(-1px);
+}
+
+/* Colored top accents for section variety */
+.accentPurple { border-top: 3px solid var(--purple); }
+.accentOrange { border-top: 3px solid #f97316; }
+.accentGreen  { border-top: 3px solid var(--green); }
+.accentGold   { border-top: 3px solid var(--gold); }
+.accentRed    { border-top: 3px solid var(--red); }
+
+/* ── Section label (dashboard pattern) ─────────────────────── */
+.sectionLabel {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--text2);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+
+/* ── Status / info pills ───────────────────────────────────── */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.tintGreen  { background: rgba(16, 185, 129, 0.14); color: var(--green); }
+.tintRed    { background: rgba(239, 68, 68, 0.14);  color: var(--red); }
+.tintGold   { background: rgba(245, 158, 11, 0.16); color: var(--gold); }
+.tintPurple { background: rgba(108, 71, 255, 0.14); color: var(--purple); }
+.tintGray   { background: rgba(107, 114, 128, 0.14); color: var(--text2); }
+
+.dotGreen  { background: var(--green); }
+.dotRed    { background: var(--red); }
+.dotGold   { background: var(--gold); }
+.dotPurple { background: var(--purple); }
+.dotGray   { background: var(--text3); }
+
+/* ── Buttons (color layer only; Tailwind keeps size/padding/radius) ── */
+.btn {
+  border: 1.5px solid transparent;
+  cursor: pointer;
+  transition: filter 0.15s ease, box-shadow 0.15s ease, background 0.15s ease,
+    border-color 0.15s ease, transform 0.1s ease;
+}
+
+.btn:active { transform: scale(0.97); }
+
+.btnPurple {
+  background: var(--purple);
+  color: #fff;
+  box-shadow: 0 2px 8px var(--purple-dim);
+}
+.btnPurple:hover { filter: brightness(0.94); box-shadow: 0 5px 16px var(--purple-glow); }
+
+.btnGreen { background: var(--green); color: #fff; }
+.btnGreen:hover { filter: brightness(0.94); box-shadow: 0 5px 14px rgba(16, 185, 129, 0.3); }
+
+.btnRed { background: var(--red); color: #fff; }
+.btnRed:hover { filter: brightness(0.94); box-shadow: 0 5px 14px rgba(239, 68, 68, 0.3); }
+
+.btnGold { background: var(--gold); color: #fff; }
+.btnGold:hover { filter: brightness(0.95); box-shadow: 0 5px 14px rgba(245, 158, 11, 0.3); }
+
+.btnOutline { background: var(--white); border-color: var(--border); color: var(--text2); }
+.btnOutline:hover { border-color: var(--purple); color: var(--purple); background: var(--purple-dim); }
+
+.btnOutlineRed { background: var(--white); border-color: rgba(239, 68, 68, 0.4); color: var(--red); }
+.btnOutlineRed:hover { background: rgba(239, 68, 68, 0.08); border-color: var(--red); }
+
+.btnOutlinePurple { background: var(--white); border-color: var(--purple-glow); color: var(--purple); }
+.btnOutlinePurple:hover { background: var(--purple-dim); border-color: var(--purple); }
+
+.btnMuted { background: var(--border); color: var(--text2); }
+.btnMuted:hover { filter: brightness(0.96); }
+
+.btnMuted:disabled,
+.btnPurple:disabled,
+.btnRed:disabled,
+.btnGold:disabled,
+.btnGreen:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  filter: none;
+  box-shadow: none;
+}
+
+/* ── Inputs ────────────────────────────────────────────────── */
+.input {
+  background: var(--white);
+  border: 1.5px solid var(--border);
+  color: var(--text);
+}
+.input:focus { border-color: var(--purple); box-shadow: 0 0 0 3px var(--purple-dim); outline: none; }
+
+/* ── Tinted info boxes ─────────────────────────────────────── */
+.softBox { background: var(--purple-dim); }
+.boxRed { background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.25); }
+.boxLabelRed { color: var(--red); }
+.boxTextRed { color: var(--red); }
+
+/* ── Modals ────────────────────────────────────────────────── */
+.modalCard { background: var(--white); border: 1px solid var(--border); }
+.modalAccent { height: 4px; width: 100%; }
+.aGreen  { background: var(--green); }
+.aRed    { background: var(--red); }
+.aGold   { background: var(--gold); }
+.aPurple { background: var(--purple); }
+.modalTitle { color: var(--text); font-family: var(--font-head); }
+.modalSub { color: var(--text3); }
+.studentChip { background: var(--purple-dim); border: 1px solid var(--border); }
+.chipName { color: var(--text); }
+.chipMeta { color: var(--text3); }
+.fieldLabel { color: var(--text2); }
+
+/* ── Muted text helpers ────────────────────────────────────── */
+.muted { color: var(--text3); }
+.textMain { color: var(--text); }
+.textSub { color: var(--text2); }
