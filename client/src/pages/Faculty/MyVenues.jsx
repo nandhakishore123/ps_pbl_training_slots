@@ -4,6 +4,7 @@ import { useAuthStore } from '../../store/authStore.jsx';
 import { authService } from '../../services/features/authService';
 import { facultyService } from '../../services/features/facultyService';
 import pageStyles from './FacultyDashboard.module.css';
+import styles from './MyVenues.module.css';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -47,45 +48,45 @@ const formatDate = (ymd) => {
 
 function StatusBadge({ status }) {
   let config = {
-    classes: "bg-red-100 text-red-700",
-    dotClass: "bg-red-500",
+    classes: styles.tintRed,
+    dotClass: styles.dotRed,
     label: "Malpractice"
   };
 
   if (status === "ONGOING") {
     config = {
-      classes: "bg-emerald-100 text-emerald-700",
-      dotClass: "bg-emerald-500",
+      classes: styles.tintGold,
+      dotClass: styles.dotGold,
       label: "Ongoing"
     };
   } else if (status === "PASS") {
     config = {
-      classes: "bg-green-100 text-green-700",
-      dotClass: "bg-green-500",
+      classes: styles.tintGreen,
+      dotClass: styles.dotGreen,
       label: "Pass"
     };
   } else if (status === "COMPLETED") {
     config = {
-      classes: "bg-blue-100 text-blue-700",
-      dotClass: "bg-blue-500",
+      classes: styles.tintGreen,
+      dotClass: styles.dotGreen,
       label: "Completed"
     };
   } else if (status === "FAIL") {
     config = {
-      classes: "bg-rose-100 text-rose-700",
-      dotClass: "bg-rose-500",
+      classes: styles.tintRed,
+      dotClass: styles.dotRed,
       label: "Fail"
     };
   } else if (status === "MALPRACTICE") {
     config = {
-      classes: "bg-red-100 text-red-700",
-      dotClass: "bg-red-500",
+      classes: styles.tintRed,
+      dotClass: styles.dotRed,
       label: "Malpractice"
     };
   }
 
   return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${config.classes}`}>
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold ${config.classes}`}>
       <span className={`w-1.5 h-1.5 rounded-full inline-block ${config.dotClass}`} />
       {config.label}
     </span>
@@ -93,13 +94,16 @@ function StatusBadge({ status }) {
 }
 
 function Toast({ message, type, onClose }) {
-  const styles = {
-    success: "bg-emerald-600",
-    warning: "bg-amber-500",
-    error: "bg-red-600",
+  const bgColor = {
+    success: "var(--green)",
+    warning: "var(--gold)",
+    error: "var(--red)",
   };
   return (
-    <div className={`fixed bottom-6 right-6 z-50 flex items-center gap-3 px-4 py-3 rounded-xl text-white text-sm font-medium shadow-xl ${styles[type] || styles.success} animate-slide-up`}>
+    <div
+      style={{ background: bgColor[type] || bgColor.success }}
+      className="fixed bottom-6 right-6 z-50 flex items-center gap-3 px-4 py-3 rounded-xl text-white text-sm font-medium shadow-xl animate-slide-up"
+    >
       <span>{message}</span>
       <button onClick={onClose} className="ml-1 opacity-70 hover:opacity-100 leading-none">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
@@ -130,24 +134,24 @@ function MalpracticeModal({ student, onConfirm, onCancel }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm px-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
-        <div className="h-1 w-full bg-red-500" />
+      <div className={`${styles.modalCard} rounded-2xl shadow-2xl w-full max-w-md overflow-hidden`}>
+        <div className={`${styles.modalAccent} ${styles.aRed}`} />
         <div className="p-6 space-y-5">
           <div>
-            <h3 className="text-base font-bold text-gray-900">Mark Malpractice</h3>
-            <p className="text-xs text-gray-400 mt-0.5">This action will be logged and is reversible by faculty.</p>
+            <h3 className={`text-base font-bold ${styles.modalTitle}`}>Mark Malpractice</h3>
+            <p className={`text-xs mt-0.5 ${styles.modalSub}`}>This action will be logged and is reversible by faculty.</p>
           </div>
-          <div className="flex items-center gap-3 bg-gray-50 rounded-xl px-4 py-3 border border-gray-200">
+          <div className={`flex items-center gap-3 rounded-xl px-4 py-3 ${styles.studentChip}`}>
             <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 ${getAvatarColor(student._idx || 0)}`}>
               {getInitials(student.name)}
             </div>
             <div>
-              <p className="text-sm font-semibold text-gray-900">{student.name}</p>
-              <p className="text-xs text-gray-400 font-mono">{student.reg_num} &middot; {student.course}</p>
+              <p className={`text-sm font-semibold ${styles.chipName}`}>{student.name}</p>
+              <p className={`text-xs font-mono ${styles.chipMeta}`}>{student.reg_num} &middot; {student.course}</p>
             </div>
           </div>
           <div>
-            <p className="text-xs font-semibold text-gray-600 uppercase tracking-wider mb-2">Reason for Malpractice</p>
+            <p className={`text-xs font-semibold uppercase tracking-wider mb-2 ${styles.fieldLabel}`}>Reason for Malpractice</p>
             <div className="flex flex-col gap-2">
               {MALPRACTICE_REASONS.map((r) => (
                 <label
@@ -181,11 +185,11 @@ function MalpracticeModal({ student, onConfirm, onCancel }) {
             )}
           </div>
           <div className="flex gap-3 pt-1">
-            <button onClick={onCancel} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 transition-colors">Cancel</button>
+            <button onClick={onCancel} className={`flex-1 py-2.5 rounded-xl text-sm font-semibold ${styles.btn} ${styles.btnMuted}`}>Cancel</button>
             <button
               disabled={!canSubmit}
               onClick={() => onConfirm(reason)}
-              className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white bg-red-600 hover:bg-red-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              className={`flex-1 py-2.5 rounded-xl text-sm font-semibold ${styles.btn} ${styles.btnRed}`}
             >
               Confirm Malpractice
             </button>
@@ -205,30 +209,30 @@ function RevokeModal({ student, onConfirm, onCancel }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm px-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
-        <div className="h-1 w-full bg-amber-400" />
+      <div className={`${styles.modalCard} rounded-2xl shadow-2xl w-full max-w-md overflow-hidden`}>
+        <div className={`${styles.modalAccent} ${styles.aGold}`} />
         <div className="p-6 space-y-5">
           <div>
-            <h3 className="text-base font-bold text-gray-900">Revoke Malpractice Flag</h3>
-            <p className="text-xs text-gray-400 mt-0.5">Student status will be reset to Ongoing. Reason is mandatory.</p>
+            <h3 className={`text-base font-bold ${styles.modalTitle}`}>Revoke Malpractice Flag</h3>
+            <p className={`text-xs mt-0.5 ${styles.modalSub}`}>Student status will be reset to Ongoing. Reason is mandatory.</p>
           </div>
-          <div className="flex items-center gap-3 bg-gray-50 rounded-xl px-4 py-3 border border-gray-200">
+          <div className={`flex items-center gap-3 rounded-xl px-4 py-3 ${styles.studentChip}`}>
             <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 ${getAvatarColor(student._idx || 0)}`}>
               {getInitials(student.name)}
             </div>
             <div>
-              <p className="text-sm font-semibold text-gray-900">{student.name}</p>
-              <p className="text-xs text-gray-400 font-mono">{student.reg_num} &middot; {student.course}</p>
+              <p className={`text-sm font-semibold ${styles.chipName}`}>{student.name}</p>
+              <p className={`text-xs font-mono ${styles.chipMeta}`}>{student.reg_num} &middot; {student.course}</p>
             </div>
           </div>
           {student.remarks && (
-            <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
-              <p className="text-xs font-semibold text-red-600 uppercase tracking-wider mb-1">Original Malpractice Reason</p>
-              <p className="text-sm text-red-800">{student.remarks}</p>
+            <div className={`rounded-xl px-4 py-3 ${styles.boxRed}`}>
+              <p className={`text-xs font-semibold uppercase tracking-wider mb-1 ${styles.boxLabelRed}`}>Original Malpractice Reason</p>
+              <p className={`text-sm ${styles.boxTextRed}`}>{student.remarks}</p>
             </div>
           )}
           <div>
-            <p className="text-xs font-semibold text-gray-600 uppercase tracking-wider mb-2">Reason for Revocation</p>
+            <p className={`text-xs font-semibold uppercase tracking-wider mb-2 ${styles.fieldLabel}`}>Reason for Revocation</p>
             <textarea
               className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400 resize-none transition"
               rows={3}
@@ -238,11 +242,11 @@ function RevokeModal({ student, onConfirm, onCancel }) {
             />
           </div>
           <div className="flex gap-3 pt-1">
-            <button onClick={onCancel} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 transition-colors">Cancel</button>
+            <button onClick={onCancel} className={`flex-1 py-2.5 rounded-xl text-sm font-semibold ${styles.btn} ${styles.btnMuted}`}>Cancel</button>
             <button
               disabled={!reason.trim()}
               onClick={() => onConfirm(reason.trim())}
-              className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white bg-amber-500 hover:bg-amber-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              className={`flex-1 py-2.5 rounded-xl text-sm font-semibold ${styles.btn} ${styles.btnGold}`}
             >
               Revoke Flag
             </button>
@@ -259,29 +263,29 @@ function AttendanceModal({ student, onConfirm, onCancel }) {
   if (!student) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm px-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
-        <div className="h-1 w-full bg-blue-500" />
+      <div className={`${styles.modalCard} rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden`}>
+        <div className={`${styles.modalAccent} ${styles.aPurple}`} />
         <div className="p-6 space-y-4">
           <div>
-            <h3 className="text-base font-bold text-gray-900">Mark Attendance</h3>
-            <p className="text-xs text-gray-400 mt-0.5">Select Present or Absent for this student.</p>
+            <h3 className={`text-base font-bold ${styles.modalTitle}`}>Mark Attendance</h3>
+            <p className={`text-xs mt-0.5 ${styles.modalSub}`}>Select Present or Absent for this student.</p>
           </div>
-          <div className="flex items-center gap-3 bg-gray-50 rounded-xl px-4 py-3 border border-gray-200">
+          <div className={`flex items-center gap-3 rounded-xl px-4 py-3 ${styles.studentChip}`}>
             <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 ${getAvatarColor(student._idx || 0)}`}>
               {getInitials(student.name)}
             </div>
             <div>
-              <p className="text-sm font-semibold text-gray-900">{student.name}</p>
-              <p className="text-xs text-gray-400 font-mono">{student.reg_num} &middot; {student.course}</p>
+              <p className={`text-sm font-semibold ${styles.chipName}`}>{student.name}</p>
+              <p className={`text-xs font-mono ${styles.chipMeta}`}>{student.reg_num} &middot; {student.course}</p>
             </div>
           </div>
           {student.attendance_status && (
-            <div className="text-xs text-gray-400 text-center">Currently marked: <span className="font-semibold">{student.attendance_status}</span></div>
+            <div className={`text-xs text-center ${styles.modalSub}`}>Currently marked: <span className="font-semibold">{student.attendance_status}</span></div>
           )}
           <div className="flex gap-3 pt-1">
-            <button onClick={onCancel} className="py-2.5 px-4 rounded-xl text-sm font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 transition-colors">Cancel</button>
-            <button onClick={() => onConfirm('PRESENT')} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 transition-colors">✓ Present</button>
-            <button onClick={() => onConfirm('ABSENT')} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white bg-red-500 hover:bg-red-600 transition-colors">✗ Absent</button>
+            <button onClick={onCancel} className={`py-2.5 px-4 rounded-xl text-sm font-semibold ${styles.btn} ${styles.btnMuted}`}>Cancel</button>
+            <button onClick={() => onConfirm('PRESENT')} className={`flex-1 py-2.5 rounded-xl text-sm font-semibold ${styles.btn} ${styles.btnGreen}`}>✓ Present</button>
+            <button onClick={() => onConfirm('ABSENT')} className={`flex-1 py-2.5 rounded-xl text-sm font-semibold ${styles.btn} ${styles.btnRed}`}>✗ Absent</button>
           </div>
         </div>
       </div>
@@ -293,8 +297,8 @@ function AttendanceModal({ student, onConfirm, onCancel }) {
 
 function StudentCard({ student, idx, onMarkAttendance, onMarkMalpractice, onRevoke, onReview }) {
   return (
-    <div className={`bg-white rounded-xl border flex flex-col overflow-hidden transition-all hover:shadow-sm ${student.status === "MALPRACTICE" ? "border-red-200" : "border-gray-200"}`}>
-      {student.status === "MALPRACTICE" && <div className="h-0.5 w-full bg-red-400" />}
+    <div className={`${styles.card} ${styles.cardHover} flex flex-col overflow-hidden`}>
+      {student.status === "MALPRACTICE" && <div className="h-1 w-full" style={{ background: 'var(--red)' }} />}
       <div className="p-4 flex flex-col gap-3 flex-1">
         {/* Avatar + Name */}
         <div className="flex items-start gap-3">
@@ -302,8 +306,8 @@ function StudentCard({ student, idx, onMarkAttendance, onMarkMalpractice, onRevo
             {getInitials(student.name)}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-gray-900 leading-tight truncate">{student.name}</p>
-            <p className="text-xs text-gray-400 font-mono">{student.reg_num}</p>
+            <p className={`text-sm font-semibold leading-tight truncate ${styles.textMain}`}>{student.name}</p>
+            <p className={`text-xs font-mono ${styles.muted}`}>{student.reg_num}</p>
           </div>
         </div>
 
@@ -311,13 +315,13 @@ function StudentCard({ student, idx, onMarkAttendance, onMarkMalpractice, onRevo
         <div className="flex flex-wrap gap-1.5">
           <StatusBadge status={student.status} />
           {student.attendance_status === 'PRESENT' && (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">
+            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold ${styles.tintGreen}`}>
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M20 6L9 17l-5-5"/></svg>
               Present
             </span>
           )}
           {student.attendance_status === 'ABSENT' && (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">
+            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold ${styles.tintRed}`}>
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M18 6L6 18M6 6l12 12"/></svg>
               Absent
             </span>
@@ -325,16 +329,16 @@ function StudentCard({ student, idx, onMarkAttendance, onMarkMalpractice, onRevo
         </div>
 
         {/* Course info */}
-        <div className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2 text-xs">
-          <span className="text-gray-400 font-medium">Course</span>
-          <span className="font-semibold text-gray-700 truncate ml-2 max-w-[120px]">{student.course || '—'}</span>
+        <div className={`flex items-center justify-between rounded-lg px-3 py-2 text-xs ${styles.softBox}`}>
+          <span className={`font-medium ${styles.textSub}`}>Course</span>
+          <span className={`font-semibold truncate ml-2 max-w-[120px] ${styles.textMain}`}>{student.course || '—'}</span>
         </div>
 
         {/* Malpractice reason if flagged */}
         {student.status === "MALPRACTICE" && student.remarks && (
-          <div className="bg-red-50 border border-red-100 rounded-lg px-3 py-2">
-            <p className="text-xs text-red-500 font-semibold uppercase tracking-wide mb-0.5">Reason</p>
-            <p className="text-xs text-red-700 leading-snug">{student.remarks}</p>
+          <div className={`rounded-lg px-3 py-2 ${styles.boxRed}`}>
+            <p className={`text-xs font-semibold uppercase tracking-wide mb-0.5 ${styles.boxLabelRed}`}>Reason</p>
+            <p className={`text-xs leading-snug ${styles.boxTextRed}`}>{student.remarks}</p>
           </div>
         )}
 
@@ -343,7 +347,7 @@ function StudentCard({ student, idx, onMarkAttendance, onMarkMalpractice, onRevo
           {!student.attendance_status && student.status !== "MALPRACTICE" && (
             <button
               onClick={() => onMarkAttendance(student)}
-              className="w-full py-2 rounded-lg text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700 active:scale-95 transition-all"
+              className={`w-full py-2 rounded-lg text-xs font-semibold ${styles.btn} ${styles.btnPurple}`}
             >
               Mark Attendance
             </button>
@@ -351,7 +355,7 @@ function StudentCard({ student, idx, onMarkAttendance, onMarkMalpractice, onRevo
           {student.attendance_status && student.status !== "MALPRACTICE" && (
             <button
               onClick={() => onMarkAttendance(student)}
-              className="w-full py-2 rounded-lg text-xs font-semibold border border-gray-300 text-gray-600 hover:bg-gray-50 active:scale-95 transition-all"
+              className={`w-full py-2 rounded-lg text-xs font-semibold ${styles.btn} ${styles.btnOutline}`}
             >
               Change Attendance
             </button>
@@ -359,7 +363,7 @@ function StudentCard({ student, idx, onMarkAttendance, onMarkMalpractice, onRevo
           {student.status === "ONGOING" && (
             <button
               onClick={() => onMarkMalpractice(student)}
-              className="w-full py-2 rounded-lg text-xs font-semibold border border-red-300 text-red-600 hover:bg-red-50 active:scale-95 transition-all"
+              className={`w-full py-2 rounded-lg text-xs font-semibold ${styles.btn} ${styles.btnOutlineRed}`}
             >
               Mark Malpractice
             </button>
@@ -367,14 +371,14 @@ function StudentCard({ student, idx, onMarkAttendance, onMarkMalpractice, onRevo
           {student.status === "MALPRACTICE" && (
             <button
               onClick={() => onRevoke(student)}
-              className="w-full py-2 rounded-lg text-xs font-semibold bg-amber-500 text-white hover:bg-amber-600 active:scale-95 transition-all"
+              className={`w-full py-2 rounded-lg text-xs font-semibold ${styles.btn} ${styles.btnGold}`}
             >
               Revoke to Ongoing
             </button>
           )}
           <button
             onClick={() => onReview(student)}
-            className="w-full py-2 rounded-lg text-xs font-semibold border border-indigo-300 text-indigo-600 hover:bg-indigo-50 active:scale-95 transition-all"
+            className={`w-full py-2 rounded-lg text-xs font-semibold ${styles.btn} ${styles.btnOutlinePurple}`}
           >
             Review MCQ &amp; Survey
           </button>
@@ -958,9 +962,12 @@ function VenueDetail({ venue, onBack }) {
       {/* Back */}
       <button
         onClick={onBack}
-        className="group inline-flex items-center gap-2 self-start rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-bold text-gray-600 shadow-sm transition-all hover:border-[#6c47ff] hover:bg-[#6c47ff]/[0.06] hover:text-[#6c47ff] hover:shadow-md"
+        className={`group inline-flex items-center gap-2 self-start rounded-xl px-4 py-2 text-sm font-bold shadow-sm ${styles.btn} ${styles.btnOutline}`}
       >
-        <span className="grid h-5 w-5 place-items-center rounded-md bg-[#6c47ff]/10 text-[#6c47ff] transition-transform group-hover:-translate-x-0.5">
+        <span
+          className="grid h-5 w-5 place-items-center rounded-md transition-transform group-hover:-translate-x-0.5"
+          style={{ background: 'var(--purple-dim)', color: 'var(--purple)' }}
+        >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
             <path d="M15 18l-6-6 6-6"/>
           </svg>
@@ -969,32 +976,32 @@ function VenueDetail({ venue, onBack }) {
       </button>
 
       {/* Venue card */}
-      <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
-        <div className="px-5 py-4 border-b border-gray-100 flex items-start gap-4 bg-gradient-to-r from-[#6c47ff]/[0.05] to-transparent">
+      <div className={`${styles.card} ${styles.accentPurple} overflow-hidden shadow-sm`}>
+        <div className="px-5 py-4 flex items-start gap-4" style={{ borderBottom: '1px solid var(--border)', background: 'linear-gradient(to right, var(--purple-dim), transparent)' }}>
           <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-[#6c47ff] to-[#8b6dff] flex items-center justify-center flex-shrink-0 shadow-md shadow-[#6c47ff]/30">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
               <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/>
             </svg>
           </div>
           <div className="flex-1">
-            <h2 className="text-sm font-bold text-gray-900">{venue.venue_name}</h2>
-            <p className="text-xs text-gray-400 mt-0.5">{venue.location}</p>
+            <h2 className={`text-sm font-bold ${styles.textMain}`}>{venue.venue_name}</h2>
+            <p className={`text-xs mt-0.5 ${styles.muted}`}>{venue.location}</p>
             <div className="flex flex-wrap gap-2 mt-2">
-              <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-[#6c47ff]/10 text-[#6c47ff]">{venue.skill_type}</span>
-              <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 font-mono">Cap: {venue.capacity}</span>
+              <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${styles.tintPurple}`}>{venue.skill_type}</span>
+              <span className={`px-2 py-0.5 rounded-full text-xs font-medium font-mono ${styles.tintGray}`}>Cap: {venue.capacity}</span>
             </div>
           </div>
         </div>
-        <div className="grid sm:grid-cols-2 gap-px bg-gray-100">
+        <div className="grid sm:grid-cols-2 gap-px" style={{ background: 'var(--border)' }}>
           {[
             { label: "Date", value: formatDate(venue.slot_date) || '—' },
             { label: "Slot", value: `${formatTime(venue.start_time)} – ${formatTime(venue.end_time)}` },
             { label: "Capacity", value: `${venue.capacity} seats` },
             { label: "Current Bookings", value: venue.current_bookings ?? 0 },
           ].map((item) => (
-            <div key={item.label} className="bg-white px-5 py-3">
-              <p className="text-xs text-gray-400 mb-0.5">{item.label}</p>
-              <p className="text-sm font-semibold text-gray-800">{item.value}</p>
+            <div key={item.label} className="px-5 py-3" style={{ background: 'var(--white)' }}>
+              <p className={`text-xs mb-0.5 ${styles.muted}`}>{item.label}</p>
+              <p className={`text-sm font-semibold ${styles.textMain}`}>{item.value}</p>
             </div>
           ))}
         </div>
@@ -1003,17 +1010,17 @@ function VenueDetail({ venue, onBack }) {
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
-          { label: "Total Students", value: students.length, dot: "bg-gray-400" },
-          { label: "Ongoing", value: ongoingCount, dot: "bg-emerald-500" },
-          { label: "Malpractice", value: malpracticeCount, dot: "bg-red-500" },
-          { label: "Present", value: attendedCount, dot: "bg-emerald-500" },
-          { label: "Absent", value: absentCount, dot: "bg-red-500" },
+          { label: "Total Students", value: students.length, dot: styles.dotGray },
+          { label: "Ongoing", value: ongoingCount, dot: styles.dotGold },
+          { label: "Malpractice", value: malpracticeCount, dot: styles.dotRed },
+          { label: "Present", value: attendedCount, dot: styles.dotGreen },
+          { label: "Absent", value: absentCount, dot: styles.dotRed },
         ].map((s) => (
-          <div key={s.label} className="bg-white rounded-xl border border-gray-200 px-4 py-3 shadow-sm transition-all hover:border-[#6c47ff]/40 hover:shadow-md">
-            <p className="text-xs text-gray-400 mb-1">{s.label}</p>
+          <div key={s.label} className={`px-4 py-3 ${styles.card} ${styles.cardHover}`}>
+            <p className={`text-xs mb-1 ${styles.muted}`}>{s.label}</p>
             <div className="flex items-center gap-2">
               <span className={`w-2 h-2 rounded-full flex-shrink-0 ${s.dot}`} />
-              <span className="text-xl font-bold text-gray-900">{s.value}</span>
+              <span className={`text-xl font-bold ${styles.textMain}`}>{s.value}</span>
             </div>
           </div>
         ))}
@@ -1028,7 +1035,7 @@ function VenueDetail({ venue, onBack }) {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search name or roll number..."
-            className="w-full pl-8 pr-4 py-2 rounded-xl border border-gray-200 bg-white text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-400/30 focus:border-indigo-400 transition"
+            className={`w-full pl-8 pr-4 py-2 rounded-xl text-sm placeholder-gray-400 transition ${styles.input}`}
           />
         </div>
         <div className="flex gap-2">
@@ -1036,12 +1043,12 @@ function VenueDetail({ venue, onBack }) {
             <button
               key={f}
               onClick={() => setFilterStatus(f)}
-              className={`px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
+              className={`px-3 py-2 rounded-xl text-xs font-semibold ${styles.btn} ${
                 filterStatus === f
-                  ? f === "MALPRACTICE" ? "bg-red-600 text-white"
-                    : f === "ONGOING" ? "bg-emerald-600 text-white"
-                    : "bg-gray-900 text-white"
-                  : "bg-white border border-gray-200 text-gray-600 hover:bg-gray-50"
+                  ? f === "MALPRACTICE" ? styles.btnRed
+                    : f === "ONGOING" ? styles.btnGold
+                    : styles.btnPurple
+                  : styles.btnOutline
               }`}
             >
               {f === "ALL" ? "All" : f === "ONGOING" ? "Ongoing" : "Malpractice"}
@@ -1052,14 +1059,14 @@ function VenueDetail({ venue, onBack }) {
 
       {/* Bulk mark all */}
       {pendingAttendance > 0 && (
-        <div className="bg-blue-50 border border-blue-200 rounded-xl px-5 py-3 flex items-center justify-between gap-4">
+        <div className={`px-5 py-3 flex items-center justify-between gap-4 ${styles.card} ${styles.accentGreen}`}>
           <div>
-            <p className="text-sm font-semibold text-blue-800">Mark All as Present</p>
-            <p className="text-xs text-blue-500 mt-0.5">{pendingAttendance} students pending</p>
+            <p className={`text-sm font-semibold ${styles.textMain}`}>Mark All as Present</p>
+            <p className={`text-xs mt-0.5 ${styles.textSub}`}>{pendingAttendance} students pending</p>
           </div>
           <button
             onClick={handleMarkAll}
-            className="px-4 py-2 rounded-xl text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 transition-colors flex-shrink-0"
+            className={`px-4 py-2 rounded-xl text-sm font-semibold flex-shrink-0 ${styles.btn} ${styles.btnGreen}`}
           >
             Mark All Present
           </button>
@@ -1068,12 +1075,12 @@ function VenueDetail({ venue, onBack }) {
 
       {/* Cards */}
       {loadingStudents ? (
-        <div className="bg-white rounded-xl border border-gray-200 py-14 flex flex-col items-center gap-2 text-gray-400">
-          <div className="w-6 h-6 border-2 border-gray-300 border-t-indigo-500 rounded-full animate-spin" />
+        <div className={`py-14 flex flex-col items-center gap-2 ${styles.card} ${styles.muted}`}>
+          <div className="w-6 h-6 border-2 rounded-full animate-spin" style={{ borderColor: 'var(--border)', borderTopColor: 'var(--purple)' }} />
           <p className="text-sm">Loading students...</p>
         </div>
       ) : filtered.length === 0 ? (
-        <div className="bg-white rounded-xl border border-gray-200 py-14 flex flex-col items-center gap-2 text-gray-400">
+        <div className={`py-14 flex flex-col items-center gap-2 ${styles.card} ${styles.muted}`}>
           <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
           <p className="text-sm">No students match this filter.</p>
         </div>
@@ -1235,7 +1242,7 @@ export default function MyVenues() {
                     <button
                       key={slot.venue_slot_id}
                       onClick={() => setSelectedMapping(slot)}
-                      className="w-full bg-white rounded-xl border border-gray-200 px-5 py-4 flex items-center gap-4 hover:shadow-sm hover:border-gray-300 transition-all text-left group"
+                      className={`w-full px-5 py-4 flex items-center gap-4 text-left group ${styles.card} ${styles.cardHover}`}
                     >
                       <div className="w-11 h-11 rounded-xl bg-emerald-600 flex items-center justify-center flex-shrink-0">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -1243,25 +1250,25 @@ export default function MyVenues() {
                         </svg>
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs font-semibold text-emerald-600 mb-0.5">{formatDate(slot.slot_date)}</p>
-                        <p className="text-sm font-bold text-gray-900 mb-0.5">
+                        <p className="text-xs font-semibold mb-0.5" style={{ color: 'var(--green)' }}>{formatDate(slot.slot_date)}</p>
+                        <p className={`text-sm font-bold mb-0.5 ${styles.textMain}`}>
                           {formatTime(slot.start_time)} – {formatTime(slot.end_time)}
                         </p>
                         <div className="flex gap-2 mt-2 flex-wrap">
-                          <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700">
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${styles.tintGreen}`}>
                             {slot.current_bookings ?? 0} Students Booked
                           </span>
                           {Number(slot.is_active) !== 1 && (
-                            <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-600">
+                            <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${styles.tintRed}`}>
                               Closed
                             </span>
                           )}
-                          <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500 font-mono">
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium font-mono ${styles.tintGray}`}>
                             {slot.skill_type}
                           </span>
                         </div>
                       </div>
-                      <span className="text-gray-300 text-lg group-hover:text-gray-500 transition-colors flex-shrink-0">›</span>
+                      <span className={`text-lg group-hover:opacity-80 transition-opacity flex-shrink-0 ${styles.muted}`}>›</span>
                     </button>
                   ))}
                 </div>
@@ -1279,15 +1286,15 @@ export default function MyVenues() {
                 <div className={pageStyles.groupLabel}>Assigned Venues</div>
 
                 {loading ? (
-                  <div className="bg-white rounded-xl border border-gray-200 py-14 flex flex-col items-center gap-3 text-gray-400">
-                    <div className="w-6 h-6 border-2 border-gray-300 border-t-indigo-500 rounded-full animate-spin" />
+                  <div className={`py-14 flex flex-col items-center gap-3 ${styles.card} ${styles.muted}`}>
+                    <div className="w-6 h-6 border-2 rounded-full animate-spin" style={{ borderColor: 'var(--border)', borderTopColor: 'var(--purple)' }} />
                     <p className="text-sm">Loading your venues...</p>
                   </div>
                 ) : error ? (
-                  <div className="bg-white rounded-xl border border-red-200 py-12 flex flex-col items-center gap-3 text-center px-6">
+                  <div className={`py-12 flex flex-col items-center gap-3 text-center px-6 ${styles.card} ${styles.accentRed}`}>
                     <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
-                    <p className="text-sm font-semibold text-red-600">{error}</p>
-                    <button onClick={loadVenues} className="px-4 py-2 rounded-xl text-sm font-semibold bg-indigo-600 text-white hover:bg-indigo-700 transition-colors">
+                    <p className="text-sm font-semibold" style={{ color: 'var(--red)' }}>{error}</p>
+                    <button onClick={loadVenues} className={`px-4 py-2 rounded-xl text-sm font-semibold ${styles.btn} ${styles.btnPurple}`}>
                       Retry
                     </button>
                   </div>
@@ -1322,7 +1329,7 @@ export default function MyVenues() {
                         <button
                           key={venue.venue_id}
                           onClick={() => setSelectedVenueId(venue.venue_id)}
-                          className="w-full bg-white rounded-xl border border-gray-200 px-5 py-4 flex items-center gap-4 hover:shadow-sm hover:border-gray-300 transition-all text-left group"
+                          className={`w-full px-5 py-4 flex items-center gap-4 text-left group ${styles.card} ${styles.cardHover}`}
                         >
                           <div className="w-11 h-11 rounded-xl bg-indigo-600 flex items-center justify-center flex-shrink-0">
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -1330,18 +1337,18 @@ export default function MyVenues() {
                             </svg>
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-bold text-gray-900 mb-0.5 truncate">{venue.venue_name}</p>
-                            <p className="text-xs text-gray-400">{venue.location}</p>
+                            <p className={`text-sm font-bold mb-0.5 truncate ${styles.textMain}`}>{venue.venue_name}</p>
+                            <p className={`text-xs ${styles.muted}`}>{venue.location}</p>
                             <div className="flex gap-2 mt-2 flex-wrap">
-                              <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-indigo-100 text-indigo-700">
+                              <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${styles.tintPurple}`}>
                                 {venue.totalBookings} Total Students
                               </span>
-                              <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500">
+                              <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${styles.tintGray}`}>
                                 {venue.slotsCount} {venue.slotsCount === 1 ? 'Slot' : 'Slots'} Assigned
                               </span>
                             </div>
                           </div>
-                          <span className="text-gray-300 text-lg group-hover:text-gray-500 transition-colors flex-shrink-0">›</span>
+                          <span className={`text-lg group-hover:opacity-80 transition-opacity flex-shrink-0 ${styles.muted}`}>›</span>
                         </button>
                       ));
                     })()}

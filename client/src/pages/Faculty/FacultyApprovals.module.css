@@ -1,0 +1,230 @@
+/* FacultyApprovals — premium token-based styling (matches MyVenues / dashboard). */
+
+/* ── Page shell ────────────────────────────────────────────── */
+.page {
+  min-height: 100vh;
+  background: var(--bg);
+  font-family: var(--font-body);
+}
+
+.container {
+  max-width: none;
+  margin: 0 auto;
+  padding: 24px 24px 48px;
+}
+
+/* ── Header block ──────────────────────────────────────────── */
+.backBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 10px;
+  border: 1.5px solid var(--border);
+  background: var(--white);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text2);
+  cursor: pointer;
+  font-family: var(--font-body);
+  margin-bottom: 16px;
+  transition: border-color 0.2s ease, color 0.2s ease, background 0.2s ease;
+}
+.backBtn:hover {
+  border-color: var(--purple);
+  color: var(--purple);
+  background: var(--purple-dim);
+}
+
+.headerBlock { margin-bottom: 16px; }
+.title {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--text);
+  font-family: var(--font-head);
+  margin: 0;
+}
+.subtitle {
+  font-size: 13px;
+  color: var(--text2);
+  margin-top: 2px;
+}
+
+/* ── Toolbar / select ──────────────────────────────────────── */
+.toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 12px;
+}
+.select {
+  padding: 8px 12px;
+  border: 1.5px solid var(--border);
+  border-radius: 10px;
+  font-size: 13px;
+  background: var(--white);
+  color: var(--text);
+  cursor: pointer;
+  font-family: var(--font-body);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.select:focus {
+  outline: none;
+  border-color: var(--purple);
+  box-shadow: 0 0 0 3px var(--purple-dim);
+}
+
+/* ── Card ──────────────────────────────────────────────────── */
+.card {
+  background: var(--white);
+  border: 1.5px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+.accentPurple { border-top: 3px solid var(--purple); }
+.accentGreen  { border-top: 3px solid var(--green); }
+.accentGold   { border-top: 3px solid var(--gold); }
+.accentRed    { border-top: 3px solid var(--red); }
+
+/* ── Table ─────────────────────────────────────────────────── */
+.tableWrap { overflow-x: auto; }
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.table thead tr { background: var(--purple-dim); }
+.table th {
+  text-align: left;
+  padding: 12px 14px;
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--text3);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  white-space: nowrap;
+  border-bottom: 1.5px solid var(--border);
+}
+.table td {
+  padding: 12px 14px;
+  font-size: 13px;
+  color: var(--text);
+  border-top: 1px solid var(--border);
+  vertical-align: middle;
+}
+.rowAlt { background: rgba(108, 71, 255, 0.035); }
+.table tbody tr:hover td { background: var(--purple-dim); }
+
+.cellName { font-weight: 700; }
+.cellMono { font-family: monospace; color: var(--text2); }
+.cellEmpty {
+  text-align: center;
+  color: var(--text3);
+  padding: 24px;
+}
+
+/* ── Status pills ──────────────────────────────────────────── */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 9999px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+.pillGold  { background: rgba(245, 158, 11, 0.16); color: var(--gold); }
+.pillGreen { background: rgba(16, 185, 129, 0.15); color: var(--green); }
+.pillRed   { background: rgba(239, 68, 68, 0.15);  color: var(--red); }
+.pillGray  { background: rgba(107, 114, 128, 0.15); color: var(--text2); }
+
+/* ── Buttons ───────────────────────────────────────────────── */
+.actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.btn {
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1.5px solid transparent;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: var(--font-body);
+  transition: filter 0.15s ease, box-shadow 0.15s ease, background 0.15s ease,
+    border-color 0.15s ease, transform 0.1s ease;
+}
+.btn:active { transform: scale(0.97); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; filter: none; box-shadow: none; }
+
+.btnGreen { background: var(--green); color: #fff; }
+.btnGreen:hover { filter: brightness(0.94); box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3); }
+
+.btnRed { background: var(--red); color: #fff; }
+.btnRed:hover { filter: brightness(0.94); box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3); }
+
+.btnOutlinePurple { background: var(--white); border-color: var(--purple-glow); color: var(--purple); }
+.btnOutlinePurple:hover { background: var(--purple-dim); border-color: var(--purple); }
+
+.btnMuted { background: var(--white); border-color: var(--border); color: var(--text2); }
+.btnMuted:hover { border-color: var(--purple); color: var(--purple); background: var(--purple-dim); }
+
+/* ── Detail modal ──────────────────────────────────────────── */
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  backdrop-filter: blur(3px);
+}
+.modal {
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  width: 100%;
+  max-width: 640px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.25);
+}
+.modalHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 22px;
+  border-bottom: 1px solid var(--border);
+}
+.modalTitle {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--text);
+  margin: 0;
+  font-family: var(--font-head);
+}
+.modalClose {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--white);
+  color: var(--text3);
+  font-size: 16px;
+  cursor: pointer;
+  transition: border-color 0.2s ease, color 0.2s ease;
+}
+.modalClose:hover { border-color: var(--purple); color: var(--purple); }
+
+.modalBody { padding: 18px 22px; }
+.modalMeta { font-size: 12px; color: var(--text2); margin-bottom: 14px; }
+.modalFooter {
+  display: flex;
+  justify-content: flex-end;
+  padding: 16px 22px;
+  border-top: 1px solid var(--border);
+}
+.loadingText { color: var(--text3); font-size: 13px; padding: 12px 0; }
+
+.qBlock { margin-bottom: 14px; }
+.qText { font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 4px; }
+.aText { font-size: 13px; color: var(--text2); white-space: pre-wrap; }
