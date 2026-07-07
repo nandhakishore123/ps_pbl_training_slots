@@ -10,6 +10,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { authService } from '../../services/features/authService'
 import { pointsService } from '../../services/features/pointsService'
 import { useAuthStore } from '../../store/authStore'
+import UserProfileBadge from '../../components/UserProfileBadge'
 
 function UserIdentity({ user }) {
   if (!user) return null
@@ -999,7 +1000,7 @@ export default function PointsDashboard({ onBack }) {
         {/* Desktop right */}
         <div className="pt-hdr-right-desktop" style={{alignItems:'center', gap:10}}>
           <button type="button" className="pt-header-back" onClick={handleBack}>← Back</button>
-          <UserIdentity user={user} />
+          <UserProfileBadge user={user} variant="desktop" />
           <button className="pt-dark-toggle" onClick={()=>setDarkMode(d=>!d)}>
             {darkMode?'☀ Light':'🌙 Dark'}
           </button>
@@ -1014,7 +1015,7 @@ export default function PointsDashboard({ onBack }) {
 
         {/* Mobile right */}
         <div className="pt-hdr-right-mobile">
-          <UserIdentityMobile user={user} />
+          <UserProfileBadge user={user} variant="mobile" />
           <button className="pt-dark-toggle" onClick={()=>setDarkMode(d=>!d)}>
             {darkMode?'☀ Light':'Dark'}
           </button>
