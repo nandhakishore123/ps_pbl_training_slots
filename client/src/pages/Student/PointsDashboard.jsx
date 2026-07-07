@@ -6,7 +6,7 @@
 //        <PointsDashboard onBack={() => {}} />
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { authService } from '../../services/features/authService'
 import { pointsService } from '../../services/features/pointsService'
 import { useAuthStore } from '../../store/authStore'
@@ -525,9 +525,24 @@ function highlight(text, search) {
 // admin Reward Points page: department dropdown + year filter + search + ranked
 // table + per-student Details modal (SSE). No detection / locking / own-only.
 function RewardPoints() {
-  const [dept, setDept]       = useState('BT')
-  const [year, setYear]       = useState('ALL')
-  const [search, setSearch]   = useState('')
+  // Filters are reflected in the URL (?dept=&year=&q=) so refresh restores the filtered view.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const YEAR_OPTIONS = ['ALL', '25', '24', '23', '22']
+  const deptParam = searchParams.get('dept')
+  const yearParam = searchParams.get('year')
+  const dept   = DEPTS.includes(deptParam) ? deptParam : 'BT'
+  const year   = YEAR_OPTIONS.includes(yearParam) ? yearParam : 'ALL'
+  const search = searchParams.get('q') || ''
+  const setDept = useCallback((val) => {
+    setSearchParams((prev) => { const p = new URLSearchParams(prev); p.set('dept', val); return p })
+  }, [setSearchParams])
+  const setYear = useCallback((val) => {
+    setSearchParams((prev) => { const p = new URLSearchParams(prev); p.set('year', val); return p })
+  }, [setSearchParams])
+  const setSearch = useCallback((val) => {
+    // replace: keystrokes shouldn't each add a browser-history entry
+    setSearchParams((prev) => { const p = new URLSearchParams(prev); if (val) p.set('q', val); else p.delete('q'); return p }, { replace: true })
+  }, [setSearchParams])
   const [rpData, setRpData]   = useState([])
   const [rpStatus, setRpStatus] = useState('loading') // loading | loaded | error
 
@@ -761,11 +776,32 @@ function RewardPoints() {
 
 // ── ActivityPoints (unchanged — uses pointsService) ───────────
 function ActivityPoints({ onOpenGroup }) {
-  const [apTab,    setApTab]    = useState('individual')
-  const [apYear,   setApYear]   = useState('ALL')
-  const [apDept,   setApDept]   = useState('ALL')
-  const [apSearch, setApSearch] = useState('')
-  const [grpSearch,setGrpSearch]= useState('')
+  // Sub-tab + filters reflected in the URL (?aptab=&apyear=&apdept=&apq=&apgq=) so refresh restores them.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const AP_YEAR_OPTIONS = ['ALL', '2nd', '1st']
+  const aptabParam  = searchParams.get('aptab')
+  const apyearParam = searchParams.get('apyear')
+  const apdeptParam = searchParams.get('apdept')
+  const apTab     = aptabParam === 'group' ? 'group' : 'individual'
+  const apYear    = AP_YEAR_OPTIONS.includes(apyearParam) ? apyearParam : 'ALL'
+  const apDept    = (apdeptParam === 'ALL' || DEPTS.includes(apdeptParam)) ? apdeptParam : 'ALL'
+  const apSearch  = searchParams.get('apq') || ''
+  const grpSearch = searchParams.get('apgq') || ''
+  const setApTab = useCallback((val) => {
+    setSearchParams((prev) => { const p = new URLSearchParams(prev); p.set('aptab', val); return p })
+  }, [setSearchParams])
+  const setApYear = useCallback((val) => {
+    setSearchParams((prev) => { const p = new URLSearchParams(prev); p.set('apyear', val); return p })
+  }, [setSearchParams])
+  const setApDept = useCallback((val) => {
+    setSearchParams((prev) => { const p = new URLSearchParams(prev); p.set('apdept', val); return p })
+  }, [setSearchParams])
+  const setApSearch = useCallback((val) => {
+    setSearchParams((prev) => { const p = new URLSearchParams(prev); if (val) p.set('apq', val); else p.delete('apq'); return p }, { replace: true })
+  }, [setSearchParams])
+  const setGrpSearch = useCallback((val) => {
+    setSearchParams((prev) => { const p = new URLSearchParams(prev); if (val) p.set('apgq', val); else p.delete('apgq'); return p }, { replace: true })
+  }, [setSearchParams])
   const [indData,   setIndData]   = useState([])
   const [indLoading,setIndLoading]= useState(false)
   const [indError,  setIndError]  = useState('')
@@ -912,7 +948,12 @@ function ActivityPoints({ onOpenGroup }) {
 // ── Main PointsDashboard ──────────────────────────────────────
 export default function PointsDashboard({ onBack }) {
   const navigate = useNavigate()
-  const [tab,          setTab]          = useState('rp')
+  // Main tab reflected in the URL (?ptab=rp|ap) so refresh restores it.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const tab = searchParams.get('ptab') === 'ap' ? 'ap' : 'rp'
+  const setTab = useCallback((val) => {
+    setSearchParams((prev) => { const p = new URLSearchParams(prev); p.set('ptab', val); return p })
+  }, [setSearchParams])
   const [darkMode,     setDarkMode]     = useState(()=>localStorage.getItem('pt-dark')==='1')
   const { user } = useAuthStore()
   const [groupOpen,    setGroupOpen]    = useState(false)
