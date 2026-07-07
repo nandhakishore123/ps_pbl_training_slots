@@ -155,7 +155,7 @@ export default function InventoryInchargeDashboard() {
   const initials = String(name).trim().charAt(0).toUpperCase() || 'I';
 
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('pt-dark') === '1');
-  const [tab, setTab] = useState('stock'); // 'stock' | 'buying'
+  const [tab, setTab] = useState('stock'); // 'stock' | 'buying' | 'returns'
 
   // Stock
   const [stock, setStock] = useState([]);
@@ -169,6 +169,15 @@ export default function InventoryInchargeDashboard() {
   const [buying, setBuying] = useState([]);
   const [buyingLoading, setBuyingLoading] = useState(false);
   const [buyingLoaded, setBuyingLoaded] = useState(false);
+
+  // Return Approvals (incharge's exclusive area)
+  const [returns, setReturns] = useState([]);
+  const [returnsLoading, setReturnsLoading] = useState(false);
+  const [returnsLoaded, setReturnsLoaded] = useState(false);
+  const [retBusyId, setRetBusyId] = useState(null);
+  const [retRowErr, setRetRowErr] = useState({});
+  const [retRejectFor, setRetRejectFor] = useState(null);
+  const [retRejectRemarks, setRetRejectRemarks] = useState('');
 
   // Action modal: { mode:'edit'|'add'|'new', item? }
   const [modal, setModal] = useState(null);
@@ -249,11 +258,55 @@ export default function InventoryInchargeDashboard() {
     debounceRef.current = setTimeout(() => loadStock({ search: v }), 300);
   };
 
-  // Lazy-load buying list when its tab is first opened
+  const loadReturns = useCallback(async () => {
+    setReturnsLoading(true);
+    try {
+      const res = await inventoryService.getPendingReturns();
+      setReturns(res?.data?.items || []);
+      setReturnsLoaded(true);
+    } catch {
+      setReturns([]);
+      setReturnsLoaded(true);
+    } finally {
+      setReturnsLoading(false);
+    }
+  }, []);
+
+  // Lazy-load buying / returns lists when their tab is first opened
   useEffect(() => {
     if (tab === 'buying' && !buyingLoaded) loadBuying();
+    if (tab === 'returns' && !returnsLoaded) loadReturns();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
+
+  const approveReturn = async (id) => {
+    setRetBusyId(id);
+    setRetRowErr((m) => ({ ...m, [id]: '' }));
+    try {
+      await inventoryService.approveReturn(id);
+      await loadReturns();
+    } catch (err) {
+      setRetRowErr((m) => ({ ...m, [id]: err?.response?.data?.message || 'Failed to approve return.' }));
+    } finally {
+      setRetBusyId(null);
+    }
+  };
+
+  const doRejectReturn = async () => {
+    const id = retRejectFor;
+    setRetBusyId(id);
+    setRetRowErr((m) => ({ ...m, [id]: '' }));
+    try {
+      await inventoryService.rejectReturn(id, retRejectRemarks.trim() || undefined);
+      setRetRejectFor(null);
+      setRetRejectRemarks('');
+      await loadReturns();
+    } catch (err) {
+      setRetRowErr((m) => ({ ...m, [id]: err?.response?.data?.message || 'Failed to reject return.' }));
+    } finally {
+      setRetBusyId(null);
+    }
+  };
 
   const openEdit = (item) => { setModal({ mode: 'edit', item }); setQtyInput(String(item.current_quantity ?? '')); setModalErr(''); };
   const openAdd = (item) => { setModal({ mode: 'add', item }); setQtyInput(''); setModalErr(''); };
@@ -336,9 +389,10 @@ export default function InventoryInchargeDashboard() {
         <div className="ic-tabs">
           <button className={`ic-tab${tab === 'stock' ? ' active' : ''}`} onClick={() => setTab('stock')}>Stock Management</button>
           <button className={`ic-tab${tab === 'buying' ? ' active' : ''}`} onClick={() => setTab('buying')}>Buying Requests</button>
+          <button className={`ic-tab${tab === 'returns' ? ' active' : ''}`} onClick={() => setTab('returns')}>Return Approvals</button>
         </div>
 
-        {tab === 'stock' ? (
+        {tab === 'stock' && (
           <>
             <div className="ic-toolbar">
               <input className="ic-search" placeholder="Search items by name…" value={search} onChange={(e) => onSearchChange(e.target.value)} />
@@ -385,7 +439,9 @@ export default function InventoryInchargeDashboard() {
               </>
             )}
           </>
-        ) : (
+        )}
+
+        {tab === 'buying' && (
           <>
             <div className="ic-note">
               <span>ⓘ</span> Read-only — buying requests are approved by <strong>Faculty</strong>. You cannot approve or reject them here.
@@ -418,7 +474,79 @@ export default function InventoryInchargeDashboard() {
             )}
           </>
         )}
+
+        {tab === 'returns' && (
+          <>
+            <div className="ic-note" style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.35)', color: '#047857' }}>
+              <span>✓</span> Approve returns to add stock back (for returned quantities). Fully-completed items are cleared with no stock change.
+            </div>
+            {returnsLoading ? (
+              <div className="ic-spinner" />
+            ) : returns.length === 0 ? (
+              <div className="ic-empty">No return requests yet.</div>
+            ) : (
+              returns.map((r) => {
+                const isPending = String(r.status).toUpperCase() === 'PENDING';
+                return (
+                  <div className="ic-req" key={r.request_id}>
+                    <div className="ic-req-top">
+                      <div>
+                        <div className="ic-req-name">{r.student_name || 'Student'}
+                          <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--ic-text3)', marginLeft: 8 }}>{r.student_reg || ''}</span>
+                        </div>
+                        <div className="ic-req-meta">Return #{r.request_id} · {fmtDateTime(r.created_at)}</div>
+                      </div>
+                      <StatusPill status={r.status} />
+                    </div>
+                    <div className="ic-req-items">
+                      {(r.items || []).map((it) => it.action === 'FULLY_COMPLETED'
+                        ? `${it.item_name} — Fully completed`
+                        : `${it.item_name} — Return ${money(it.return_quantity ?? it.quantity)} ${it.unit || ''}`
+                      ).join(' · ') || '—'}
+                    </div>
+                    {isPending ? (
+                      <div style={{ display: 'flex', gap: 9, marginTop: 12 }}>
+                        <button disabled={retBusyId === r.request_id} onClick={() => approveReturn(r.request_id)}
+                          style={{ flex: 1, padding: '10px 16px', border: 'none', borderRadius: 10, background: 'linear-gradient(135deg,#10b981,#059669)', color: '#fff', fontSize: 13, fontWeight: 800, cursor: retBusyId === r.request_id ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: retBusyId === r.request_id ? 0.5 : 1 }}>
+                          {retBusyId === r.request_id ? 'Working…' : '✓ Approve'}
+                        </button>
+                        <button disabled={retBusyId === r.request_id} onClick={() => { setRetRejectFor(r.request_id); setRetRejectRemarks(''); }}
+                          style={{ flex: 1, padding: '10px 16px', borderRadius: 10, background: 'rgba(239,68,68,0.09)', color: '#dc2626', border: '1.5px solid rgba(239,68,68,0.4)', fontSize: 13, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>
+                          ✕ Reject
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="ic-req-meta" style={{ marginTop: 8 }}>
+                        {String(r.status).toUpperCase() === 'APPROVED' ? 'Approved' : 'Rejected'}{r.decided_at ? ` · ${fmtDateTime(r.decided_at)}` : ''}{r.remarks ? ` · ${r.remarks}` : ''}
+                      </div>
+                    )}
+                    {retRowErr[r.request_id] && <div style={{ marginTop: 8, fontSize: 12.5, color: 'var(--ic-red)', fontWeight: 800 }}>{retRowErr[r.request_id]}</div>}
+                  </div>
+                );
+              })
+            )}
+          </>
+        )}
       </div>
+
+      {/* Return reject modal */}
+      {retRejectFor != null && (
+        <div className="ic-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget && retBusyId == null) setRetRejectFor(null); }}>
+          <div className="ic-modal">
+            <div className="ic-modal-hd">
+              <div className="ic-modal-title">Reject Return #{retRejectFor}</div>
+              <button className="ic-modal-x" onClick={() => retBusyId == null && setRetRejectFor(null)}>×</button>
+            </div>
+            <div className="ic-modal-bd">
+              <label className="ic-label">Reason (optional) — the student's obligations reopen so they can resubmit</label>
+              <input className="ic-input" value={retRejectRemarks} onChange={(e) => setRetRejectRemarks(e.target.value)} placeholder="Optional reason…" autoFocus />
+              <button className="ic-btn ic-btn-primary" style={{ width: '100%', background: 'linear-gradient(135deg,#ef4444,#dc2626)', boxShadow: 'none' }} disabled={retBusyId != null} onClick={doRejectReturn}>
+                {retBusyId != null ? 'Rejecting…' : 'Confirm Reject'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Action modal */}
       {modal && (

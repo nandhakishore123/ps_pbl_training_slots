@@ -21,6 +21,16 @@ const forbidden = (message) => {
   return err;
 };
 
+const conflict = (message) => {
+  const err = new Error(message);
+  err.status = 409;
+  return err;
+};
+
+// Shown when a student is blocked from buying by an uncleared obligation.
+const BLOCK_MESSAGE =
+  'You must return/complete your previously taken items and get Inventory Incharge approval before requesting new items.';
+
 // ── Buying approver routing (Stage 4) ────────────────────────
 // The two designated faculty who approve buying requests, by user_id:
 // PROJECT purpose → project approver; TRAINING purpose → training approver.
@@ -106,10 +116,10 @@ export const createBuyingRequest = async (userId, { purpose_type, purpose, items
     return { item_id: it.item_id, item_name: row.item_name, unit: row.unit, quantity: it.quantity };
   });
 
-  // TODO (Stage 5 — blocking gate): a student with a still-PENDING RETURN must
-  // return it before a new BUY is allowed. When implemented, insert here:
-  //   const blocked = await model.checkPendingReturnBlock(studentId);
-  //   if (blocked) throw conflict('Return your pending item before requesting new items');
+  // Stage 5 — blocking gate: a student with ANY uncleared obligation (an approved
+  // buy item not yet returned/completed AND incharge-approved) cannot buy again.
+  const openObligations = await model.countOpenObligations(studentId);
+  if (openObligations > 0) throw conflict(BLOCK_MESSAGE);
 
   const requestId = await model.createRequestWithItems({
     studentId,
@@ -237,6 +247,92 @@ export const rejectBuying = async (userId, roleId, requestId, remarks) => {
   return model.rejectBuyingRequest(requestId, userId, roleId, cleanRemarks);
 };
 
-// ── TODO (Stage 5) — return flow services ────────────────────
-// listReturns + approveReturn (incharge add stock) + the createBuyingRequest
-// pending-return blocking gate.
+// ── Student return flow (Stage 5) ────────────────────────────
+export const listMyOpenObligations = async (userId) => {
+  const studentId = await getStudentIdByUserId(userId);
+  if (!studentId) throw notFound('Student not found');
+  return model.listOpenObligations(studentId);
+};
+
+// lines: [{ obligation_id, action: 'RETURN'|'FULLY_COMPLETED', return_quantity? }]
+export const createReturnRequest = async (userId, lines) => {
+  const studentId = await getStudentIdByUserId(userId);
+  if (!studentId) throw notFound('Student not found');
+  if (!Array.isArray(lines) || lines.length === 0) throw badRequest('Select at least one item to return or complete');
+
+  const cleaned = lines.map((l) => ({
+    obligation_id: Number(l?.obligation_id),
+    action: String(l?.action || '').toUpperCase(),
+    return_quantity: l?.return_quantity != null ? Number(l.return_quantity) : null,
+  }));
+  const seen = new Set();
+  for (const l of cleaned) {
+    if (!l.obligation_id) throw badRequest('Each line needs an obligation_id');
+    if (!['RETURN', 'FULLY_COMPLETED'].includes(l.action)) throw badRequest('action must be RETURN or FULLY_COMPLETED');
+    if (seen.has(l.obligation_id)) throw badRequest('Duplicate item in return');
+    seen.add(l.obligation_id);
+  }
+
+  // Server-authoritative: verify ownership + OPEN + quantity/returnable rules.
+  const obls = await model.getObligationsByIds(studentId, cleaned.map((l) => l.obligation_id));
+  const byId = new Map(obls.map((o) => [Number(o.obligation_id), o]));
+  const resolved = cleaned.map((l) => {
+    const o = byId.get(l.obligation_id);
+    if (!o) throw badRequest('Obligation not found for this student');
+    if (o.status !== 'OPEN') throw conflict('One of the selected items is no longer open');
+    if (Number(o.is_returnable) === 1 && l.action === 'FULLY_COMPLETED') {
+      throw badRequest(`"${o.item_name}" is returnable (e.g. glassware) and must be returned, not marked completed`);
+    }
+    if (l.action === 'RETURN') {
+      if (!(l.return_quantity > 0)) throw badRequest(`Enter a return quantity for "${o.item_name}"`);
+      if (l.return_quantity > Number(o.taken_quantity)) throw badRequest(`Return quantity for "${o.item_name}" exceeds the taken quantity`);
+    }
+    return {
+      obligation_id: o.obligation_id,
+      item_id: o.item_id,
+      item_name: o.item_name,
+      unit: o.unit,
+      action: l.action,
+      return_quantity: l.action === 'RETURN' ? l.return_quantity : null,
+    };
+  });
+
+  const requestId = await model.createReturnWithLines(studentId, resolved);
+  const all = await model.listReturnsForStudent(studentId);
+  return all.find((r) => Number(r.request_id) === Number(requestId))
+    || { request_id: requestId, status: 'PENDING', items: resolved };
+};
+
+export const listMyReturns = async (userId) => {
+  const studentId = await getStudentIdByUserId(userId);
+  if (!studentId) throw notFound('Student not found');
+  return model.listReturnsForStudent(studentId);
+};
+
+// ── Incharge/Admin return approval (Stage 5) ─────────────────
+export const listPendingReturns = async () => {
+  // All RETURN requests (pending actionable + decided history), newest first.
+  return model.listReturnRequests({ onlyPending: false });
+};
+
+export const approveReturn = async (userId, roleId, requestId) => {
+  return model.approveReturnRequest(requestId, userId, roleId);
+};
+
+export const rejectReturn = async (userId, roleId, requestId, remarks) => {
+  const clean = remarks ? String(remarks).trim().slice(0, 255) : null;
+  return model.rejectReturnRequest(requestId, userId, roleId, clean);
+};
+
+// Read-only returns list (faculty may VIEW, not approve).
+export const listReturnsReadOnly = async () => {
+  return model.listReturnRequests({ onlyPending: false });
+};
+
+// ── Admin full view (Stage 6) ────────────────────────────────
+// Admin (role 3) already has approve/reject/stock power via the shared endpoints
+// (authorizeApprover bypasses purpose routing for role 3). These add the
+// "see everything" reads for the admin console.
+export const getAdminOverview = async () => model.getInventoryCounts();
+export const listAllBuying = async () => model.listAllBuyingRequests();          // all BUY, both purposes, all statuses
+export const listAllReturns = async () => model.listReturnRequests({ onlyPending: false });

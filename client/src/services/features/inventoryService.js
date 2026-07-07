@@ -59,5 +59,46 @@ export const inventoryService = {
     return api.post(`/inventory/buying/${requestId}/reject`, { remarks });
   },
 
-  // TODO (Stage 5): getReturnsForIncharge + approveReturn.
+  // ── Student return flow (Stage 5) ──────────────────────────
+  getMyObligations() {
+    return api.get('/inventory/obligations/mine');
+  },
+
+  createReturn(lines) {
+    return api.post('/inventory/returns', { lines });
+  },
+
+  getMyReturns() {
+    return api.get('/inventory/returns/mine');
+  },
+
+  // ── Incharge/Admin return approval; faculty view-only ──────
+  getPendingReturns() {
+    return api.get('/inventory/returns/pending');
+  },
+
+  approveReturn(requestId) {
+    return api.post(`/inventory/returns/${requestId}/approve`);
+  },
+
+  rejectReturn(requestId, remarks) {
+    return api.post(`/inventory/returns/${requestId}/reject`, { remarks });
+  },
+
+  getReturnsReadOnly() {
+    return api.get('/inventory/returns');
+  },
+
+  // ── Admin full view (Stage 6) — reuses approve/reject/stock calls above ──
+  getAdminOverview() {
+    return api.get('/inventory/admin/overview');
+  },
+
+  getAdminBuying() {
+    return api.get('/inventory/admin/buying');
+  },
+
+  getAdminReturns() {
+    return api.get('/inventory/admin/returns');
+  },
 };

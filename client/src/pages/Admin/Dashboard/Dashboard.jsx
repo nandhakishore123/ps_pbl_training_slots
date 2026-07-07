@@ -205,6 +205,19 @@ export default function Dashboard() {
               desc="Courses → slots → pass/fail · confirm results · export CSV"
               onClick={() => navigate('/activity-points')}
             />
+            <NavBox
+              iconColor="indigo"
+              icon={
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M20 7l-8-4-8 4 8 4 8-4z" />
+                  <path d="M4 7v10l8 4 8-4V7" />
+                  <path d="M12 11v10" />
+                </svg>
+              }
+              label="Inventory Management"
+              desc="All stock, buying & return requests, approvals — full control"
+              onClick={() => navigate('/admin-inventory')}
+            />
           </div>
         </div>
 

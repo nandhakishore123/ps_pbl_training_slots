@@ -34,6 +34,7 @@ import SlotScheduling from '../pages/Admin/SlotScheduling/SlotScheduling.jsx'
 import AdminAttendance from '../pages/Admin/Attendance/AdminAttendance.jsx'
 import AdminBookings from '../pages/Admin/Bookings/AdminBookings.jsx'
 import FacultyManagement from '../pages/Admin/FacultyManagement/FacultyManagement.jsx'
+import AdminInventory from '../pages/Admin/AdminInventory.jsx'
 
 import { AppProvider } from '../pages/Admin/context/AppContext.jsx'
 import { DataProvider } from '../pages/Admin/context/DataContext.jsx'
@@ -173,6 +174,7 @@ function AppNavigator() {
                 <Route path="/admin-attendance" element={<RequireAuth><RequireRole allowedRoles={[3]}><AdminProviders><AdminAttendance/></AdminProviders></RequireRole></RequireAuth>} />
                 <Route path="/admin-bookings" element={<RequireAuth><RequireRole allowedRoles={[3]}><AdminProviders><AdminBookings/></AdminProviders></RequireRole></RequireAuth>} />
                 <Route path="/faculty-management" element={<RequireAuth><RequireRole allowedRoles={[3]}><FacultyManagement/></RequireRole></RequireAuth>} />
+                <Route path="/admin-inventory" element={<RequireAuth><RequireRole allowedRoles={[3]}><AdminInventory/></RequireRole></RequireAuth>} />
 
                 {/* faculty  routes*/}
                 <Route path="/faculty-dashboard" element={<RequireAuth><RequireRole allowedRoles={[2]}><FacultyDashboard/></RequireRole></RequireAuth>} />

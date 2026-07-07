@@ -15,6 +15,16 @@ import {
   getPendingBuying,
   approveBuying,
   rejectBuying,
+  getMyObligations,
+  createReturn,
+  getMyReturns,
+  getPendingReturns,
+  approveReturn,
+  rejectReturn,
+  getReturnsReadOnly,
+  getAdminOverview,
+  getAdminBuying,
+  getAdminReturns,
 } from './inventory.controller.js';
 
 const router = express.Router();
@@ -40,14 +50,23 @@ router.get('/buying/pending', authMiddleware, requireRole(2, 3), getPendingBuyin
 router.post('/buying/:id/approve', authMiddleware, requireRole(2, 3), approveBuying);      // approve -> reduce stock
 router.post('/buying/:id/reject', authMiddleware, requireRole(2, 3), rejectBuying);        // reject ({ remarks })
 
-// ── TODO (Stage 5) — return routes ───────────────────────────
-// GET  /returns             (requireRole(3,4))  - incharge/admin see returns
-// POST /returns/:id/approve (requireRole(3,4))  - incharge approve return -> add stock
-// POST   /buying/:id/approve  (requireRole(2,3))  - faculty approve buying -> reduce stock
-// GET    /returns             (requireRole(3,4))  - incharge/admin see returns
-// POST   /returns/:id/approve (requireRole(3,4))  - incharge approve return -> add stock
-// GET    /stock               (requireRole(3,4))  - incharge stock management
-// POST   /stock/:id/adjust    (requireRole(3,4))  - incharge adjust stock
-// POST   /items               (requireRole(3,4))  - incharge add new item
+// ── Student return flow (role_id = 1) ────────────────────────
+router.get('/obligations/mine', authMiddleware, requireRole(1), getMyObligations);        // open obligations to clear
+router.post('/returns', authMiddleware, requireRole(1), createReturn);                     // create RETURN request
+router.get('/returns/mine', authMiddleware, requireRole(1), getMyReturns);                 // student's returns + status
+
+// ── Incharge/Admin return approval (role 3,4); faculty VIEW-only (2,3,4) ──
+router.get('/returns/pending', authMiddleware, requireRole(3, 4), getPendingReturns);      // incharge/admin queue
+router.post('/returns/:id/approve', authMiddleware, requireRole(3, 4), approveReturn);     // approve -> add stock back
+router.post('/returns/:id/reject', authMiddleware, requireRole(3, 4), rejectReturn);       // reject -> obligations reopen
+router.get('/returns', authMiddleware, requireRole(2, 3, 4), getReturnsReadOnly);          // faculty/incharge/admin VIEW
+
+// ── Admin full view (role 3) — see everything ────────────────
+// Admin already approves/rejects buying (via /buying/:id/* with the role-3 bypass)
+// and returns (via /returns/:id/*), and manages stock (/stock, /items). These add
+// the admin-only "see everything" reads.
+router.get('/admin/overview', authMiddleware, requireRole(3), getAdminOverview);   // summary counts
+router.get('/admin/buying', authMiddleware, requireRole(3), getAdminBuying);        // ALL buying, both purposes
+router.get('/admin/returns', authMiddleware, requireRole(3), getAdminReturns);      // ALL returns
 
 export default router;

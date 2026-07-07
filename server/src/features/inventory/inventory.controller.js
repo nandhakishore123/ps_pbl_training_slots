@@ -154,5 +154,116 @@ export const rejectBuying = async (req, res) => {
   }
 };
 
-// ── TODO (Stage 5) — return handlers ─────────────────────────
-// getReturns + approveReturn (incharge add stock).
+// ── Student return flow (Stage 5) ────────────────────────────
+export const getMyObligations = async (req, res) => {
+  try {
+    const data = await service.listMyOpenObligations(req.user?.user_id);
+    return successResponse(res, 'Obligations fetched', { items: data });
+  } catch (error) {
+    if (error?.status) return errorResponse(res, error.message, error.status);
+    console.error('Error in getMyObligations:', error);
+    return internalServerErrorResponse(res, error.message || 'Failed to fetch obligations');
+  }
+};
+
+export const createReturn = async (req, res) => {
+  try {
+    const data = await service.createReturnRequest(req.user?.user_id, req.body?.lines);
+    return createdResponse(res, 'Return submitted', data);
+  } catch (error) {
+    if (error?.status) return errorResponse(res, error.message, error.status);
+    console.error('Error in createReturn:', error);
+    return internalServerErrorResponse(res, error.message || 'Failed to submit return');
+  }
+};
+
+export const getMyReturns = async (req, res) => {
+  try {
+    const data = await service.listMyReturns(req.user?.user_id);
+    return successResponse(res, 'Returns fetched', { items: data });
+  } catch (error) {
+    if (error?.status) return errorResponse(res, error.message, error.status);
+    console.error('Error in getMyReturns:', error);
+    return internalServerErrorResponse(res, error.message || 'Failed to fetch returns');
+  }
+};
+
+// ── Incharge/Admin return approval (Stage 5) ─────────────────
+export const getPendingReturns = async (req, res) => {
+  try {
+    const data = await service.listPendingReturns();
+    return successResponse(res, 'Return requests fetched', { items: data });
+  } catch (error) {
+    if (error?.status) return errorResponse(res, error.message, error.status);
+    console.error('Error in getPendingReturns:', error);
+    return internalServerErrorResponse(res, error.message || 'Failed to fetch return requests');
+  }
+};
+
+export const approveReturn = async (req, res) => {
+  try {
+    const data = await service.approveReturn(req.user?.user_id, req.user?.role_id, req.params.id);
+    return successResponse(res, 'Return approved', data);
+  } catch (error) {
+    if (error?.status) return errorResponse(res, error.message, error.status);
+    console.error('Error in approveReturn:', error);
+    return internalServerErrorResponse(res, error.message || 'Failed to approve return');
+  }
+};
+
+export const rejectReturn = async (req, res) => {
+  try {
+    const data = await service.rejectReturn(req.user?.user_id, req.user?.role_id, req.params.id, req.body?.remarks);
+    return successResponse(res, 'Return rejected', data);
+  } catch (error) {
+    if (error?.status) return errorResponse(res, error.message, error.status);
+    console.error('Error in rejectReturn:', error);
+    return internalServerErrorResponse(res, error.message || 'Failed to reject return');
+  }
+};
+
+// Read-only returns list (faculty may VIEW, not approve).
+export const getReturnsReadOnly = async (req, res) => {
+  try {
+    const data = await service.listReturnsReadOnly();
+    return successResponse(res, 'Returns fetched', { items: data });
+  } catch (error) {
+    if (error?.status) return errorResponse(res, error.message, error.status);
+    console.error('Error in getReturnsReadOnly:', error);
+    return internalServerErrorResponse(res, error.message || 'Failed to fetch returns');
+  }
+};
+
+// ── Admin full view (Stage 6) — role 3 ───────────────────────
+export const getAdminOverview = async (req, res) => {
+  try {
+    const data = await service.getAdminOverview();
+    return successResponse(res, 'Overview fetched', data);
+  } catch (error) {
+    if (error?.status) return errorResponse(res, error.message, error.status);
+    console.error('Error in getAdminOverview:', error);
+    return internalServerErrorResponse(res, error.message || 'Failed to fetch overview');
+  }
+};
+
+export const getAdminBuying = async (req, res) => {
+  try {
+    const data = await service.listAllBuying();
+    return successResponse(res, 'Buying requests fetched', { items: data });
+  } catch (error) {
+    if (error?.status) return errorResponse(res, error.message, error.status);
+    console.error('Error in getAdminBuying:', error);
+    return internalServerErrorResponse(res, error.message || 'Failed to fetch buying requests');
+  }
+};
+
+export const getAdminReturns = async (req, res) => {
+  try {
+    const data = await service.listAllReturns();
+    return successResponse(res, 'Returns fetched', { items: data });
+  } catch (error) {
+    if (error?.status) return errorResponse(res, error.message, error.status);
+    console.error('Error in getAdminReturns:', error);
+    return internalServerErrorResponse(res, error.message || 'Failed to fetch returns');
+  }
+};

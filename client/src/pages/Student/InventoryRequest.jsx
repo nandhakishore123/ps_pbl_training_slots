@@ -117,6 +117,19 @@ const CSS = `
     border-radius:50%; animation:invspin .7s linear infinite; margin:14px auto; }
   @keyframes invspin { to { transform:rotate(360deg); } }
 
+  /* Returning — obligation rows */
+  .inv-obl { border:1px solid var(--iv-border); border-radius:12px; padding:12px 14px; margin-bottom:10px; background:var(--iv-bg); }
+  .inv-obl-head { display:flex; align-items:flex-start; gap:11px; cursor:pointer; }
+  .inv-obl-head input { margin-top:3px; width:16px; height:16px; accent-color:var(--iv-purple); flex-shrink:0; }
+  .inv-obl-name { font-size:13.5px; font-weight:800; display:block; }
+  .inv-obl-meta { font-size:11.5px; color:var(--iv-text3); font-weight:600; display:block; margin-top:2px; }
+  .inv-obl-body { margin-top:12px; padding-left:27px; }
+  .inv-obl-actions { display:flex; gap:8px; }
+  .inv-seg { padding:8px 14px; border-radius:9px; border:1.5px solid var(--iv-border); background:var(--iv-white); color:var(--iv-text2);
+    font-size:12.5px; font-weight:800; cursor:pointer; font-family:inherit; transition:all .15s; }
+  .inv-seg.active { background:var(--iv-purple-dim); border-color:var(--iv-purple); color:var(--iv-purple); }
+  .inv-seg:disabled { opacity:0.4; cursor:not-allowed; }
+
   @media (max-width:820px) {
     .inv-grid { grid-template-columns:1fr; }
     .inv-hsub, .inv-uroll { display:none; }
@@ -168,6 +181,15 @@ export default function InventoryRequest() {
   // My Requests
   const [myRequests, setMyRequests] = useState([]);
   const [mineLoading, setMineLoading] = useState(true);
+
+  // Returning (Stage 5): open obligations → return cart
+  const [obligations, setObligations] = useState([]);
+  const [oblLoading, setOblLoading] = useState(false);
+  const [oblLoaded, setOblLoaded] = useState(false);
+  const [returnForm, setReturnForm] = useState({}); // { [obligation_id]: { include, action, qty } }
+  const [returnSubmitting, setReturnSubmitting] = useState(false);
+  const [returnErr, setReturnErr] = useState('');
+  const [returnPass, setReturnPass] = useState(null);
 
   // Inject scoped styles
   useEffect(() => {
@@ -287,6 +309,62 @@ export default function InventoryRequest() {
     }
   };
 
+  // ── Returning flow ──
+  const loadObligations = useCallback(async () => {
+    setOblLoading(true);
+    try {
+      const res = await inventoryService.getMyObligations();
+      const list = res?.data?.items || [];
+      setObligations(list);
+      const form = {};
+      for (const o of list) form[o.obligation_id] = { include: false, action: 'RETURN', qty: String(o.taken_quantity ?? '') };
+      setReturnForm(form);
+      setOblLoaded(true);
+    } catch {
+      setObligations([]);
+      setOblLoaded(true);
+    } finally {
+      setOblLoading(false);
+    }
+  }, []);
+
+  // Lazy-load obligations when the Returning tab is first opened
+  useEffect(() => {
+    if (tab === 'returning' && !oblLoaded) loadObligations();
+  }, [tab, oblLoaded, loadObligations]);
+
+  const setRF = (id, patch) => setReturnForm((prev) => ({ ...prev, [id]: { ...prev[id], ...patch } }));
+
+  const returnLines = obligations.filter((o) => returnForm[o.obligation_id]?.include);
+  const canSubmitReturn = returnLines.length > 0 && !returnSubmitting;
+
+  const submitReturn = async () => {
+    setReturnErr('');
+    const lines = [];
+    for (const o of returnLines) {
+      const f = returnForm[o.obligation_id];
+      if (f.action === 'RETURN') {
+        const q = Number(f.qty);
+        if (!(q > 0)) { setReturnErr(`Enter a return quantity for "${o.item_name}".`); return; }
+        if (q > Number(o.taken_quantity)) { setReturnErr(`Return quantity for "${o.item_name}" exceeds taken (${money(o.taken_quantity)}).`); return; }
+        lines.push({ obligation_id: o.obligation_id, action: 'RETURN', return_quantity: q });
+      } else {
+        lines.push({ obligation_id: o.obligation_id, action: 'FULLY_COMPLETED' });
+      }
+    }
+    setReturnSubmitting(true);
+    try {
+      const res = await inventoryService.createReturn(lines);
+      setReturnPass(res?.data || null);
+      await loadObligations();
+      loadMine();
+    } catch (err) {
+      setReturnErr(err?.response?.data?.message || 'Failed to submit return. Please try again.');
+    } finally {
+      setReturnSubmitting(false);
+    }
+  };
+
   return (
     <div className="inv-root">
       {/* Header */}
@@ -316,13 +394,12 @@ export default function InventoryRequest() {
           <button className={`inv-tab${tab === 'buying' ? ' active' : ''}`} onClick={() => setTab('buying')}>
             Buying
           </button>
-          {/* TODO (Stage 3): enable Returning flow */}
-          <button className="inv-tab disabled" disabled title="Coming soon">
-            Returning <span className="inv-soon">Soon</span>
+          <button className={`inv-tab${tab === 'returning' ? ' active' : ''}`} onClick={() => setTab('returning')}>
+            Returning
           </button>
         </div>
 
-        {pass ? (
+        {tab === 'buying' && (pass ? (
           /* ── Inventory Pass ── */
           <div style={{ maxWidth: 520, margin: '0 auto' }}>
             <div className="inv-pass">
@@ -429,6 +506,86 @@ export default function InventoryRequest() {
               )}
             </div>
           </div>
+        ))}
+
+        {/* ── Returning flow ── */}
+        {tab === 'returning' && (
+          returnPass ? (
+            <div style={{ maxWidth: 520, margin: '0 auto' }}>
+              <div className="inv-pass">
+                <div className="inv-pass-top">
+                  <div className="inv-pass-orb" style={{ width: 130, height: 130, top: -40, right: -30 }} />
+                  <div className="inv-pass-orb" style={{ width: 80, height: 80, bottom: -34, left: 20 }} />
+                  <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 2, textTransform: 'uppercase', opacity: 0.8 }}>Return Receipt</div>
+                  <div style={{ fontSize: 22, fontWeight: 900, marginTop: 6 }}>{name}</div>
+                  <div style={{ fontSize: 12.5, fontWeight: 700, opacity: 0.85, letterSpacing: 0.5 }}>{roll}</div>
+                  <div style={{ marginTop: 12 }}><StatusPill status={returnPass.status || 'PENDING'} /></div>
+                </div>
+                <div className="inv-pass-body">
+                  <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.8, textTransform: 'uppercase', color: 'var(--iv-text2)', marginBottom: 8 }}>Returned / Completed</div>
+                  {(returnPass.items || []).map((it) => (
+                    <div className="inv-pass-item" key={it.line_id || it.obligation_id}>
+                      <span style={{ fontWeight: 700 }}>{it.item_name}</span>
+                      <span style={{ fontWeight: 800, color: 'var(--iv-purple)' }}>
+                        {it.action === 'FULLY_COMPLETED' ? 'Fully completed' : `Return ${money(it.return_quantity ?? it.quantity)} ${it.unit || ''}`}
+                      </span>
+                    </div>
+                  ))}
+                  <div style={{ marginTop: 12 }}>
+                    <div className="inv-pass-kv"><span className="inv-pass-k">Request #</span><span className="inv-pass-v">{returnPass.request_id}</span></div>
+                    <div className="inv-pass-kv"><span className="inv-pass-k">Awaiting</span><span className="inv-pass-v">Inventory Incharge approval</span></div>
+                  </div>
+                  <button className="inv-btn inv-btn-ghost" style={{ marginTop: 18 }} onClick={() => setReturnPass(null)}>Done</button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="inv-card">
+              <div className="inv-card-title">Return / Complete taken items</div>
+              <div className="inv-card-sub">Clear each item you took — return a quantity, or mark it fully completed (consumed). Returnable items (e.g. glassware) must be returned. Each goes to the Inventory Incharge for approval.</div>
+              {oblLoading ? (
+                <div className="inv-spinner" />
+              ) : obligations.length === 0 ? (
+                <div className="inv-empty">No items to return — you're all cleared. ✓</div>
+              ) : (
+                <>
+                  {obligations.map((o) => {
+                    const f = returnForm[o.obligation_id] || { include: false, action: 'RETURN', qty: '' };
+                    const returnable = Number(o.is_returnable) === 1;
+                    return (
+                      <div className="inv-obl" key={o.obligation_id}>
+                        <label className="inv-obl-head">
+                          <input type="checkbox" checked={!!f.include} onChange={(e) => setRF(o.obligation_id, { include: e.target.checked })} />
+                          <span>
+                            <span className="inv-obl-name">{o.item_name}</span>
+                            <span className="inv-obl-meta">{o.category} · took {money(o.taken_quantity)} {o.unit || ''}{returnable ? ' · Returnable' : ''}</span>
+                          </span>
+                        </label>
+                        {f.include && (
+                          <div className="inv-obl-body">
+                            <div className="inv-obl-actions">
+                              <button className={`inv-seg${f.action === 'RETURN' ? ' active' : ''}`} onClick={() => setRF(o.obligation_id, { action: 'RETURN' })}>Return qty</button>
+                              <button className={`inv-seg${f.action === 'FULLY_COMPLETED' ? ' active' : ''}`} disabled={returnable} title={returnable ? 'Returnable item must be returned' : ''} onClick={() => setRF(o.obligation_id, { action: 'FULLY_COMPLETED' })}>Fully completed</button>
+                            </div>
+                            {f.action === 'RETURN' && (
+                              <div className="inv-row2" style={{ marginTop: 10 }}>
+                                <input className="inv-input" type="number" min="0" step="any" value={f.qty} onChange={(e) => setRF(o.obligation_id, { qty: e.target.value })} placeholder={`Max ${money(o.taken_quantity)}`} />
+                                <div className="inv-unit-chip">{o.unit || '—'}</div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                  <button className="inv-btn inv-btn-primary" style={{ marginTop: 16 }} disabled={!canSubmitReturn} onClick={submitReturn}>
+                    {returnSubmitting ? 'Submitting…' : `Submit Return (${returnLines.length})`}
+                  </button>
+                  {returnErr && <div className="inv-hint">{returnErr}</div>}
+                </>
+              )}
+            </div>
+          )
         )}
 
         {/* ── My Requests ── */}

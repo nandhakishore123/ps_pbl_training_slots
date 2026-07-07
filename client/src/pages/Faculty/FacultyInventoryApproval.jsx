@@ -170,6 +170,17 @@ export default function FacultyInventoryApproval() {
 
   useEffect(() => { load(); }, [load]);
 
+  // Read-only view of returns (faculty cannot approve returns — that's the Inventory Incharge).
+  const [viewReturns, setViewReturns] = useState([]);
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await inventoryService.getReturnsReadOnly();
+        setViewReturns(res?.data?.items || []);
+      } catch { setViewReturns([]); }
+    })();
+  }, []);
+
   const approve = async (id) => {
     setBusyId(id);
     setRowErr((m) => ({ ...m, [id]: '' }));
@@ -318,6 +329,31 @@ export default function FacultyInventoryApproval() {
                 {decided.map((r) => renderReq(r, false))}
               </>
             )}
+          </>
+        )}
+
+        {/* Returns — view only (approved by the Inventory Incharge, not faculty) */}
+        {viewReturns.length > 0 && (
+          <>
+            <div className="fa-scope" style={{ fontSize: 16, margin: '30px 0 4px' }}>Returns <span style={{ fontSize: 12, color: 'var(--fa-text3)', fontWeight: 700 }}>(view only)</span></div>
+            <div className="fa-scope-sub">Returns are reviewed by the Inventory Incharge — shown here for your reference.</div>
+            {viewReturns.map((r) => (
+              <div className="fa-req decided" key={`ret-${r.request_id}`}>
+                <div className="fa-req-top">
+                  <div style={{ minWidth: 0 }}>
+                    <div className="fa-req-name">{r.student_name || 'Student'} <span className="fa-req-reg">{r.student_reg || ''}</span></div>
+                    <div className="fa-req-meta">Return #{r.request_id} · {fmtDateTime(r.created_at)}</div>
+                  </div>
+                  <StatusPill status={r.status} />
+                </div>
+                <div className="fa-req-meta" style={{ marginTop: 4 }}>
+                  {(r.items || []).map((it) => it.action === 'FULLY_COMPLETED'
+                    ? `${it.item_name} — Fully completed`
+                    : `${it.item_name} — Return ${money(it.return_quantity ?? it.quantity)} ${it.unit || ''}`
+                  ).join(' · ') || '—'}
+                </div>
+              </div>
+            ))}
           </>
         )}
       </div>
