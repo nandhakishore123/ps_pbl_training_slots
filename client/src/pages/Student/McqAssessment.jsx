@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { trainingService } from "../../services/features/trainingService";
+import { getUser } from "../../services/core/session";
 import LabRecordModal from "./LabRecordModal";
 
 function useIsNarrow(maxWidthPx = 640) {
@@ -72,6 +73,16 @@ function fmtTime12(t) {
   return `${hh % 12 || 12}:${m} ${hh >= 12 ? "PM" : "AM"}`;
 }
 
+// 'YYYY-MM-DD' (or ISO) → 'June 19, 2026'. Parsed manually to stay TZ-safe.
+const MONTHS_LONG = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+function fmtDateLong(d) {
+  const s = normalizeDate(d);
+  if (!s) return "";
+  const [y, m, day] = s.split("-").map(Number);
+  if (!y || !m || !day) return "";
+  return `${MONTHS_LONG[m - 1]} ${day}, ${y}`;
+}
+
 // ── Sidebar ───────────────────────────────────────────────────
 function Sidebar({ active, setActive, isMobile, disabled }) {
   const items = [
@@ -105,6 +116,26 @@ function TimerRing({ val, maxVal }) {
           style={{ transition: "stroke-dashoffset .9s linear, stroke .5s" }}/>
       </svg>
       <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 15, color, fontFamily: "monospace" }}>{val > 99 ? 99 : val}</div>
+    </div>
+  );
+}
+
+// ── Overview progress ring (answered / total) ─────────────────
+function OverviewRing({ answered, total }) {
+  const r = 34, c = 2 * Math.PI * r;
+  const frac = total ? answered / total : 0;
+  return (
+    <div style={{ position: "relative", width: 96, height: 96, flexShrink: 0 }}>
+      <svg width="96" height="96" style={{ transform: "rotate(-90deg)" }}>
+        <circle cx="48" cy="48" r={r} fill="none" stroke="#ece9f7" strokeWidth="7"/>
+        <circle cx="48" cy="48" r={r} fill="none" stroke={P} strokeWidth="7"
+          strokeDasharray={c} strokeDashoffset={c * (1 - frac)} strokeLinecap="round"
+          style={{ transition: "stroke-dashoffset .5s ease" }}/>
+      </svg>
+      <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ fontSize: 20, fontWeight: 900, color: "#1a1040", lineHeight: 1 }}>{answered}/{total}</div>
+        <div style={{ fontSize: 9, fontWeight: 800, color: "#9ca3af", textTransform: "uppercase", letterSpacing: 0.6, marginTop: 3 }}>Answered</div>
+      </div>
     </div>
   );
 }
@@ -170,6 +201,10 @@ export default function MCQAssessment() {
   const [showWarn, setShowWarn] = useState(false);
   const [autoSubmit, setAutoSubmit] = useState(false);
   const [result, setResult] = useState(null);
+  const [hoverOpt, setHoverOpt] = useState(null); // display-only hover highlight for option cards
+  const [markedForReview, setMarkedForReview] = useState(() => new Set()); // display-only palette flags — never affects grading/submit
+  const [showEndModal, setShowEndModal] = useState(false);   // manual "end test" confirm modal (Stage D)
+  const [endConfirmText, setEndConfirmText] = useState("");   // must equal "END TEST" to enable confirm
 
   // ── Lab record auto-open (PBL only) ─────────────────────────
   // skill_type + survey_submitted are captured from the booking row in the
@@ -514,10 +549,83 @@ export default function MCQAssessment() {
   const uniqueCategories = Array.from(new Set(questions.map(item => item.mcq_type_name)));
   const selected = userAnswers[current] !== undefined ? userAnswers[current] : null;
 
+  // ── Top-bar identity/context (display only — no logic) ──
+  const candidateName = getUser()?.name || "Candidate";
+  const testTitle = assessment?.assessment_title || levelName || "Assessment";
+  const testDate = fmtDateLong(slotGate.bookingDate) || fmtDateLong(nowIst);
+
+  // ── Overview counts (display only — derived from userAnswers) ──
+  const answeredCount = Object.keys(userAnswers).length;
+  const totalCount = questions.length;
+  const remainingCount = Math.max(0, totalCount - answeredCount);
+
   return (
     <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", height: isMobile ? "100dvh" : "100vh", background: "#f4f3ff", fontFamily: "'Segoe UI',system-ui,sans-serif", overflow: isMobile ? "auto" : "hidden" }}>
       <Sidebar active={sideActive} setActive={setSideActive} isMobile={isMobile} disabled={phase === "running"} />
       {showWarn && <WarningPopup count={warnings} onDismiss={dismissWarn} />}
+
+      {/* ── End Assessment modal (Stage D) — manual end only; type "END TEST" to confirm ── */}
+      {showEndModal && (() => {
+        const endValid = endConfirmText.trim().toUpperCase() === "END TEST";
+        const closeEnd = () => { setShowEndModal(false); setEndConfirmText(""); };
+        return (
+          <div style={{ position: "fixed", inset: 0, background: "rgba(15,10,40,.62)", zIndex: 9998, display: "flex", alignItems: "center", justifyContent: "center", padding: 18 }}>
+            <div style={{ background: "#fff", borderRadius: 20, width: "100%", maxWidth: 440, boxShadow: "0 24px 70px rgba(15,10,40,.4)", overflow: "hidden" }}>
+              {/* Header */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 20px", borderBottom: "1px solid #f0eef7" }}>
+                <div style={{ fontSize: 16, fontWeight: 900, color: "#1a1040" }}>End Assessment</div>
+                <button onClick={closeEnd} aria-label="Close"
+                  style={{ width: 30, height: 30, borderRadius: 8, border: "none", background: "#f4f3fa", color: "#6b7280", fontSize: 17, fontWeight: 800, cursor: "pointer", lineHeight: 1, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "inherit" }}>×</button>
+              </div>
+
+              {/* Body */}
+              <div style={{ padding: "22px 24px 24px" }}>
+                <div style={{ width: 54, height: 54, borderRadius: "50%", background: "rgba(239,68,68,.1)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 14px" }}>
+                  <svg width="30" height="30" fill="none" stroke="#ef4444" strokeWidth="2" viewBox="0 0 24 24"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                </div>
+                <div style={{ fontSize: 15, fontWeight: 800, color: "#ef4444", textAlign: "center", marginBottom: 10, lineHeight: 1.4 }}>
+                  WARNING: You are about to end this assessment
+                </div>
+                <div style={{ fontSize: 12.5, color: "#6b7280", lineHeight: 1.6, textAlign: "center", marginBottom: 14 }}>
+                  This action <strong style={{ color: "#374151" }}>cannot be undone</strong>. Once you end the assessment you will not be able to return to answer remaining questions or change your answers. Any unanswered questions will be marked as skipped.
+                </div>
+                {remainingCount > 0 && (
+                  <div style={{ background: "rgba(245,158,11,.1)", border: "1px solid rgba(245,158,11,.3)", borderRadius: 10, padding: "9px 12px", fontSize: 12, fontWeight: 700, color: "#b45309", textAlign: "center", marginBottom: 18 }}>
+                    {remainingCount} question{remainingCount !== 1 ? "s" : ""} still unanswered ({answeredCount}/{totalCount} answered)
+                  </div>
+                )}
+
+                {/* Confirm input */}
+                <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#4b5563", marginBottom: 7 }}>
+                  Type <span style={{ color: "#ef4444", fontWeight: 900, letterSpacing: 0.5 }}>END TEST</span> below to confirm
+                </label>
+                <input
+                  type="text"
+                  value={endConfirmText}
+                  onChange={(e) => setEndConfirmText(e.target.value)}
+                  placeholder="END TEST"
+                  autoFocus
+                  style={{ width: "100%", padding: "12px 14px", borderRadius: 11, border: `1.5px solid ${endValid ? "#10b981" : "#e0dced"}`, background: endValid ? "rgba(16,185,129,.05)" : "#faf9fd", fontSize: 14, fontWeight: 700, color: "#1a1040", outline: "none", fontFamily: "inherit", letterSpacing: 0.5, boxSizing: "border-box", marginBottom: 20 }}
+                />
+
+                {/* Actions */}
+                <div style={{ display: "flex", gap: 10, flexDirection: isMobile ? "column-reverse" : "row" }}>
+                  <button onClick={closeEnd}
+                    style={{ flex: 1, padding: "13px 16px", background: "#fff", border: "1.5px solid #d9d5ea", borderRadius: 11, color: "#4b5563", fontSize: 13.5, fontWeight: 800, cursor: "pointer", fontFamily: "inherit" }}>
+                    No, Continue Assessment
+                  </button>
+                  <button
+                    onClick={() => { setShowEndModal(false); setEndConfirmText(""); submitTest(userAnswers); }}
+                    disabled={!endValid}
+                    style={{ flex: 1, padding: "13px 16px", background: endValid ? "#ef4444" : "#f3d2d2", border: "none", borderRadius: 11, color: "#fff", fontSize: 13.5, fontWeight: 800, cursor: endValid ? "pointer" : "not-allowed", fontFamily: "inherit", boxShadow: endValid ? "0 6px 18px rgba(239,68,68,.32)" : "none", opacity: endValid ? 1 : 0.85 }}>
+                    Yes, End Assessment
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
 
@@ -620,35 +728,49 @@ export default function MCQAssessment() {
             {/* ── RUNNING ── */}
             {phase === "running" && q && (
               <>
-                {/* Header */}
-                <div style={{ padding: isMobile ? "12px 14px" : "16px 28px", background: "#fff", borderBottom: "1px solid #e5e4eb", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0, gap: 12, flexWrap: isMobile ? "wrap" : "nowrap" }}>
-                  <div>
-                    <div style={{ fontSize: 17, fontWeight: 800, color: "#1a1a2e" }}>{assessment?.assessment_title || levelName}</div>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: "#9ca3af", letterSpacing: 1, textTransform: "uppercase", marginTop: 2 }}>Question {current + 1} of {questions.length}</div>
+                {/* ── Top Bar (Stage A redesign — layout/styling only) ── */}
+                <div style={{ padding: isMobile ? "10px 14px" : "12px 26px", background: "linear-gradient(180deg,#ffffff 0%,#faf9ff 100%)", borderBottom: "1px solid #e7e5f0", boxShadow: "0 2px 10px rgba(26,16,64,0.05)", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0, gap: 14, flexWrap: isMobile ? "wrap" : "nowrap" }}>
+
+                  {/* LEFT: brand + candidate/title/date */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+                    <div style={{ width: 40, height: 40, borderRadius: 11, background: `linear-gradient(135deg,${P} 0%,#4b2fd6 100%)`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, boxShadow: "0 4px 12px rgba(108,71,255,.35)" }}>
+                      <svg width="21" height="21" fill="none" stroke="#fff" strokeWidth="1.9" viewBox="0 0 24 24"><path d="M22 10L12 5 2 10l10 5 10-5z"/><path d="M6 12v5c0 1 2.7 2.5 6 2.5s6-1.5 6-2.5v-5"/></svg>
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 15, fontWeight: 900, color: "#1a1040", letterSpacing: 0.2, lineHeight: 1.2 }}>Training Slot</div>
+                      <div style={{ fontSize: 11.5, fontWeight: 600, color: "#6b7280", marginTop: 3, display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap", lineHeight: 1.3 }}>
+                        <span style={{ color: "#4b2fd6", fontWeight: 800 }}>{candidateName}</span>
+                        <span style={{ color: "#d1cdec" }}>•</span>
+                        <span style={{ color: "#374151", fontWeight: 700 }}>{testTitle}</span>
+                        {testDate && (
+                          <>
+                            <span style={{ color: "#d1cdec" }}>•</span>
+                            <span style={{ color: "#9ca3af" }}>{testDate}</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", justifyContent: "flex-end" }}>
+
+                  {/* RIGHT: question pill + strike + submit + timer */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                    <div style={{ background: "rgba(108,71,255,.08)", border: "1px solid rgba(108,71,255,.18)", borderRadius: 8, padding: "5px 12px", fontSize: 11.5, fontWeight: 800, color: P, whiteSpace: "nowrap" }}>
+                      Q {current + 1} <span style={{ color: "#a99ee6" }}>/ {questions.length}</span>
+                    </div>
                     {warnings > 0 && (
                       <div style={{ background: warnings >= 2 ? "rgba(239,68,68,.18)" : "rgba(239,68,68,.1)", border: `1px solid ${warnings >= 2 ? "rgba(239,68,68,.5)" : "rgba(239,68,68,.3)"}`, borderRadius: 8, padding: "4px 12px", fontSize: 11, fontWeight: 700, color: "#dc2626" }}>
                         ⚠ Strike {warnings}/2 {warnings >= 2 ? "— Next switch = SUBMIT" : ""}
                       </div>
                     )}
-                    {/* ── Always-visible Submit button ── */}
+                    {/* ── Always-visible Submit button (manual end → opens End Assessment modal) ── */}
                     <button
-                      onClick={() => {
-                        const answered = Object.keys(userAnswers).length;
-                        const total = questions.length;
-                        const unanswered = total - answered;
-                        const msg = unanswered > 0
-                          ? `You have ${unanswered} unanswered question${unanswered !== 1 ? 's' : ''}. Submit anyway?`
-                          : "Submit the assessment now?";
-                        if (window.confirm(msg)) submitTest(userAnswers);
-                      }}
-                      style={{ padding: "7px 16px", background: "rgba(239,68,68,0.1)", border: "1.5px solid rgba(239,68,68,0.4)", borderRadius: 10, color: "#dc2626", fontSize: 12, fontWeight: 800, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}
+                      onClick={() => { setEndConfirmText(""); setShowEndModal(true); }}
+                      style={{ padding: "8px 16px", background: "rgba(239,68,68,0.08)", border: "1.5px solid rgba(239,68,68,0.4)", borderRadius: 10, color: "#dc2626", fontSize: 12, fontWeight: 800, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}
                     >
                       Submit Assessment
                     </button>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <span style={{ fontSize: 15, fontWeight: 700, color: totalSecondsLeft <= 30 ? "#ef4444" : "#4b5563", fontFamily: "monospace" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 9, background: "#fff", border: "1px solid #e7e5f0", borderRadius: 12, padding: "5px 8px 5px 14px", boxShadow: "0 1px 4px rgba(26,16,64,0.05)" }}>
+                      <span style={{ fontSize: 15, fontWeight: 800, color: totalSecondsLeft <= 30 ? "#ef4444" : "#4b5563", fontFamily: "monospace", letterSpacing: 0.5 }}>
                         {(() => {
                           const m = Math.floor(totalSecondsLeft / 60);
                           const s = totalSecondsLeft % 60;
@@ -691,66 +813,175 @@ export default function MCQAssessment() {
                   })}
                 </div>
 
-                {/* Question Indices of Active Tab */}
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, padding: "10px 14px", background: "#fff", borderBottom: "1px solid #e5e4eb" }}>
-                  {questions.map((qItem, idx) => {
-                    if (qItem.mcq_type_name !== activeTypeTab) return null;
-                    const isCurrent = idx === current;
-                    const isAnswered = userAnswers[idx] !== undefined;
-                    return (
-                      <button
-                        key={idx}
-                        onClick={() => setCurrent(idx)}
-                        style={{
-                          width: 32,
-                          height: 32,
-                          borderRadius: "50%",
-                          border: isCurrent ? `2.5px solid ${P}` : "1px solid #d1d5db",
-                          background: isCurrent ? "#fff" : isAnswered ? "rgba(16,185,129,0.15)" : "#fafafa",
-                          color: isCurrent ? P : isAnswered ? "#059669" : "#374151",
-                          fontSize: 12,
-                          fontWeight: 800,
-                          cursor: "pointer",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center"
-                        }}
-                      >
-                        {idx + 1}
-                      </button>
-                    );
-                  })}
-                </div>
-
                 {/* Progress bar */}
                 <div style={{ height: 4, background: "#e5e4eb", flexShrink: 0 }}>
                   <div style={{ height: "100%", width: prog + "%", background: P, transition: "width .4s" }} />
                 </div>
 
-                {/* Question Area */}
-                <div style={{ flex: 1, padding: "28px 5vw", display: "flex", flexDirection: "column", overflow: "auto" }}>
-                  <div style={{ background: "#fff", border: "1.5px solid rgba(108,71,255,.2)", borderRadius: 18, padding: "28px 32px", marginBottom: 16, boxShadow: "0 2px 12px rgba(108,71,255,.07)" }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: P, marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>{q.mcq_type_name} Section</div>
-                    <div style={{ fontSize: 17, fontWeight: 700, color: "#1a1a2e", lineHeight: 1.6, marginBottom: 24 }}>{q.q}</div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                      {q.options.map((opt, i) => {
-                        const sel = selected === i;
-                        return (
-                          <div key={i} onClick={() => setUserAnswers({ ...userAnswers, [current]: i })}
-                            style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 20px", borderRadius: 12, border: `1.5px solid ${sel ? P : "#e5e4eb"}`, background: sel ? "rgba(108,71,255,.06)" : "#fafafa", cursor: "pointer", transition: "all .18s", userSelect: "none" }}>
-                            <div style={{ width: 22, height: 22, borderRadius: "50%", border: `2px solid ${sel ? P : "#d1d5db"}`, background: sel ? P : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transition: "all .18s" }}>
-                              {sel && <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#fff" }} />}
+                {/* Question Area (Stage C — two-column: question card + overview panel) */}
+                <div style={{ flex: 1, padding: isMobile ? "18px 16px" : "28px 40px", overflow: "auto" }}>
+                  <div style={{ width: "100%", maxWidth: 1240, margin: "0 auto", display: "flex", flexDirection: isMobile ? "column" : "row", gap: isMobile ? 18 : 24, alignItems: "flex-start" }}>
+
+                  {/* ── MAIN COLUMN: question card + actions ── */}
+                  <div style={{ flex: 1, minWidth: 0, width: "100%", display: "flex", flexDirection: "column" }}>
+                    <div style={{ background: "#fff", border: "1px solid #ece9f7", borderRadius: 20, padding: isMobile ? "22px 20px" : "30px 34px", marginBottom: 18, boxShadow: "0 6px 26px rgba(26,16,64,0.07)" }}>
+
+                      {/* Card header: Question number + type tag + marks pill */}
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 16, paddingBottom: 16, borderBottom: "1px solid #f1eefb" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                          <div style={{ fontSize: isMobile ? 18 : 20, fontWeight: 900, color: "#1a1040", letterSpacing: 0.2 }}>Question {current + 1}</div>
+                          {q.mcq_type_name && (
+                            <span style={{ fontSize: 10.5, fontWeight: 800, color: P, background: "rgba(108,71,255,.09)", border: "1px solid rgba(108,71,255,.18)", borderRadius: 20, padding: "3px 11px", textTransform: "uppercase", letterSpacing: 0.6, whiteSpace: "nowrap" }}>{q.mcq_type_name}</span>
+                          )}
+                        </div>
+                        <span style={{ fontSize: 11.5, fontWeight: 800, color: "#7c3aed", background: "linear-gradient(135deg,rgba(108,71,255,.12),rgba(75,47,214,.12))", border: "1px solid rgba(108,71,255,.22)", borderRadius: 20, padding: "5px 14px", whiteSpace: "nowrap" }}>
+                          {q.marks || 1} {(q.marks || 1) === 1 ? "Mark" : "Marks"}
+                        </span>
+                      </div>
+
+                      {/* Question text */}
+                      <div style={{ fontSize: isMobile ? 16 : 18, fontWeight: 600, color: "#22203a", lineHeight: 1.7, marginBottom: 26 }}>{q.q}</div>
+
+                      {/* Options */}
+                      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                        {q.options.map((opt, i) => {
+                          const sel = selected === i;
+                          const hov = hoverOpt === i && !sel;
+                          const letter = ["A", "B", "C", "D"][i] || "";
+                          return (
+                            <div
+                              key={i}
+                              onClick={() => setUserAnswers({ ...userAnswers, [current]: i })}
+                              onMouseEnter={() => setHoverOpt(i)}
+                              onMouseLeave={() => setHoverOpt((h) => (h === i ? null : h))}
+                              style={{
+                                display: "flex", alignItems: "center", gap: 14,
+                                padding: isMobile ? "13px 14px" : "15px 18px",
+                                borderRadius: 14,
+                                border: `1.5px solid ${sel ? P : hov ? "rgba(108,71,255,.35)" : "#e7e5f0"}`,
+                                background: sel ? "rgba(108,71,255,.07)" : hov ? "#faf9ff" : "#fbfbfe",
+                                cursor: "pointer",
+                                transition: "all .16s",
+                                userSelect: "none",
+                                boxShadow: sel ? "0 4px 16px rgba(108,71,255,.16)" : "none",
+                              }}
+                            >
+                              {/* Letter badge */}
+                              <div style={{ width: 30, height: 30, borderRadius: 9, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, background: sel ? P : "#eeecf8", color: sel ? "#fff" : "#6b7280", transition: "all .16s" }}>{letter}</div>
+                              {/* Option text */}
+                              <div style={{ flex: 1, fontSize: isMobile ? 14 : 15, fontWeight: 600, color: sel ? "#1a1040" : "#374151", lineHeight: 1.45 }}>{opt}</div>
+                              {/* Radio indicator */}
+                              <div style={{ width: 22, height: 22, borderRadius: "50%", border: `2px solid ${sel ? P : "#cfcbe6"}`, background: sel ? P : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transition: "all .16s" }}>
+                                {sel && <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#fff" }} />}
+                              </div>
                             </div>
-                            <div style={{ fontSize: 14, fontWeight: 600, color: sel ? "#1a1a2e" : "#374151" }}>{opt}</div>
-                          </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Actions: Mark for Review (display-only) + Next/Submit (existing handler) */}
+                    <div style={{ display: "flex", gap: 12, flexDirection: isMobile ? "column" : "row" }}>
+                      {(() => {
+                        const isMarkedNow = markedForReview.has(current);
+                        return (
+                          <button
+                            onClick={() => setMarkedForReview((prev) => {
+                              const nx = new Set(prev);
+                              if (nx.has(current)) nx.delete(current); else nx.add(current);
+                              return nx;
+                            })}
+                            style={{ flexShrink: 0, padding: "15px 20px", background: isMarkedNow ? "rgba(245,158,11,.12)" : "#fff", border: `1.5px solid ${isMarkedNow ? "rgba(245,158,11,.55)" : "#e0dced"}`, borderRadius: 14, color: isMarkedNow ? "#d97706" : "#6b7280", fontSize: 14, fontWeight: 800, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", transition: "all .16s" }}
+                          >
+                            {isMarkedNow ? "★ Marked for Review" : "☆ Mark for Review"}
+                          </button>
                         );
-                      })}
+                      })()}
+                      <button onClick={() => { if (current === questions.length - 1) { setEndConfirmText(""); setShowEndModal(true); } else { goNext(); } }}
+                        style={{ flex: 1, width: "100%", padding: 16, background: `linear-gradient(135deg,${P} 0%,#4b2fd6 100%)`, border: "none", borderRadius: 14, color: "#fff", fontSize: 15, fontWeight: 800, cursor: "pointer", boxShadow: "0 6px 22px rgba(108,71,255,.35)", transition: "all .2s", fontFamily: "inherit", letterSpacing: 0.2 }}>
+                        {current === questions.length - 1 ? "Submit Assessment" : "Next Question →"}
+                      </button>
                     </div>
                   </div>
-                  <button onClick={() => goNext()}
-                    style={{ width: "100%", padding: 16, background: P, border: "none", borderRadius: 14, color: "#fff", fontSize: 15, fontWeight: 800, cursor: "pointer", boxShadow: "0 4px 20px rgba(108,71,255,.35)", transition: "all .2s", fontFamily: "inherit" }}>
-                    {current === questions.length - 1 ? "Submit Assessment" : "Next Question →"}
-                  </button>
+
+                  {/* ── OVERVIEW PANEL (Stage C) ── */}
+                  <aside style={{ width: isMobile ? "100%" : 330, flexShrink: 0 }}>
+                    <div style={{ background: "#fff", border: "1px solid #ece9f7", borderRadius: 20, padding: 22, boxShadow: "0 6px 26px rgba(26,16,64,0.07)" }}>
+
+                      {/* Header */}
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 18 }}>
+                        <div style={{ fontSize: 16, fontWeight: 900, color: "#1a1040", letterSpacing: 0.2 }}>Overview</div>
+                        {testDate && <div style={{ fontSize: 10.5, fontWeight: 700, color: "#9ca3af" }}>{testDate}</div>}
+                      </div>
+
+                      {/* Ring + counts */}
+                      <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 20 }}>
+                        <OverviewRing answered={answeredCount} total={totalCount} />
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8, flex: 1 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, background: "rgba(16,185,129,.09)", border: "1px solid rgba(16,185,129,.22)", borderRadius: 10, padding: "7px 11px" }}>
+                            <div style={{ width: 9, height: 9, borderRadius: "50%", background: "#10b981", flexShrink: 0 }} />
+                            <span style={{ fontSize: 12.5, fontWeight: 800, color: "#059669" }}>{answeredCount}</span>
+                            <span style={{ fontSize: 11.5, fontWeight: 600, color: "#6b7280" }}>answered</span>
+                          </div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, background: "#f6f6fa", border: "1px solid #e7e5f0", borderRadius: 10, padding: "7px 11px" }}>
+                            <div style={{ width: 9, height: 9, borderRadius: "50%", background: "#b8b3cf", flexShrink: 0 }} />
+                            <span style={{ fontSize: 12.5, fontWeight: 800, color: "#4b5563" }}>{remainingCount}</span>
+                            <span style={{ fontSize: 11.5, fontWeight: 600, color: "#6b7280" }}>remaining</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Question grid */}
+                      <div style={{ fontSize: 11, fontWeight: 800, color: "#9ca3af", textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 10 }}>Questions</div>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 8, marginBottom: 18 }}>
+                        {questions.map((qItem, idx) => {
+                          const isCurrent = idx === current;
+                          const isAnswered = userAnswers[idx] !== undefined;
+                          const isMarked = markedForReview.has(idx);
+                          let bg = "#f4f4f8", color = "#6b7280", bd = "#e4e0ef";
+                          if (isMarked) { bg = "rgba(245,158,11,.16)"; color = "#d97706"; bd = "rgba(245,158,11,.5)"; }
+                          else if (isAnswered) { bg = "rgba(16,185,129,.15)"; color = "#059669"; bd = "rgba(16,185,129,.4)"; }
+                          return (
+                            <button
+                              key={idx}
+                              onClick={() => setCurrent(idx)}
+                              title={`Question ${idx + 1}`}
+                              style={{ position: "relative", aspectRatio: "1 / 1", minHeight: 34, borderRadius: 9, border: isCurrent ? `2.5px solid ${P}` : `1px solid ${bd}`, background: bg, color: isCurrent ? P : color, fontSize: 12.5, fontWeight: 800, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "all .14s" }}
+                            >
+                              {idx + 1}
+                              {isMarked && isAnswered && (
+                                <span style={{ position: "absolute", top: 3, right: 3, width: 7, height: 7, borderRadius: "50%", background: "#10b981", border: "1px solid #fff" }} />
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {/* Legend */}
+                      <div style={{ display: "flex", flexDirection: "column", gap: 7, marginBottom: 18 }}>
+                        {[
+                          { c: "rgba(245,158,11,.16)", b: "rgba(245,158,11,.5)", t: "#d97706", label: "Marked for Review" },
+                          { c: "rgba(16,185,129,.15)", b: "rgba(16,185,129,.4)", t: "#059669", label: "Attempted" },
+                          { c: "#f4f4f8", b: "#e4e0ef", t: "#6b7280", label: "Not Attempted" },
+                        ].map((lg) => (
+                          <div key={lg.label} style={{ display: "flex", alignItems: "center", gap: 9 }}>
+                            <div style={{ width: 16, height: 16, borderRadius: 5, background: lg.c, border: `1px solid ${lg.b}`, flexShrink: 0 }} />
+                            <span style={{ fontSize: 12, fontWeight: 600, color: "#4b5563" }}>{lg.label}</span>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Finish Test — opens the End Assessment modal (type "END TEST" to confirm) */}
+                      <button
+                        onClick={() => { setEndConfirmText(""); setShowEndModal(true); }}
+                        style={{ width: "100%", padding: 14, background: "linear-gradient(135deg,#1a1040 0%,#4b2fd6 100%)", border: "none", borderRadius: 12, color: "#fff", fontSize: 14, fontWeight: 900, letterSpacing: 0.4, cursor: "pointer", fontFamily: "inherit", boxShadow: "0 6px 20px rgba(26,16,64,.28)" }}
+                      >
+                        FINISH TEST
+                      </button>
+                    </div>
+                  </aside>
+
+                  </div>
                 </div>
               </>
             )}
