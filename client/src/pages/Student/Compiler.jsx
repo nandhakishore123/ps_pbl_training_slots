@@ -4,6 +4,7 @@
 // Data taken directly from COMPILER_QUESTIONS[3] and runCode() logic
 
 import { useState, useRef, useCallback, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 
 // ── Extracted directly from COMPILER_QUESTIONS[3] in index_working.html ──
 const COURSE = {
@@ -72,9 +73,30 @@ function Sidebar({ active, setActive, isMobile }) {
 // ── Main Component ─────────────────────────────────────────────
 export default function Compiler() {
   const isMobile = useIsNarrow(640);
-  const [sideActive, setSideActive] = useState("editor");
-  const [code,       setCode]       = useState(COURSE.starter);
-  const [stdin,      setStdin]      = useState("7");
+
+  // Persistence keys (sessionStorage → survives refresh, clears when the tab closes)
+  const CODE_KEY  = `compiler:code:${COURSE.lang}`;
+  const STDIN_KEY = `compiler:stdin:${COURSE.lang}`;
+
+  // Active view (Editor/Terminal/Files) reflected in the URL (?view=) so refresh keeps it.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const VIEWS = ["editor", "terminal", "files"];
+  const viewParam = searchParams.get("view");
+  const sideActive = VIEWS.includes(viewParam) ? viewParam : "editor";
+  const setSideActive = useCallback((next) => {
+    setSearchParams((prev) => { const p = new URLSearchParams(prev); p.set("view", next); return p; });
+  }, [setSearchParams]);
+
+  // Code + stdin restored from sessionStorage if present. A real saved buffer (including an
+  // empty string) is never overwritten by starter code; otherwise fall back to defaults.
+  const [code, setCode] = useState(() => {
+    try { const s = sessionStorage.getItem(CODE_KEY); return s !== null ? s : COURSE.starter; }
+    catch { return COURSE.starter; }
+  });
+  const [stdin, setStdin] = useState(() => {
+    try { const s = sessionStorage.getItem(STDIN_KEY); return s !== null ? s : "7"; }
+    catch { return "7"; }
+  });
   const [output,     setOutput]     = useState({ text: "BIT Assessment IDE — Ready. Write your code and click Run.", type: "info" });
   const [running,    setRunning]    = useState(false);
   const [execTime,   setExecTime]   = useState(null);
@@ -84,6 +106,14 @@ export default function Compiler() {
   const [activeTab,  setActiveTab]  = useState("terminal");
   const editorRef = useRef(null);
   const lnRef     = useRef(null);
+
+  // Persist code + stdin on every change (buffer only — this never triggers a run).
+  useEffect(() => {
+    try { sessionStorage.setItem(CODE_KEY, code); } catch {}
+  }, [CODE_KEY, code]);
+  useEffect(() => {
+    try { sessionStorage.setItem(STDIN_KEY, stdin); } catch {}
+  }, [STDIN_KEY, stdin]);
 
   const handleScroll = () => {
     if (lnRef.current && editorRef.current) lnRef.current.scrollTop = editorRef.current.scrollTop;

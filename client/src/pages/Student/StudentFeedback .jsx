@@ -3,7 +3,8 @@
 // Like the Lab Record popup in index_working.html
 // Steps: Roll Number → Feedback Questions → Submit → PDF
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
 
 const P = "#6c47ff", BG = "#f4f3ff", CARD = "#ffffff", BORDER = "#e5e4eb";
 
@@ -141,12 +142,40 @@ export default function StudentFeedback({
   score       = { correct: 15, total: 20 },  // MCQ result passed from parent
 }) {
   // Steps: "roll" → "questions" → "done" (same as labState.step in script)
-  const [step,    setStep]    = useState("roll");
+  // The wizard step is reflected in the URL (?step=roll|questions|done) so refresh keeps
+  // the student on the same step; the detected roll (?roll=) re-hydrates the student.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const STEPS = ["roll", "questions", "done"];
+  const stepParam = searchParams.get("step");
+  const step = STEPS.includes(stepParam) ? stepParam : "roll";
+  const goToStep = useCallback((next) => {
+    setSearchParams((prev) => { const p = new URLSearchParams(prev); p.set("step", next); return p; });
+  }, [setSearchParams]);
+
   const [roll,    setRoll]    = useState("");
   const [student, setStudent] = useState(null);
   const [rollErr, setRollErr] = useState("");
   const [answers, setAnswers] = useState({});
   const [wordCounts, setWordCounts] = useState({});
+
+  // Re-hydrate the student from ?roll when refreshing onto a post-roll step.
+  // STUDENT_DB is the same in-memory source detectRoll uses; invalid/missing roll → step 1.
+  useEffect(() => {
+    if (step === "roll" || student) return;
+    const rollParam = String(searchParams.get("roll") || "").trim().toUpperCase();
+    const info = rollParam ? STUDENT_DB[rollParam] : null;
+    if (info) {
+      setStudent({ ...info, roll: rollParam });
+      setRoll(rollParam);
+    } else {
+      setSearchParams((prev) => {
+        const p = new URLSearchParams(prev);
+        p.set("step", "roll");
+        p.delete("roll");
+        return p;
+      }, { replace: true });
+    }
+  }, [step, student, searchParams, setSearchParams]);
 
   if (!isOpen) return null;
 
@@ -165,7 +194,12 @@ export default function StudentFeedback({
     if (!info) { setRollErr("Register number not found. Try: 7376241CS001"); return; }
     setRollErr("");
     setStudent({ ...info, roll: r });
-    setStep("questions");
+    setSearchParams((prev) => {
+      const p = new URLSearchParams(prev);
+      p.set("step", "questions");
+      p.set("roll", r);
+      return p;
+    });
   };
 
   // ── Save answer (like lrSave in script) ────────────────────
@@ -190,7 +224,7 @@ export default function StudentFeedback({
       alert(`Please answer all questions. ${unanswered.length} question(s) remaining.`);
       return;
     }
-    setStep("done");
+    goToStep("done");
   };
 
   const handleExportPDF = () => {
@@ -344,7 +378,7 @@ export default function StudentFeedback({
         {/* Footer — like lr-footer in script */}
         {step === "questions" && (
           <div style={{ padding: "12px 20px", borderTop: `1px solid ${BORDER}`, display: "flex", gap: 10, flexShrink: 0, background: "#fafafa" }}>
-            <button onClick={() => setStep("roll")}
+            <button onClick={() => goToStep("roll")}
               style={{ padding: "10px 18px", background: "transparent", border: `1.5px solid ${BORDER}`, borderRadius: 9, color: "#6b7280", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
               ← Back
             </button>

@@ -6,7 +6,7 @@
 //        <TrainingSlots onBack={() => {}} onBookSlot={(course, type) => {}} />
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { authService } from '../../services/features/authService'
 import { trainingService } from '../../services/features/trainingService'
 import { useAuthStore } from '../../store/authStore'
@@ -1953,20 +1953,28 @@ function PSSection({ bookedSlots, rawBookings = [], onBookSlot }) {
     error,
   } = useTrainingPagedSkills('PS')
 
+  // View state is reflected in the URL (?tab=ps&course=<id>&level=<idx>) so refresh restores it.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const courseId = searchParams.get('course')
+  const levelParam = searchParams.get('level')
+  const levelIdx = levelParam !== null && levelParam !== '' && !Number.isNaN(Number(levelParam))
+    ? Number(levelParam)
+    : null
+
   const [selected, setSelected] = useState(null) // summary
   const [details, setDetails] = useState(null) // normalized details
   const [detailsLoading, setDetailsLoading] = useState(false)
-  const [levelIdx, setLevelIdx] = useState(null)
+  const hydratedIdRef = useRef(null)
 
+  // Fetch + set the selected course details. Returns true on success.
   const openCourse = useCallback(async (course) => {
     setSelected(course)
-    setLevelIdx(null)
     setDetails(null)
     setDetailsLoading(true)
     try {
       const payload = await trainingService.getSkillDetails(course.id)
       const d = payload?.data
-      if (!d) return setDetails(null)
+      if (!d) { setDetails(null); return false }
       setDetails({
         id: d.training_skill_id,
         name: d.skill_name,
@@ -1980,12 +1988,81 @@ function PSSection({ bookedSlots, rawBookings = [], onBookSlot }) {
         levels: Array.isArray(d.levels) ? d.levels.length : Number(course.levels || 0),
         levelsData: d.levels || [],
       })
+      return true
     } catch {
       setDetails(null)
+      return false
     } finally {
       setDetailsLoading(false)
     }
   }, [])
+
+  // ── URL <-> view helpers (navigation persistence only) ──
+  const goToCourse = useCallback((course) => {
+    hydratedIdRef.current = String(course.id)
+    setSearchParams((prev) => {
+      const p = new URLSearchParams(prev)
+      p.set('tab', 'ps')
+      p.set('course', String(course.id))
+      p.delete('level')
+      return p
+    })
+    openCourse(course)
+  }, [openCourse, setSearchParams])
+
+  const goToLevel = useCallback((idx) => {
+    setSearchParams((prev) => {
+      const p = new URLSearchParams(prev)
+      p.set('level', String(idx))
+      return p
+    })
+  }, [setSearchParams])
+
+  const backToGrid = useCallback(() => {
+    hydratedIdRef.current = null
+    setSelected(null)
+    setDetails(null)
+    setSearchParams((prev) => {
+      const p = new URLSearchParams(prev)
+      p.delete('course')
+      p.delete('level')
+      return p
+    })
+  }, [setSearchParams])
+
+  const backToLevels = useCallback(() => {
+    setSearchParams((prev) => {
+      const p = new URLSearchParams(prev)
+      p.delete('level')
+      return p
+    })
+  }, [setSearchParams])
+
+  // Re-hydrate the selected course from the URL (refresh / deep-link / browser back-forward)
+  const listTouchedRef = useRef(false)
+  useEffect(() => {
+    if (loading) listTouchedRef.current = true
+    if (!courseId) {
+      if (hydratedIdRef.current !== null) {
+        hydratedIdRef.current = null
+        setSelected(null)
+        setDetails(null)
+      }
+      return
+    }
+    if (hydratedIdRef.current === courseId) return
+    const summary = (items || []).find((it) => String(it.id) === String(courseId))
+    if (summary) {
+      // Prefer the loaded list summary (has slots/capacity) for full fidelity.
+      hydratedIdRef.current = courseId
+      openCourse(summary)
+    } else if (listTouchedRef.current && !loading) {
+      // List has settled but this id isn't in it: try a direct fetch; fall back to grid if it fails.
+      hydratedIdRef.current = courseId
+      openCourse({ id: courseId }).then((ok) => { if (!ok) backToGrid() })
+    }
+    // else: list still loading — wait for the next run
+  }, [courseId, items, loading, openCourse, backToGrid])
 
   // ── Grid view ──
   if (!selected) {
@@ -2028,7 +2105,7 @@ function PSSection({ bookedSlots, rawBookings = [], onBookSlot }) {
                         alert("You are not allowed to enter this course due to a malpractice flag.");
                         return;
                       }
-                      openCourse(course);
+                      goToCourse(course);
                     }}
                   />
                 );
@@ -2042,7 +2119,7 @@ function PSSection({ bookedSlots, rawBookings = [], onBookSlot }) {
   if (detailsLoading || !details) {
     return (
       <div>
-        <button className="pt-detail-back" onClick={() => { setSelected(null); setLevelIdx(null); setDetails(null) }}>← Back to Courses</button>
+        <button className="pt-detail-back" onClick={backToGrid}>← Back to Courses</button>
         <div className="pt-empty" style={{ marginTop: 10 }}>Loading course details...</div>
       </div>
     )
@@ -2054,8 +2131,8 @@ function PSSection({ bookedSlots, rawBookings = [], onBookSlot }) {
       <PSLevelSelect
         course={details}
         rawBookings={rawBookings}
-        onBack={() => { setSelected(null); setLevelIdx(null); setDetails(null) }}
-        onSelectLevel={(course, idx) => setLevelIdx(idx)}
+        onBack={backToGrid}
+        onSelectLevel={(course, idx) => goToLevel(idx)}
       />
     )
   }
@@ -2082,7 +2159,7 @@ function PSSection({ bookedSlots, rawBookings = [], onBookSlot }) {
         ...details,
         selectedLevel,
       }}
-      onBack={() => setLevelIdx(null)}
+      onBack={backToLevels}
       onBookSlot={onBookSlot}
       activeBooking={activeBooking}
       finishedBooking={finishedBooking}
@@ -2257,20 +2334,28 @@ function PBLSection({ bookedSlots, rawBookings = [], onBookSlot, onFillLabRecord
     error,
   } = useTrainingPagedSkills('PBL')
 
+  // View state is reflected in the URL (?tab=pbl&lab=<id>&activity=<idx>) so refresh restores it.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const labId = searchParams.get('lab')
+  const activityParam = searchParams.get('activity')
+  const activityIdx = activityParam !== null && activityParam !== '' && !Number.isNaN(Number(activityParam))
+    ? Number(activityParam)
+    : null
+
   const [selected, setSelected] = useState(null)
   const [details, setDetails] = useState(null)
   const [detailsLoading, setDetailsLoading] = useState(false)
-  const [activityIdx, setActivityIdx] = useState(null)
+  const hydratedIdRef = useRef(null)
 
+  // Fetch + set the selected lab details. Returns true on success.
   const openLab = useCallback(async (lab) => {
     setSelected(lab)
-    setActivityIdx(null)
     setDetails(null)
     setDetailsLoading(true)
     try {
       const payload = await trainingService.getSkillDetails(lab.id)
       const d = payload?.data
-      if (!d) return setDetails(null)
+      if (!d) { setDetails(null); return false }
       const activities = (d.levels || []).map((lvl) => lvl.core_concept).filter(Boolean)
       setDetails({
         id: d.training_skill_id,
@@ -2286,12 +2371,81 @@ function PBLSection({ bookedSlots, rawBookings = [], onBookSlot, onFillLabRecord
         reward_points: Number(d.reward_points || 0),
         activity_points: Number(d.activity_points || 0),
       })
+      return true
     } catch {
       setDetails(null)
+      return false
     } finally {
       setDetailsLoading(false)
     }
   }, [])
+
+  // ── URL <-> view helpers (navigation persistence only) ──
+  const goToLab = useCallback((lab) => {
+    hydratedIdRef.current = String(lab.id)
+    setSearchParams((prev) => {
+      const p = new URLSearchParams(prev)
+      p.set('tab', 'pbl')
+      p.set('lab', String(lab.id))
+      p.delete('activity')
+      return p
+    })
+    openLab(lab)
+  }, [openLab, setSearchParams])
+
+  const goToActivity = useCallback((idx) => {
+    setSearchParams((prev) => {
+      const p = new URLSearchParams(prev)
+      p.set('activity', String(idx))
+      return p
+    })
+  }, [setSearchParams])
+
+  const backToGrid = useCallback(() => {
+    hydratedIdRef.current = null
+    setSelected(null)
+    setDetails(null)
+    setSearchParams((prev) => {
+      const p = new URLSearchParams(prev)
+      p.delete('lab')
+      p.delete('activity')
+      return p
+    })
+  }, [setSearchParams])
+
+  const backToActivities = useCallback(() => {
+    setSearchParams((prev) => {
+      const p = new URLSearchParams(prev)
+      p.delete('activity')
+      return p
+    })
+  }, [setSearchParams])
+
+  // Re-hydrate the selected lab from the URL (refresh / deep-link / browser back-forward)
+  const listTouchedRef = useRef(false)
+  useEffect(() => {
+    if (loading) listTouchedRef.current = true
+    if (!labId) {
+      if (hydratedIdRef.current !== null) {
+        hydratedIdRef.current = null
+        setSelected(null)
+        setDetails(null)
+      }
+      return
+    }
+    if (hydratedIdRef.current === labId) return
+    const summary = (items || []).find((it) => String(it.id) === String(labId))
+    if (summary) {
+      // Prefer the loaded list summary (has slots/capacity) for full fidelity.
+      hydratedIdRef.current = labId
+      openLab(summary)
+    } else if (listTouchedRef.current && !loading) {
+      // List has settled but this id isn't in it: try a direct fetch; fall back to grid if it fails.
+      hydratedIdRef.current = labId
+      openLab({ id: labId }).then((ok) => { if (!ok) backToGrid() })
+    }
+    // else: list still loading — wait for the next run
+  }, [labId, items, loading, openLab, backToGrid])
 
   // ── Grid view ──
   if (!selected) {
@@ -2343,7 +2497,7 @@ function PBLSection({ bookedSlots, rawBookings = [], onBookSlot, onFillLabRecord
                         alert("You are not allowed to enter this lab due to a malpractice flag.");
                         return;
                       }
-                      openLab(lab);
+                      goToLab(lab);
                     }}
                   />
                 );
@@ -2357,7 +2511,7 @@ function PBLSection({ bookedSlots, rawBookings = [], onBookSlot, onFillLabRecord
   if (detailsLoading || !details) {
     return (
       <div>
-        <button className="pt-detail-back" onClick={() => { setSelected(null); setActivityIdx(null); setDetails(null) }}>← Back to Labs</button>
+        <button className="pt-detail-back" onClick={backToGrid}>← Back to Labs</button>
         <div className="pt-empty" style={{ marginTop: 10 }}>Loading lab details...</div>
       </div>
     )
@@ -2369,8 +2523,8 @@ function PBLSection({ bookedSlots, rawBookings = [], onBookSlot, onFillLabRecord
       <PBLLevelSelect
         lab={details}
         rawBookings={rawBookings}
-        onBack={() => { setSelected(null); setActivityIdx(null); setDetails(null) }}
-        onSelectActivity={(lab, idx) => setActivityIdx(idx)}
+        onBack={backToGrid}
+        onSelectActivity={(lab, idx) => goToActivity(idx)}
       />
     )
   }
@@ -2397,7 +2551,7 @@ function PBLSection({ bookedSlots, rawBookings = [], onBookSlot, onFillLabRecord
         ...details,
         selectedLevel,
       }}
-      onBack={() => setActivityIdx(null)}
+      onBack={backToActivities}
       onBookSlot={onBookSlot}
       activeBooking={activeBooking}
       finishedBooking={finishedBooking}
@@ -2409,7 +2563,21 @@ function PBLSection({ bookedSlots, rawBookings = [], onBookSlot, onFillLabRecord
 // ── Main TrainingSlots ────────────────────────────────────────
 export default function TrainingSlots({ onBack }) {
   const navigate = useNavigate()
-  const [tab, setTab] = useState('ps')
+  // Top-level PS/PBL tab is reflected in the URL (?tab=ps|pbl) so refresh restores it.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const tab = searchParams.get('tab') === 'pbl' ? 'pbl' : 'ps'
+  const setTab = useCallback((next) => {
+    setSearchParams((prev) => {
+      const p = new URLSearchParams(prev)
+      p.set('tab', next)
+      // Switching tabs returns to that tab's grid (clear the other's drill-down params too).
+      p.delete('course')
+      p.delete('level')
+      p.delete('lab')
+      p.delete('activity')
+      return p
+    })
+  }, [setSearchParams])
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('pt-dark') === '1')
   const { user } = useAuthStore()
   const [bookedSlots, setBookedSlots] = useState({})
