@@ -5,6 +5,7 @@ import { authService } from '../../services/features/authService'
 import { facultyService } from '../../services/features/facultyService'
 import StatCard from '../../components/ui/StatCard'
 import NavBox from '../../components/ui/NavBox'
+import { isInventoryApprover } from '../../config/inventoryApprovers'
 import styles from './FacultyDashboard.module.css'
 
 export default function FacultyDashboard() {
@@ -175,6 +176,31 @@ export default function FacultyDashboard() {
               desc="Pass/fail list for your slots — confirm passed students' results"
               onClick={() => navigate('/faculty-activity-points')}
             />
+            {/* Inventory Approval — shown to all faculty, clickable only for the two
+                designated approvers (Project / Training). Others see it dimmed. */}
+            {(() => {
+              const canApprove = isInventoryApprover(user?.user_id)
+              return (
+                <div style={canApprove ? undefined : { opacity: 0.5, pointerEvents: 'none' }}>
+                  <NavBox
+                    iconColor="green"
+                    icon={
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M20 7l-8-4-8 4 8 4 8-4z" />
+                        <path d="M4 7v10l8 4 8-4V7" />
+                        <path d="M12 11v10" />
+                      </svg>
+                    }
+                    label="Inventory Approval"
+                    desc={canApprove
+                      ? 'Review & approve student buying requests for your purpose'
+                      : 'Not assigned — only the designated approvers can review buying requests'}
+                    chips={canApprove ? [{ label: 'Approver', color: 'purple' }] : []}
+                    onClick={canApprove ? () => navigate('/faculty-inventory-approval') : undefined}
+                  />
+                </div>
+              )
+            })()}
           </div>
         </div>
 

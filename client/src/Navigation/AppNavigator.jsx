@@ -14,6 +14,7 @@ import MCQAssessment from '../pages/Student/McqAssessment.jsx';
 import Compiler from "../pages/Student/Compiler.jsx";
 import StudentFeedback from '../pages/Student/StudentFeedback .jsx';
 import TrainingSlots from '../pages/Student/TrainingSlots.jsx';
+import InventoryRequest from '../pages/Student/InventoryRequest.jsx';
 
 //admin
 import AdminDashboard from '../pages/Admin/Dashboard/Dashboard.jsx'
@@ -42,6 +43,10 @@ import RequestTransfer from '../pages/Faculty/RequestTransfer.jsx';
 import MyVenues from '../pages/Faculty/MyVenues.jsx';
 import FacultyApprovals from '../pages/Faculty/FacultyApprovals.jsx';
 import FacultyActivityPoints from '../pages/Faculty/FacultyActivityPoints.jsx';
+import FacultyInventoryApproval from '../pages/Faculty/FacultyInventoryApproval.jsx';
+
+//inventory incharge (role 4)
+import InventoryInchargeDashboard from '../pages/InventoryIncharge/InventoryInchargeDashboard.jsx';
 
 
 function useBootstrapAuth() {
@@ -86,6 +91,10 @@ function HomeRedirect() {
 
     if (roleId === 2) {
         return <Navigate to="/faculty-dashboard" replace />;
+    }
+
+    if (roleId === 4) {
+        return <Navigate to="/inventory-incharge" replace />;
     }
 
     return <Navigate to="/auth/login" replace />;
@@ -141,6 +150,7 @@ function AppNavigator() {
                 <Route path="/student-dashboard" element={<RequireAuth><RequireRole allowedRoles={[1]}><StudentDashboard/></RequireRole></RequireAuth>} />
                 <Route path="/points-page" element={<RequireAuth><RequireRole allowedRoles={[1]}><PointsDashboard/></RequireRole></RequireAuth>} />
                 <Route path="/training-slots" element={<RequireAuth><RequireRole allowedRoles={[1]}><TrainingSlots/></RequireRole></RequireAuth>} />
+                <Route path="/inventory-request" element={<RequireAuth><RequireRole allowedRoles={[1]}><InventoryRequest/></RequireRole></RequireAuth>} />
                 <Route path="/assessment/mcq" element={<RequireAuth><RequireRole allowedRoles={[1]}><MCQAssessment/></RequireRole></RequireAuth>} />
                 <Route path="/assessment/compiler" element={<RequireAuth><RequireRole allowedRoles={[1]}><Compiler/></RequireRole></RequireAuth>} />
                 <Route path="/assessment/Student-feedback" element={<RequireAuth><RequireRole allowedRoles={[1]}><StudentFeedback/></RequireRole></RequireAuth>} />
@@ -170,6 +180,10 @@ function AppNavigator() {
                 <Route path="/request-transfer" element={<RequireAuth><RequireRole allowedRoles={[2]}><RequestTransfer/></RequireRole></RequireAuth>} />
                 <Route path="/faculty-approvals" element={<RequireAuth><RequireRole allowedRoles={[2]}><FacultyApprovals/></RequireRole></RequireAuth>} />
                 <Route path="/faculty-activity-points" element={<RequireAuth><RequireRole allowedRoles={[2]}><FacultyActivityPoints/></RequireRole></RequireAuth>} />
+                <Route path="/faculty-inventory-approval" element={<RequireAuth><RequireRole allowedRoles={[2, 3]}><FacultyInventoryApproval/></RequireRole></RequireAuth>} />
+
+                {/* inventory incharge routes (role 4) */}
+                <Route path="/inventory-incharge" element={<RequireAuth><RequireRole allowedRoles={[4]}><InventoryInchargeDashboard/></RequireRole></RequireAuth>} />
 
 
                 <Route path="/not-found" element={<FileNotFound/>}/>
