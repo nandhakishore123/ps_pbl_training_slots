@@ -315,6 +315,124 @@ export const testConnection = async () => {
             console.error(chalk.red('  ✗ Migration/Check for survey failed:'), migErr.message);
         }
 
+        // Inventory Request system: catalog/stock + buying/return requests (multi-item),
+        // approvals (faculty for BUY by purpose, incharge for RETURN), and a stock-change
+        // audit log. TiDB-safe: no FKs, equality-keyed, VARCHAR statuses.
+        try {
+            console.log(chalk.yellow('  Checking inventory tables...'));
+            await connection.execute(`
+                CREATE TABLE IF NOT EXISTS inventory_items (
+                  item_id bigint NOT NULL AUTO_INCREMENT,
+                  category varchar(60) NOT NULL,
+                  subcategory varchar(80) DEFAULT NULL,
+                  item_name varchar(255) NOT NULL,
+                  sub_name varchar(255) DEFAULT NULL,
+                  unit varchar(30) DEFAULT NULL,
+                  current_quantity decimal(12,2) NOT NULL DEFAULT 0,
+                  rack_location varchar(120) DEFAULT NULL,
+                  is_returnable tinyint(1) NOT NULL DEFAULT 0,
+                  is_active tinyint(1) NOT NULL DEFAULT 1,
+                  created_at timestamp DEFAULT CURRENT_TIMESTAMP,
+                  updated_at timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                  PRIMARY KEY (item_id),
+                  KEY idx_inv_items_category (category),
+                  KEY idx_inv_items_name (item_name)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+            `);
+            await connection.execute(`
+                CREATE TABLE IF NOT EXISTS inventory_requests (
+                  request_id bigint NOT NULL AUTO_INCREMENT,
+                  student_id bigint NOT NULL,
+                  request_type varchar(10) NOT NULL,
+                  purpose_type varchar(15) DEFAULT NULL,
+                  purpose text DEFAULT NULL,
+                  status varchar(15) NOT NULL DEFAULT 'PENDING',
+                  approver_user_id bigint DEFAULT NULL,
+                  approver_role tinyint DEFAULT NULL,
+                  decided_at timestamp NULL DEFAULT NULL,
+                  remarks varchar(255) DEFAULT NULL,
+                  created_at timestamp DEFAULT CURRENT_TIMESTAMP,
+                  updated_at timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                  PRIMARY KEY (request_id),
+                  KEY idx_inv_req_student (student_id),
+                  KEY idx_inv_req_type_status (request_type, status)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+            `);
+            await connection.execute(`
+                CREATE TABLE IF NOT EXISTS inventory_request_items (
+                  line_id bigint NOT NULL AUTO_INCREMENT,
+                  request_id bigint NOT NULL,
+                  item_id bigint NOT NULL,
+                  item_name varchar(255) DEFAULT NULL,
+                  quantity decimal(12,2) NOT NULL,
+                  unit varchar(30) DEFAULT NULL,
+                  created_at timestamp DEFAULT CURRENT_TIMESTAMP,
+                  PRIMARY KEY (line_id),
+                  KEY idx_inv_reqitems_request (request_id),
+                  KEY idx_inv_reqitems_item (item_id)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+            `);
+            await connection.execute(`
+                CREATE TABLE IF NOT EXISTS inventory_stock_txns (
+                  txn_id bigint NOT NULL AUTO_INCREMENT,
+                  item_id bigint NOT NULL,
+                  change_qty decimal(12,2) NOT NULL,
+                  reason varchar(40) DEFAULT NULL,
+                  request_id bigint DEFAULT NULL,
+                  actor_user_id bigint DEFAULT NULL,
+                  created_at timestamp DEFAULT CURRENT_TIMESTAMP,
+                  PRIMARY KEY (txn_id),
+                  KEY idx_inv_txn_item (item_id)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+            `);
+            // Stage 5: per-item obligations. One row per taken (BUY-approved) line item,
+            // snapshotting category/returnable/taken-qty. Lifecycle OPEN → RETURN_PENDING → CLEARED.
+            // The student is blocked from a new BUY while any obligation is not CLEARED.
+            await connection.execute(`
+                CREATE TABLE IF NOT EXISTS inventory_obligations (
+                  obligation_id bigint NOT NULL AUTO_INCREMENT,
+                  student_id bigint NOT NULL,
+                  buy_request_id bigint NOT NULL,
+                  buy_line_id bigint NOT NULL,
+                  item_id bigint NOT NULL,
+                  item_name varchar(255) DEFAULT NULL,
+                  category varchar(60) DEFAULT NULL,
+                  unit varchar(30) DEFAULT NULL,
+                  taken_quantity decimal(12,2) NOT NULL,
+                  is_returnable tinyint(1) NOT NULL DEFAULT 0,
+                  status varchar(20) NOT NULL DEFAULT 'OPEN',
+                  return_request_id bigint DEFAULT NULL,
+                  returned_quantity decimal(12,2) DEFAULT NULL,
+                  cleared_at timestamp NULL DEFAULT NULL,
+                  created_at timestamp DEFAULT CURRENT_TIMESTAMP,
+                  updated_at timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                  PRIMARY KEY (obligation_id),
+                  KEY idx_inv_obl_student (student_id, status),
+                  KEY idx_inv_obl_buyreq (buy_request_id),
+                  KEY idx_inv_obl_return (return_request_id)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+            `);
+            // Additive columns on inventory_request_items so RETURN request lines can carry
+            // their obligation link + action (RETURN vs FULLY_COMPLETED). BUY lines leave these NULL.
+            const [iriCols] = await connection.execute('DESCRIBE inventory_request_items');
+            const iriHas = (f) => iriCols.some((c) => c.Field === f);
+            if (!iriHas('obligation_id')) {
+                await connection.execute('ALTER TABLE inventory_request_items ADD COLUMN obligation_id bigint DEFAULT NULL');
+                console.log(chalk.green('  Added inventory_request_items.obligation_id.'));
+            }
+            if (!iriHas('action')) {
+                await connection.execute("ALTER TABLE inventory_request_items ADD COLUMN action varchar(20) DEFAULT NULL");
+                console.log(chalk.green('  Added inventory_request_items.action.'));
+            }
+            if (!iriHas('return_quantity')) {
+                await connection.execute('ALTER TABLE inventory_request_items ADD COLUMN return_quantity decimal(12,2) DEFAULT NULL');
+                console.log(chalk.green('  Added inventory_request_items.return_quantity.'));
+            }
+            console.log(chalk.green('  ✓ inventory schema is ready.'));
+        } catch (migErr) {
+            console.error(chalk.red('  ✗ Migration/Check for inventory failed:'), migErr.message);
+        }
+
         connection.release();
         return true;
     } catch (error) {

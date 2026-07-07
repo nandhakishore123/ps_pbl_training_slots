@@ -1001,6 +1001,25 @@ export default function FrontPage({ onSelectPoints, onSelectTraining }) {
           <span className="pt-box-arrow">›</span>
         </div>
 
+        {/* Inventory Request box */}
+        <div
+          className="pt-box"
+          onClick={() => navigate('/inventory-request')}
+        >
+          <div className="pt-box-icon-wrap">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M20 7l-8-4-8 4 8 4 8-4z" />
+              <path d="M4 7v10l8 4 8-4V7" />
+              <path d="M12 11v10" />
+            </svg>
+          </div>
+          <div className="pt-box-info">
+            <div className="pt-box-label">Inventory Request</div>
+            <div className="pt-box-desc">Request lab items &amp; track approvals</div>
+          </div>
+          <span className="pt-box-arrow">›</span>
+        </div>
+
       </div>
     </div>
   )

@@ -73,6 +73,10 @@ export default function PCDPLogin() {
       return '/admin-dashboard';
     }
 
+    if (numericRoleId === 4) {
+      return '/inventory-incharge';
+    }
+
     return '/auth/login';
   };
 
