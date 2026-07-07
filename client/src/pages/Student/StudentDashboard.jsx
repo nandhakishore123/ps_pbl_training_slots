@@ -9,6 +9,7 @@ import { useNavigate } from 'react-router-dom'
 import { authService } from '../../services/features/authService'
 import { trainingService } from '../../services/features/trainingService'
 import { useAuthStore } from '../../store/authStore'
+import UserProfileBadge from '../../components/UserProfileBadge'
 import { useStore } from '../../store/useStore'
 
 function formatAnnDate(ts) {
@@ -636,7 +637,7 @@ export default function FrontPage({ onSelectPoints, onSelectTraining }) {
 
         {/* Right: desktop (UserIdentity + bell + dark toggle + logout) */}
         <div className="pt-header-right-desktop" style={{ alignItems:'center', gap:10 }}>
-          <UserIdentity user={user} />
+          <UserProfileBadge user={user} variant="desktop" />
           <button
             type="button"
             className="pt-icon-btn"
@@ -686,7 +687,7 @@ export default function FrontPage({ onSelectPoints, onSelectTraining }) {
 
         {/* Right: mobile (user pill + bell + dark toggle) */}
         <div className="pt-header-right-mobile">
-          <UserIdentityMobile user={user} />
+          <UserProfileBadge user={user} variant="mobile" />
           <button
             type="button"
             className="pt-icon-btn"

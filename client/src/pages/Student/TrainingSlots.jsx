@@ -10,6 +10,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { authService } from '../../services/features/authService'
 import { trainingService } from '../../services/features/trainingService'
 import { useAuthStore } from '../../store/authStore'
+import UserProfileBadge from '../../components/UserProfileBadge'
 import heroImg from '../../assets/hero.png'
 
 function UserIdentity({ user }) {
@@ -2714,7 +2715,7 @@ export default function TrainingSlots({ onBack }) {
         <div className="pt-header-actions" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           {/* UserIdentity — hidden on mobile */}
           <div className="pt-header-user-wrap">
-            <UserIdentity user={user} />
+            <UserProfileBadge user={user} variant="desktop" />
           </div>
           {/* BookedSlotsPopup — hidden on mobile (shown in mobile topbar instead) */}
           <div className="pt-header-booked-wrap">
