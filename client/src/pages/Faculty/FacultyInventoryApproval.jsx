@@ -39,7 +39,7 @@ const CSS = `
     color:var(--fa-text2); cursor:pointer; display:flex; align-items:center; justify-content:center; }
   .fa-iconbtn:hover { border-color:var(--fa-purple); color:var(--fa-purple); background:var(--fa-purple-dim); }
 
-  .fa-wrap { max-width:920px; margin:0 auto; padding:22px 24px 48px; }
+  .fa-wrap { max-width:none; margin:0; padding:22px 24px 48px; }
   .fa-scope { font-size:20px; font-weight:900; margin-bottom:4px; }
   .fa-scope-sub { font-size:12.5px; color:var(--fa-text3); font-weight:600; margin-bottom:20px; }
 

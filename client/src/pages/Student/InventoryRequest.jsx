@@ -40,7 +40,7 @@ const CSS = `
     cursor:pointer; font-size:12.5px; color:var(--iv-text2); font-weight:600; font-family:inherit; white-space:nowrap; }
   .inv-dark:hover { border-color:var(--iv-purple); color:var(--iv-purple); }
 
-  .inv-wrap { max-width:1080px; margin:0 auto; padding:22px 24px 44px; }
+  .inv-wrap { max-width:none; margin:0; padding:22px 24px 44px; }
 
   .inv-tabs { display:flex; gap:8px; background:var(--iv-white); border:1px solid var(--iv-border); border-radius:14px;
     padding:6px; margin-bottom:20px; }
@@ -69,6 +69,19 @@ const CSS = `
   .inv-row2 { display:flex; gap:12px; align-items:flex-end; }
   .inv-unit-chip { flex-shrink:0; padding:11px 14px; border-radius:11px; background:var(--iv-purple-dim);
     border:1.5px solid rgba(108,71,255,0.25); color:var(--iv-purple); font-size:13px; font-weight:800; white-space:nowrap; }
+
+  .inv-item-list { max-height:248px; overflow-y:auto; border:1.5px solid var(--iv-border); border-radius:11px;
+    background:var(--iv-bg); padding:5px; display:flex; flex-direction:column; gap:3px; }
+  .inv-item-row { display:flex; align-items:center; justify-content:space-between; gap:10px; width:100%;
+    padding:9px 12px; border:1.5px solid transparent; border-radius:9px; background:transparent; cursor:pointer;
+    font-family:inherit; text-align:left; color:var(--iv-text); transition:all .14s; }
+  .inv-item-row:hover { background:var(--iv-purple-dim); }
+  .inv-item-row.sel { background:var(--iv-purple-dim); border-color:var(--iv-purple); }
+  .inv-item-name { font-size:13px; font-weight:700; }
+  .inv-item-avail { font-size:11.5px; font-weight:700; color:var(--iv-text3); white-space:nowrap; flex-shrink:0; }
+  .inv-item-row.sel .inv-item-avail { color:var(--iv-purple); }
+  .inv-item-empty { padding:16px 12px; text-align:center; font-size:12.5px; color:var(--iv-text3); font-weight:600; }
+  .inv-item-count { font-size:11px; font-weight:700; color:var(--iv-text3); margin:6px 2px 0; text-align:right; }
 
   .inv-btn { width:100%; padding:13px; border:none; border-radius:12px; font-size:14px; font-weight:800; cursor:pointer;
     font-family:inherit; transition:all .18s; }
@@ -167,6 +180,7 @@ export default function InventoryRequest() {
   const [items, setItems] = useState([]);
   const [itemsLoading, setItemsLoading] = useState(false);
   const [selectedItemId, setSelectedItemId] = useState('');
+  const [itemSearch, setItemSearch] = useState(''); // buying: searchable item filter (client-side)
   const [quantity, setQuantity] = useState('');
   const [addErr, setAddErr] = useState('');
 
@@ -231,7 +245,7 @@ export default function InventoryRequest() {
 
   // Load items when a category is chosen
   useEffect(() => {
-    if (!selectedCategory) { setItems([]); setSelectedItemId(''); return; }
+    if (!selectedCategory) { setItems([]); setSelectedItemId(''); setItemSearch(''); return; }
     let ignore = false;
     setItemsLoading(true);
     (async () => {
@@ -246,10 +260,19 @@ export default function InventoryRequest() {
       }
     })();
     setSelectedItemId('');
+    setItemSearch('');
     return () => { ignore = true; };
   }, [selectedCategory]);
 
   const selectedItem = items.find((it) => String(it.item_id) === String(selectedItemId)) || null;
+
+  // Buying: case-insensitive substring filter over item_name (and sub_name if present). In-memory only.
+  const itemQuery = itemSearch.trim().toLowerCase();
+  const filteredItems = itemQuery
+    ? items.filter((it) =>
+        (it.item_name || '').toLowerCase().includes(itemQuery) ||
+        (it.sub_name || '').toLowerCase().includes(itemQuery))
+    : items;
 
   const addToCart = () => {
     setAddErr('');
@@ -447,14 +470,41 @@ export default function InventoryRequest() {
                 </select>
 
                 <label className="inv-field-label">Item</label>
-                <select className="inv-select" value={selectedItemId} onChange={(e) => setSelectedItemId(e.target.value)} disabled={!selectedCategory || itemsLoading} style={{ marginBottom: 16 }}>
-                  <option value="">{itemsLoading ? 'Loading items…' : selectedCategory ? 'Select an item…' : 'Choose a category first'}</option>
-                  {items.map((it) => (
-                    <option key={it.item_id} value={it.item_id}>
-                      {it.item_name} — {money(it.current_quantity)} {it.unit || ''} available
-                    </option>
-                  ))}
-                </select>
+                <input
+                  className="inv-input"
+                  type="text"
+                  placeholder={itemsLoading ? 'Loading items…' : selectedCategory ? 'Search items by name…' : 'Choose a category first'}
+                  value={itemSearch}
+                  onChange={(e) => setItemSearch(e.target.value)}
+                  disabled={!selectedCategory || itemsLoading}
+                  style={{ marginBottom: 8 }}
+                />
+                <div className="inv-item-list" style={{ marginBottom: 6 }}>
+                  {!selectedCategory ? (
+                    <div className="inv-item-empty">Choose a category first.</div>
+                  ) : itemsLoading ? (
+                    <div className="inv-item-empty">Loading items…</div>
+                  ) : filteredItems.length === 0 ? (
+                    <div className="inv-item-empty">No items found.</div>
+                  ) : (
+                    filteredItems.map((it) => (
+                      <button
+                        type="button"
+                        key={it.item_id}
+                        className={`inv-item-row${String(it.item_id) === String(selectedItemId) ? ' sel' : ''}`}
+                        onClick={() => setSelectedItemId(String(it.item_id))}
+                      >
+                        <span className="inv-item-name">{it.item_name}</span>
+                        <span className="inv-item-avail">{money(it.current_quantity)} {it.unit || ''} available</span>
+                      </button>
+                    ))
+                  )}
+                </div>
+                {selectedCategory && !itemsLoading && filteredItems.length > 0 && (
+                  <div className="inv-item-count" style={{ marginBottom: 16 }}>
+                    {itemQuery ? `${filteredItems.length} of ${items.length} items` : `${items.length} items`}
+                  </div>
+                )}
 
                 <label className="inv-field-label">Quantity</label>
                 <div className="inv-row2">

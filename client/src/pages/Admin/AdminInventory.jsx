@@ -36,7 +36,7 @@ const CSS = `
     cursor:pointer; font-size:12.5px; color:var(--ad-text2); font-weight:600; font-family:inherit; white-space:nowrap; }
   .ad-dark:hover { border-color:var(--ad-purple); color:var(--ad-purple); }
 
-  .ad-wrap { max-width:1160px; margin:0 auto; padding:22px 24px 48px; }
+  .ad-wrap { max-width:none; margin:0; padding:22px 24px 48px; }
   .ad-tabs { display:flex; gap:8px; background:var(--ad-white); border:1px solid var(--ad-border); border-radius:14px;
     padding:6px; margin-bottom:20px; flex-wrap:wrap; }
   .ad-tab { flex:1; min-width:120px; padding:11px 14px; border-radius:9px; border:none; background:transparent; font-size:13.5px;
@@ -363,8 +363,7 @@ export default function AdminInventory() {
             <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.9"><path d="M20 7l-8-4-8 4 8 4 8-4z" /><path d="M4 7v10l8 4 8-4V7" /><path d="M12 11v10" /></svg>
           </div>
           <div style={{ minWidth: 0 }}>
-            <div className="ad-title">Inventory Management <span className="ad-badge">Admin</span></div>
-            <div className="ad-sub">Full control — {name}</div>
+            <div className="ad-title">Inventory Management</div>
           </div>
         </div>
         <button className="ad-dark" onClick={() => setDarkMode((d) => !d)}>{darkMode ? '☀ Light' : '🌙 Dark'}</button>
