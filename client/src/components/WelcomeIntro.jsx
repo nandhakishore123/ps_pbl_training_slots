@@ -462,6 +462,21 @@ export default function WelcomeIntro({ name = '', onDone }) {
       className={`wi-overlay${leaving ? ' wi-leaving' : ''}${prefersReduced ? ' wi-reduced' : ''}`}
       role="dialog"
       aria-label="Welcome"
+      // Critical covering styles are INLINE so the overlay paints a solid,
+      // full-screen gradient from the very first frame — before the scoped
+      // <style> (injected in a useEffect) exists. This prevents any flash of
+      // the unstyled dashboard underneath (FOUC). opacity/transform are left to
+      // the .wi-overlay / .wi-leaving classes so the fade-out is unchanged.
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 9999,
+        overflow: 'hidden',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'linear-gradient(135deg, #2a1a5e 0%, #4A2FD0 45%, #6C47FF 100%)',
+      }}
     >
       {!prefersReduced && <canvas ref={canvasRef} className="wi-canvas" />}
 
