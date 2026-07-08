@@ -42,7 +42,7 @@ const CSS = `
     cursor:pointer; font-size:12.5px; color:var(--ic-text2); font-weight:600; font-family:inherit; white-space:nowrap; }
   .ic-dark:hover { border-color:var(--ic-purple); color:var(--ic-purple); }
 
-  .ic-wrap { max-width:1160px; margin:0 auto; padding:22px 24px 48px; }
+  .ic-wrap { max-width:none; margin:0; padding:22px 24px 48px; }
 
   .ic-tabs { display:flex; gap:8px; background:var(--ic-white); border:1px solid var(--ic-border); border-radius:14px;
     padding:6px; margin-bottom:20px; max-width:440px; }
@@ -365,7 +365,7 @@ export default function InventoryInchargeDashboard() {
             </svg>
           </div>
           <div style={{ minWidth: 0 }}>
-            <div className="ic-title">Inventory Console <span className="ic-badge">Incharge</span></div>
+            <div className="ic-title">Inventory Console</div>
             <div className="ic-sub">Manage stock & review requests</div>
           </div>
         </div>
