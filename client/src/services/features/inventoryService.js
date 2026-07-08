@@ -101,4 +101,21 @@ export const inventoryService = {
   getAdminReturns() {
     return api.get('/inventory/admin/returns');
   },
+
+  // ── Admin-configurable approvers (Stage 7) ─────────────────
+  // Effective approver user_ids — readable by any authenticated user (faculty
+  // use it to gate the Inventory Approval box).
+  getApproverIds() {
+    return api.get('/inventory/approvers');
+  },
+
+  // Admin dropdown: active faculty (user_id, name, email).
+  listApproverFaculty() {
+    return api.get('/inventory/faculty');
+  },
+
+  // Admin: set both approvers. payload: { project_approver_user_id, training_approver_user_id }
+  setApprovers(payload) {
+    return api.put('/inventory/approvers', payload);
+  },
 };

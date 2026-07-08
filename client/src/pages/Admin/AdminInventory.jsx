@@ -69,6 +69,14 @@ const CSS = `
   .ad-btn-sm { padding:7px 12px; font-size:12px; border-radius:9px; }
   .ad-count { font-size:11.5px; color:var(--ad-text3); font-weight:700; margin-bottom:10px; }
 
+  .ad-approvers { background:var(--ad-white); border:1px solid var(--ad-border); border-radius:16px;
+    box-shadow:0 6px 24px rgba(26,16,64,0.06); padding:24px; max-width:820px; }
+  .ad-appr-head { margin-bottom:20px; }
+  .ad-appr-title { font-size:16px; font-weight:900; margin-bottom:4px; }
+  .ad-appr-sub { font-size:12.5px; color:var(--ad-text3); font-weight:600; line-height:1.5; }
+  .ad-appr-grid { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
+  @media (max-width:640px) { .ad-appr-grid { grid-template-columns:1fr; } }
+
   .ad-card { background:var(--ad-white); border:1px solid var(--ad-border); border-radius:16px; overflow:hidden; box-shadow:0 6px 24px rgba(26,16,64,0.06); }
   .ad-item { display:grid; grid-template-columns:1fr 140px 130px auto; gap:14px; align-items:center; padding:14px 18px; border-bottom:1px solid var(--ad-border); }
   .ad-item:last-child { border-bottom:none; }
@@ -165,6 +173,14 @@ export default function AdminInventory() {
   const [categoryFilter, setCategoryFilter] = useState('');
   const [categories, setCategories] = useState([]);
 
+  // Approvers settings tab (admin-configurable buying approvers)
+  const [approverFaculty, setApproverFaculty] = useState([]);
+  const [approverSel, setApproverSel] = useState({ project: '', training: '' });
+  const [approverLoading, setApproverLoading] = useState(false);
+  const [approverLoaded, setApproverLoaded] = useState(false);
+  const [approverError, setApproverError] = useState('');
+  const [approverSaving, setApproverSaving] = useState(false);
+
   const [busyId, setBusyId] = useState(null);
   const [rowErr, setRowErr] = useState({});
   const [rejectModal, setRejectModal] = useState(null); // { kind:'BUY'|'RETURN', id }
@@ -221,6 +237,41 @@ export default function AdminInventory() {
     finally { setStockLoading(false); }
   }, [categoryFilter, search]);
 
+  const loadApprovers = useCallback(async () => {
+    setApproverLoading(true); setApproverError('');
+    try {
+      const [facRes, idRes] = await Promise.all([
+        inventoryService.listApproverFaculty(),
+        inventoryService.getApproverIds(),
+      ]);
+      const faculty = facRes?.data?.items || [];
+      const ids = idRes?.data || {};
+      setApproverFaculty(faculty);
+      setApproverSel({
+        project: ids.project_approver_user_id != null ? String(ids.project_approver_user_id) : '',
+        training: ids.training_approver_user_id != null ? String(ids.training_approver_user_id) : '',
+      });
+      setApproverLoaded(true);
+    } catch {
+      setApproverError('Failed to load approver settings.'); setApproverLoaded(true);
+    } finally { setApproverLoading(false); }
+  }, []);
+
+  const saveApprovers = async () => {
+    setApproverSaving(true);
+    try {
+      await inventoryService.setApprovers({
+        project_approver_user_id: Number(approverSel.project),
+        training_approver_user_id: Number(approverSel.training),
+      });
+      showToast('Approvers updated', false);
+      await loadApprovers();
+    } catch (err) {
+      const msg = err?.response?.data?.message || 'Failed to save approvers.';
+      showToast(msg, true);
+    } finally { setApproverSaving(false); }
+  };
+
   useEffect(() => { loadOverview(); }, [loadOverview]);
 
   useEffect(() => {
@@ -232,6 +283,7 @@ export default function AdminInventory() {
       })();
       loadStock({ category: '', search: '' });
     }
+    if (tab === 'settings' && !approverLoaded) loadApprovers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
 
@@ -375,6 +427,7 @@ export default function AdminInventory() {
           <button className={`ad-tab${tab === 'buying' ? ' active' : ''}`} onClick={() => setTab('buying')}>Buying</button>
           <button className={`ad-tab${tab === 'returns' ? ' active' : ''}`} onClick={() => setTab('returns')}>Returns</button>
           <button className={`ad-tab${tab === 'stock' ? ' active' : ''}`} onClick={() => setTab('stock')}>Stock</button>
+          <button className={`ad-tab${tab === 'settings' ? ' active' : ''}`} onClick={() => setTab('settings')}>Approvers</button>
         </div>
 
         {/* OVERVIEW */}
@@ -448,6 +501,49 @@ export default function AdminInventory() {
               </>
             )}
           </>
+        )}
+
+        {/* APPROVERS (settings) */}
+        {tab === 'settings' && (
+          approverLoading ? <div className="ad-spinner" /> :
+          approverError ? <div className="ad-empty" style={{ color: 'var(--ad-red)' }}>{approverError}</div> :
+          approverFaculty.length === 0 ? <div className="ad-empty">No active faculty found to assign as approvers.</div> : (
+            <div className="ad-approvers">
+              <div className="ad-appr-head">
+                <div className="ad-appr-title">Buying Approvers</div>
+                <div className="ad-appr-sub">Choose which faculty approves student buying requests for each purpose. Project requests route to the Project approver; Training requests to the Training approver.</div>
+              </div>
+
+              <div className="ad-appr-grid">
+                <div>
+                  <label className="ad-label">Project Approver</label>
+                  <select className="ad-select" style={{ width: '100%' }} value={approverSel.project}
+                    onChange={(e) => setApproverSel((s) => ({ ...s, project: e.target.value }))}>
+                    <option value="">Select faculty…</option>
+                    {approverFaculty.map((f) => (
+                      <option key={f.user_id} value={f.user_id}>{f.name} — {f.email}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="ad-label">Training Approver</label>
+                  <select className="ad-select" style={{ width: '100%' }} value={approverSel.training}
+                    onChange={(e) => setApproverSel((s) => ({ ...s, training: e.target.value }))}>
+                    <option value="">Select faculty…</option>
+                    {approverFaculty.map((f) => (
+                      <option key={f.user_id} value={f.user_id}>{f.name} — {f.email}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <button className="ad-btn ad-btn-primary" style={{ marginTop: 20 }}
+                disabled={approverSaving || !approverSel.project || !approverSel.training}
+                onClick={saveApprovers}>
+                {approverSaving ? 'Saving…' : 'Save Approvers'}
+              </button>
+            </div>
+          )
         )}
       </div>
 
