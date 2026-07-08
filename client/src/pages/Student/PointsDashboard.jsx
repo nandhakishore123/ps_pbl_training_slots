@@ -670,7 +670,7 @@ function RewardPoints() {
         <input
           type="text"
           className="pt-search"
-          placeholder="e.g. 7376242BT192 — SASWATH KUMAR J"
+          placeholder="e.g. 7376242BT192, 7376242AL126"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />

@@ -7,6 +7,9 @@ import StatCard from '../../components/ui/StatCard'
 import NavBox from '../../components/ui/NavBox'
 import { inventoryService } from '../../services/features/inventoryService'
 import styles from './FacultyDashboard.module.css'
+// ===== WELCOME INTRO (removable: delete this line + the state block + the render block) =====
+import WelcomeIntro from '../../components/WelcomeIntro'
+// ===== END WELCOME INTRO =====
 
 export default function FacultyDashboard() {
   const routeNavigate = useNavigate()
@@ -27,6 +30,13 @@ export default function FacultyDashboard() {
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
     .join(' ')
   const initials = String(displayName).trim()?.charAt(0)?.toUpperCase() || 'F'
+
+  // ===== WELCOME INTRO (removable: delete this block + the WelcomeIntro import + the render block) =====
+  const [showIntro, setShowIntro] = useState(() => sessionStorage.getItem('pt_show_intro') === '1')
+  const introFirstName = String(user?.name || '').trim().split(/\s+/)[0] || ''
+  useEffect(() => { sessionStorage.removeItem('pt_show_intro') }, [])
+  const handleIntroDone = () => { sessionStorage.removeItem('pt_show_intro'); setShowIntro(false) }
+  // ===== END WELCOME INTRO =====
 
   useEffect(() => {
     setKpiLoading(true)
@@ -56,6 +66,10 @@ export default function FacultyDashboard() {
 
   return (
     <div className={styles.page}>
+
+      {/* ===== WELCOME INTRO (removable: delete this block + the WelcomeIntro import + the state block) ===== */}
+      {showIntro && <WelcomeIntro name={introFirstName} onDone={handleIntroDone} />}
+      {/* ===== END WELCOME INTRO ===== */}
 
       {/* HEADER */}
       <header className={styles.header}>

@@ -4,10 +4,23 @@ import StatCard from '../../../components/ui/StatCard'
 import NavBox from '../../../components/ui/NavBox'
 import { useApp } from '../context/AppContext'
 import { useData } from '../context/DataContext'
+// ===== WELCOME INTRO (removable: delete this block + the state block + the render block) =====
+import { useState, useEffect } from 'react'
+import WelcomeIntro from '../../../components/WelcomeIntro'
+import { useAuthStore } from '../../../store/authStore.jsx'
+// ===== END WELCOME INTRO =====
 
 export default function Dashboard() {
   const { navigate } = useApp()
   const { dashboardKPI, loading, bookingWindow } = useData()
+
+  // ===== WELCOME INTRO (removable: delete this block + the WelcomeIntro import + the render block) =====
+  const user = useAuthStore((s) => s.user)
+  const [showIntro, setShowIntro] = useState(() => sessionStorage.getItem('pt_show_intro') === '1')
+  const introFirstName = String(user?.name || '').trim().split(/\s+/)[0] || ''
+  useEffect(() => { sessionStorage.removeItem('pt_show_intro') }, [])
+  const handleIntroDone = () => { sessionStorage.removeItem('pt_show_intro'); setShowIntro(false) }
+  // ===== END WELCOME INTRO =====
 
   const pad2 = (n) => String(n).padStart(2, '0')
   const bookingOpenLabel = bookingWindow
@@ -21,6 +34,9 @@ export default function Dashboard() {
 
   return (
     <div className={styles.page}>
+      {/* ===== WELCOME INTRO (removable: delete this block + the WelcomeIntro import + the state block) ===== */}
+      {showIntro && <WelcomeIntro name={introFirstName} onDone={handleIntroDone} />}
+      {/* ===== END WELCOME INTRO ===== */}
       <Header />
 
       {/* HERO STATS */}

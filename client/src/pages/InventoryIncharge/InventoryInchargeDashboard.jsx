@@ -6,6 +6,9 @@ import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { authService } from '../../services/features/authService';
 import { inventoryService } from '../../services/features/inventoryService';
+// ===== WELCOME INTRO (removable: delete this line + the state block + the render block) =====
+import WelcomeIntro from '../../components/WelcomeIntro';
+// ===== END WELCOME INTRO =====
 
 const CSS = `
   .ic-root {
@@ -153,6 +156,13 @@ export default function InventoryInchargeDashboard() {
   const user = useAuthStore((s) => s.user);
   const name = user?.name || 'Incharge';
   const initials = String(name).trim().charAt(0).toUpperCase() || 'I';
+
+  // ===== WELCOME INTRO (removable: delete this block + the WelcomeIntro import + the render block) =====
+  const [showIntro, setShowIntro] = useState(() => sessionStorage.getItem('pt_show_intro') === '1');
+  const introFirstName = String(user?.name || '').trim().split(/\s+/)[0] || '';
+  useEffect(() => { sessionStorage.removeItem('pt_show_intro'); }, []);
+  const handleIntroDone = () => { sessionStorage.removeItem('pt_show_intro'); setShowIntro(false); };
+  // ===== END WELCOME INTRO =====
 
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('pt-dark') === '1');
   const [tab, setTab] = useState('stock'); // 'stock' | 'buying' | 'returns'
@@ -356,6 +366,10 @@ export default function InventoryInchargeDashboard() {
 
   return (
     <div className="ic-root">
+      {/* ===== WELCOME INTRO (removable: delete this block + the WelcomeIntro import + the state block) ===== */}
+      {showIntro && <WelcomeIntro name={introFirstName} onDone={handleIntroDone} />}
+      {/* ===== END WELCOME INTRO ===== */}
+
       {/* Header */}
       <div className="ic-header">
         <div className="ic-brand">

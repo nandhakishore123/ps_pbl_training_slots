@@ -11,6 +11,9 @@ import { trainingService } from '../../services/features/trainingService'
 import { useAuthStore } from '../../store/authStore'
 import UserProfileBadge from '../../components/UserProfileBadge'
 import { useStore } from '../../store/useStore'
+// ===== WELCOME INTRO (removable: delete this block + the WelcomeIntro import + the showIntro state) =====
+import WelcomeIntro from '../../components/WelcomeIntro'
+// ===== END WELCOME INTRO =====
 
 function formatAnnDate(ts) {
   if (!ts) return ''
@@ -406,6 +409,19 @@ export default function FrontPage({ onSelectPoints, onSelectTraining }) {
   const [darkMode,  setDarkMode]  = useState(() => localStorage.getItem('pt-dark') === '1')
   const { user } = useAuthStore()
 
+  // ===== WELCOME INTRO (removable: delete this block + the WelcomeIntro import + the render block) =====
+  // Show the intro ONLY right after a real login. Login.jsx sets 'pt_show_intro'
+  // on a successful sign-in; we read it once, then clear it immediately so a
+  // refresh / re-navigation / fresh tab never replays it (until the next login).
+  const [showIntro, setShowIntro] = useState(() => sessionStorage.getItem('pt_show_intro') === '1')
+  const introFirstName = String(user?.name || '').trim().split(/\s+/)[0] || ''
+  useEffect(() => { sessionStorage.removeItem('pt_show_intro') }, [])
+  const handleIntroDone = () => {
+    sessionStorage.removeItem('pt_show_intro')
+    setShowIntro(false)
+  }
+  // ===== END WELCOME INTRO =====
+
   // ── Announcements: bell dropdown + one-time login popup ──
   const [announcements, setAnnouncements] = useState([])
   const [bellOpen, setBellOpen] = useState(false)
@@ -622,6 +638,10 @@ export default function FrontPage({ onSelectPoints, onSelectTraining }) {
 
   return (
     <div style={{ minHeight:'100vh', background:'var(--bg)' }}>
+
+      {/* ===== WELCOME INTRO (removable: delete this block + the WelcomeIntro import + the showIntro state) ===== */}
+      {showIntro && <WelcomeIntro name={introFirstName} onDone={handleIntroDone} />}
+      {/* ===== END WELCOME INTRO ===== */}
 
       {/* ── Header ── */}
       <div className="pt-header">
@@ -917,9 +937,9 @@ export default function FrontPage({ onSelectPoints, onSelectTraining }) {
               maxLength={2000}
             />
             <div className="pt-fb-devs">
-              <div className="pt-fb-devs-head">Feel free to message directly to the developers</div>
-              <div className="pt-fb-dev">MAIN 1: SASWATH KUMAR J</div>
-              <div className="pt-fb-dev">MAIN 2: GOWTHAM J</div>
+              <div className="pt-fb-devs-head" style={{ fontWeight: 600, lineHeight: 1.6, marginBottom: 0 }}>
+                Feel free to share your feedback. Your suggestions will be recorded and reviewed by the management. Every response helps us improve the portal.
+              </div>
             </div>
             <div className="pt-fb-actions">
               <button

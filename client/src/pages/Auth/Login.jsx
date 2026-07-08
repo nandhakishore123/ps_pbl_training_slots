@@ -146,6 +146,9 @@ export default function PCDPLogin() {
         return;
       }
       showToast('success', `Welcome ${user?.email || ''}`.trim());
+      // ===== WELCOME INTRO (removable): one-shot flag, real login only =====
+      sessionStorage.setItem('pt_show_intro', '1');
+      // ===== END WELCOME INTRO =====
       // Navigate directly to the correct home route to avoid bouncing via '/'
       const targetRoute = getHomeRoute(user?.role_id);
       navigate(targetRoute, { replace: true });
@@ -195,6 +198,9 @@ export default function PCDPLogin() {
         return;
       }
       showToast('success', `Welcome back, ${u?.name || username}! Redirecting...`);
+      // ===== WELCOME INTRO (removable): one-shot flag, real login only =====
+      sessionStorage.setItem('pt_show_intro', '1');
+      // ===== END WELCOME INTRO =====
       const targetRoute = getHomeRoute(u?.role_id);
       navigate(targetRoute, { replace: true });
     } catch (err) {
