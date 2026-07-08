@@ -662,3 +662,42 @@ export const rejectReturnRequest = async (requestId, actorUserId, actorRole, rem
     conn.release();
   }
 };
+
+// ── Admin-configurable settings (key/value) ──────────────────
+// Read the requested setting keys as an object { key: value }. Missing keys are
+// simply absent from the result (caller applies its own fallback).
+export const getInventorySettings = async (keys) => {
+  const list = (Array.isArray(keys) ? keys : []).map((k) => String(k)).filter(Boolean);
+  if (list.length === 0) return {};
+  const placeholders = list.map(() => '?').join(', ');
+  const [rows] = await db.execute(
+    `SELECT setting_key, setting_value FROM inventory_settings WHERE setting_key IN (${placeholders})`,
+    list
+  );
+  const out = {};
+  for (const r of rows ?? []) out[r.setting_key] = r.setting_value;
+  return out;
+};
+
+// Upsert a single setting. PK on setting_key → ON DUPLICATE KEY UPDATE.
+export const setInventorySetting = async (key, value, userId) => {
+  await db.execute(
+    `INSERT INTO inventory_settings (setting_key, setting_value, updated_by)
+     VALUES (?, ?, ?)
+     ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value), updated_by = VALUES(updated_by)`,
+    [String(key), value != null ? String(value) : null, userId != null ? Number(userId) : null]
+  );
+  return true;
+};
+
+// Active faculty (role 2) for the approver dropdown: user_id + name + email.
+export const listApproverFaculty = async () => {
+  const [rows] = await db.execute(
+    `SELECT f.user_id, f.name, u.email
+     FROM faculties f
+     JOIN users u ON u.user_id = f.user_id
+     WHERE u.role_id = 2 AND u.is_active = 1
+     ORDER BY f.name ASC`
+  );
+  return rows ?? [];
+};

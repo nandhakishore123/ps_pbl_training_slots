@@ -5,7 +5,7 @@ import { authService } from '../../services/features/authService'
 import { facultyService } from '../../services/features/facultyService'
 import StatCard from '../../components/ui/StatCard'
 import NavBox from '../../components/ui/NavBox'
-import { isInventoryApprover } from '../../config/inventoryApprovers'
+import { inventoryService } from '../../services/features/inventoryService'
 import styles from './FacultyDashboard.module.css'
 
 export default function FacultyDashboard() {
@@ -15,6 +15,9 @@ export default function FacultyDashboard() {
 
   const [kpi, setKpi] = useState({ assignedVenues: '—', totalStudents: '—', pendingTransfers: '—', pendingApprovals: '—' })
   const [kpiLoading, setKpiLoading] = useState(true)
+  // Live inventory-approver ids (admin-configurable). null while loading → box
+  // stays dimmed (no flash of the enabled state).
+  const [approverIds, setApproverIds] = useState(null)
 
   const rawName = user?.name || user?.email || 'Faculty'
   const baseName = String(rawName).split('@')[0]
@@ -31,6 +34,12 @@ export default function FacultyDashboard() {
       .then(res => { if (res?.data) setKpi(res.data) })
       .catch(err => console.error('KPI load failed:', err))
       .finally(() => setKpiLoading(false))
+  }, [])
+
+  useEffect(() => {
+    inventoryService.getApproverIds()
+      .then(res => { if (res?.data) setApproverIds(res.data) })
+      .catch(err => console.error('Inventory approver ids load failed:', err))
   }, [])
 
   const handleLogout = async () => {
@@ -179,7 +188,10 @@ export default function FacultyDashboard() {
             {/* Inventory Approval — shown to all faculty, clickable only for the two
                 designated approvers (Project / Training). Others see it dimmed. */}
             {(() => {
-              const canApprove = isInventoryApprover(user?.user_id)
+              const canApprove = !!approverIds && [
+                approverIds.project_approver_user_id,
+                approverIds.training_approver_user_id,
+              ].map(Number).includes(Number(user?.user_id))
               return (
                 <div style={canApprove ? undefined : { opacity: 0.5, pointerEvents: 'none' }}>
                   <NavBox

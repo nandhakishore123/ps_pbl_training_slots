@@ -35,25 +35,43 @@ const BLOCK_MESSAGE =
 // The two designated faculty who approve buying requests, by user_id:
 // PROJECT purpose → project approver; TRAINING purpose → training approver.
 // Admin (role 3) bypasses this and can act on any request.
-// TODO: replace with real faculty user_ids when provided
+// These IDs are now admin-configurable (inventory_settings); the constants below
+// are the FALLBACK used until an admin saves values, so nothing breaks in between.
 export const PROJECT_APPROVER_ID = 117;
 export const TRAINING_APPROVER_ID = 119;
+
+const PROJECT_APPROVER_KEY = 'project_approver_user_id';
+const TRAINING_APPROVER_KEY = 'training_approver_user_id';
+
+// Effective approver user_ids: the DB setting when it's a valid positive integer,
+// otherwise the hardcoded fallback. Single source of truth for both the routing
+// checks and the admin GET endpoint.
+const getApproverIds = async () => {
+  const settings = await model.getInventorySettings([PROJECT_APPROVER_KEY, TRAINING_APPROVER_KEY]);
+  const project = Number(settings[PROJECT_APPROVER_KEY]);
+  const training = Number(settings[TRAINING_APPROVER_KEY]);
+  return {
+    project: Number.isInteger(project) && project > 0 ? project : PROJECT_APPROVER_ID,
+    training: Number.isInteger(training) && training > 0 ? training : TRAINING_APPROVER_ID,
+  };
+};
 
 // Which purpose_type a caller may act on:
 //   null       → admin (all purposes)
 //   'PROJECT'  → project approver
 //   'TRAINING' → training approver
 //   undefined  → not an approver (forbidden)
-const approverPurposeFor = (userId, roleId) => {
+const approverPurposeFor = async (userId, roleId) => {
   if (Number(roleId) === 3) return null;
-  if (Number(userId) === PROJECT_APPROVER_ID) return 'PROJECT';
-  if (Number(userId) === TRAINING_APPROVER_ID) return 'TRAINING';
+  const { project, training } = await getApproverIds();
+  if (Number(userId) === project) return 'PROJECT';
+  if (Number(userId) === training) return 'TRAINING';
   return undefined;
 };
 
 // Throw 403 unless the caller may act on a request of `purposeType`.
-const authorizeApprover = (userId, roleId, purposeType) => {
-  const purpose = approverPurposeFor(userId, roleId);
+const authorizeApprover = async (userId, roleId, purposeType) => {
+  const purpose = await approverPurposeFor(userId, roleId);
   if (purpose === null) return; // admin
   if (purpose === undefined) throw forbidden('You are not assigned as an inventory approver');
   if (purpose !== String(purposeType || '').toUpperCase()) {
@@ -199,7 +217,7 @@ export const listBuyingReadOnly = async () => {
 // List the buying requests this caller may approve, routed by purpose_type.
 // Returns { scope, items } where scope is 'PROJECT' | 'TRAINING' | 'ALL'.
 export const listBuyingForFaculty = async (userId, roleId, purposeTypeParam) => {
-  const purpose = approverPurposeFor(userId, roleId);
+  const purpose = await approverPurposeFor(userId, roleId);
   if (purpose === undefined) throw forbidden('You are not assigned as an inventory approver');
 
   if (purpose === null) {
@@ -224,7 +242,7 @@ export const approveBuying = async (userId, roleId, requestId) => {
   const req = await model.getRequestWithItems(requestId);
   if (!req) throw notFound('Request not found');
   if (req.request_type !== 'BUY') throw badRequest('Not a buying request');
-  authorizeApprover(userId, roleId, req.purpose_type);
+  await authorizeApprover(userId, roleId, req.purpose_type);
   try {
     return await model.approveBuyingRequest(requestId, userId, roleId);
   } catch (err) {
@@ -242,7 +260,7 @@ export const rejectBuying = async (userId, roleId, requestId, remarks) => {
   const req = await model.getRequestWithItems(requestId);
   if (!req) throw notFound('Request not found');
   if (req.request_type !== 'BUY') throw badRequest('Not a buying request');
-  authorizeApprover(userId, roleId, req.purpose_type);
+  await authorizeApprover(userId, roleId, req.purpose_type);
   const cleanRemarks = remarks ? String(remarks).trim().slice(0, 255) : null;
   return model.rejectBuyingRequest(requestId, userId, roleId, cleanRemarks);
 };
@@ -336,3 +354,32 @@ export const listReturnsReadOnly = async () => {
 export const getAdminOverview = async () => model.getInventoryCounts();
 export const listAllBuying = async () => model.listAllBuyingRequests();          // all BUY, both purposes, all statuses
 export const listAllReturns = async () => model.listReturnRequests({ onlyPending: false });
+
+// ── Admin-configurable approvers (Stage 7) ───────────────────
+// Return the EFFECTIVE approver user_ids (DB value or fallback). Readable by any
+// authenticated user (faculty need it to gate the Inventory Approval box).
+export const getApprovers = async () => {
+  const { project, training } = await getApproverIds();
+  return { project_approver_user_id: project, training_approver_user_id: training };
+};
+
+// Admin-only: set both approver user_ids. Each must be a positive integer that is
+// an active faculty (role 2). Saved as strings into inventory_settings.
+export const setApprovers = async (userId, payload = {}) => {
+  const project = Number(payload.project_approver_user_id);
+  const training = Number(payload.training_approver_user_id);
+  if (!Number.isInteger(project) || project <= 0) throw badRequest('project_approver_user_id must be a valid faculty');
+  if (!Number.isInteger(training) || training <= 0) throw badRequest('training_approver_user_id must be a valid faculty');
+
+  const faculty = await model.listApproverFaculty();
+  const validIds = new Set(faculty.map((f) => Number(f.user_id)));
+  if (!validIds.has(project)) throw badRequest('Selected Project approver is not an active faculty');
+  if (!validIds.has(training)) throw badRequest('Selected Training approver is not an active faculty');
+
+  await model.setInventorySetting(PROJECT_APPROVER_KEY, project, userId);
+  await model.setInventorySetting(TRAINING_APPROVER_KEY, training, userId);
+  return { project_approver_user_id: project, training_approver_user_id: training };
+};
+
+// Admin dropdown source: active faculty (user_id, name, email).
+export const listFacultyForApprover = async () => model.listApproverFaculty();

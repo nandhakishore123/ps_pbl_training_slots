@@ -428,6 +428,18 @@ export const testConnection = async () => {
                 await connection.execute('ALTER TABLE inventory_request_items ADD COLUMN return_quantity decimal(12,2) DEFAULT NULL');
                 console.log(chalk.green('  Added inventory_request_items.return_quantity.'));
             }
+            // Admin-configurable inventory settings (key/value). Currently holds the two
+            // buying approver user_ids ('project_approver_user_id', 'training_approver_user_id').
+            // TiDB-safe: no FKs, PK on setting_key so writes use ON DUPLICATE KEY UPDATE.
+            await connection.execute(`
+                CREATE TABLE IF NOT EXISTS inventory_settings (
+                  setting_key varchar(60) NOT NULL,
+                  setting_value varchar(255) DEFAULT NULL,
+                  updated_by bigint DEFAULT NULL,
+                  updated_at timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                  PRIMARY KEY (setting_key)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+            `);
             console.log(chalk.green('  ✓ inventory schema is ready.'));
         } catch (migErr) {
             console.error(chalk.red('  ✗ Migration/Check for inventory failed:'), migErr.message);

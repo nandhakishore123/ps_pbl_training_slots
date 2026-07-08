@@ -267,3 +267,40 @@ export const getAdminReturns = async (req, res) => {
     return internalServerErrorResponse(res, error.message || 'Failed to fetch returns');
   }
 };
+
+// ── Admin-configurable approvers (Stage 7) ───────────────────
+// GET effective approver ids — any authenticated user (faculty gate the box).
+export const getApprovers = async (req, res) => {
+  try {
+    const data = await service.getApprovers();
+    return successResponse(res, 'Approvers fetched', data);
+  } catch (error) {
+    if (error?.status) return errorResponse(res, error.message, error.status);
+    console.error('Error in getApprovers:', error);
+    return internalServerErrorResponse(res, error.message || 'Failed to fetch approvers');
+  }
+};
+
+// PUT approvers — admin only.
+export const setApprovers = async (req, res) => {
+  try {
+    const data = await service.setApprovers(req.user?.user_id, req.body);
+    return successResponse(res, 'Approvers updated', data);
+  } catch (error) {
+    if (error?.status) return errorResponse(res, error.message, error.status);
+    console.error('Error in setApprovers:', error);
+    return internalServerErrorResponse(res, error.message || 'Failed to update approvers');
+  }
+};
+
+// GET faculty list for the admin approver dropdown — admin only.
+export const getApproverFaculty = async (req, res) => {
+  try {
+    const data = await service.listFacultyForApprover();
+    return successResponse(res, 'Faculty fetched', { items: data });
+  } catch (error) {
+    if (error?.status) return errorResponse(res, error.message, error.status);
+    console.error('Error in getApproverFaculty:', error);
+    return internalServerErrorResponse(res, error.message || 'Failed to fetch faculty');
+  }
+};

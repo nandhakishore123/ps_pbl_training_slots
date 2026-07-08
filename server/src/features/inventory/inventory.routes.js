@@ -25,6 +25,9 @@ import {
   getAdminOverview,
   getAdminBuying,
   getAdminReturns,
+  getApprovers,
+  setApprovers,
+  getApproverFaculty,
 } from './inventory.controller.js';
 
 const router = express.Router();
@@ -68,5 +71,12 @@ router.get('/returns', authMiddleware, requireRole(2, 3, 4), getReturnsReadOnly)
 router.get('/admin/overview', authMiddleware, requireRole(3), getAdminOverview);   // summary counts
 router.get('/admin/buying', authMiddleware, requireRole(3), getAdminBuying);        // ALL buying, both purposes
 router.get('/admin/returns', authMiddleware, requireRole(3), getAdminReturns);      // ALL returns
+
+// ── Admin-configurable approvers (Stage 7) ───────────────────
+// GET effective ids is open to any authenticated user (faculty gate the box);
+// listing faculty + writing the setting are admin-only.
+router.get('/approvers', authMiddleware, getApprovers);                              // effective approver user_ids
+router.get('/faculty', authMiddleware, requireRole(3), getApproverFaculty);          // admin dropdown source
+router.put('/approvers', authMiddleware, requireRole(3), setApprovers);              // admin set both approvers
 
 export default router;
