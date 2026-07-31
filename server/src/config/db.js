@@ -445,6 +445,132 @@ export const testConnection = async () => {
             console.error(chalk.red('  ✗ Migration/Check for inventory failed:'), migErr.message);
         }
 
+        // ═══════════════════════════════════════════════════════════════════
+        // ROLE WHITELIST + INTERN LAB FEATURE — REMOVABLE BLOCK (start)
+        // Adds: role 5 'INTERN' (Intern / Lab Technician), an email→role_id
+        // whitelist ("whitelist always wins" at login), a `labs` master table,
+        // and a `lab_purchases` log for intern direct-buy.
+        // Order is strict: fk_users_role is enforced live, so the enum must be
+        // widened BEFORE role 5 is seeded, and role 5 must exist BEFORE any
+        // user row may reference it.
+        // TiDB-safe: no FKs on the new tables (role validation is
+        // application-level), equality-keyed, explicit KEY lines.
+        // To remove the feature: delete this whole block, then manually
+        // DROP TABLE role_whitelist, labs, lab_purchases and DELETE the role 5
+        // row (the enum widening is harmless to leave in place).
+        // ═══════════════════════════════════════════════════════════════════
+        try {
+            console.log(chalk.yellow('  Checking role whitelist / lab tables...'));
+
+            // ── STEP A — widen role_entities.role_name to include 'INTERN' ──
+            // Read the live ENUM, preserve EVERY member currently present, and
+            // only ADD 'INTERN'. Idempotent: no-op once 'INTERN' is a member.
+            const [roleNameCols] = await connection.execute("SHOW COLUMNS FROM role_entities LIKE 'role_name'");
+            const roleNameType = String(roleNameCols?.[0]?.Type ?? '');
+            const enumMembers = roleNameType.match(/'(?:[^']|'')*'/g) ?? [];
+
+            if (!roleNameType.toLowerCase().startsWith('enum(')) {
+                // Someone converted the column away from an ENUM — nothing to
+                // widen, and blindly ALTERing would be destructive. Warn only.
+                console.log(chalk.yellow(`  role_entities.role_name is not an ENUM (${roleNameType || 'unknown'}); skipping widen.`));
+            } else if (enumMembers.includes("'INTERN'")) {
+                console.log(chalk.green("  ✓ role_entities.role_name already allows 'INTERN'."));
+            } else {
+                const widened = [...enumMembers, "'INTERN'"].join(',');
+                await connection.execute(`ALTER TABLE role_entities MODIFY role_name enum(${widened}) NOT NULL`);
+                console.log(chalk.green(`  Widened role_entities.role_name to enum(${widened}).`));
+            }
+
+            // ── STEP B — seed role 5 'INTERN' (only after the widen) ────────
+            // PK on role_id → ON DUPLICATE KEY UPDATE makes this idempotent.
+            // created_at is NOT NULL but DEFAULT CURRENT_TIMESTAMP, so it is
+            // omitted; warn if any other column would reject the insert.
+            const [roleCols] = await connection.execute('DESCRIBE role_entities');
+            const missingRequired = roleCols.filter((c) => (
+                c.Null === 'NO'
+                && c.Default === null
+                && !String(c.Extra || '').includes('auto_increment')
+                && !['role_id', 'role_name'].includes(c.Field)
+            ));
+            if (missingRequired.length) {
+                console.log(chalk.yellow(`  role_entities has extra required column(s): ${missingRequired.map((c) => c.Field).join(', ')} — role 5 seed may fail.`));
+            }
+            await connection.execute(
+                `INSERT INTO role_entities (role_id, role_name) VALUES (5, 'INTERN')
+                 ON DUPLICATE KEY UPDATE role_name = VALUES(role_name)`
+            );
+            console.log(chalk.green("  ✓ role 5 'INTERN' seeded in role_entities."));
+
+            // ── STEP C — new tables ─────────────────────────────────────────
+            // Email → role_id whitelist. PK on email mirrors the live UNIQUE
+            // KEY on users.email (varchar(255)); role_id matches users.role_id
+            // (tinyint). No FK on role_id by design.
+            await connection.execute(`
+                CREATE TABLE IF NOT EXISTS role_whitelist (
+                  email varchar(255) NOT NULL,
+                  role_id tinyint NOT NULL,
+                  added_by bigint DEFAULT NULL,
+                  is_active tinyint(1) NOT NULL DEFAULT 1,
+                  created_at timestamp DEFAULT CURRENT_TIMESTAMP,
+                  updated_at timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                  PRIMARY KEY (email)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+            `);
+            console.log(chalk.green('  ✓ role_whitelist table ready.'));
+
+            // Labs master table.
+            await connection.execute(`
+                CREATE TABLE IF NOT EXISTS labs (
+                  lab_id bigint NOT NULL AUTO_INCREMENT,
+                  lab_name varchar(150) NOT NULL,
+                  lab_code varchar(40) DEFAULT NULL,
+                  in_charge varchar(150) DEFAULT NULL,
+                  room_no varchar(40) DEFAULT NULL,
+                  is_active tinyint(1) NOT NULL DEFAULT 1,
+                  created_at timestamp DEFAULT CURRENT_TIMESTAMP,
+                  updated_at timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                  PRIMARY KEY (lab_id),
+                  KEY idx_labs_active (is_active)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+            `);
+            console.log(chalk.green('  ✓ labs table ready.'));
+
+            // Intern direct-buy log. One row per purchased line item; stock is
+            // decremented on the shared inventory_items pool (no approval step).
+            await connection.execute(`
+                CREATE TABLE IF NOT EXISTS lab_purchases (
+                  purchase_id bigint NOT NULL AUTO_INCREMENT,
+                  lab_id bigint NOT NULL,
+                  item_id bigint NOT NULL,
+                  item_name varchar(255) DEFAULT NULL,
+                  quantity decimal(12,2) NOT NULL,
+                  unit varchar(30) DEFAULT NULL,
+                  buyer_user_id bigint DEFAULT NULL,
+                  buyer_name varchar(150) DEFAULT NULL,
+                  created_at timestamp DEFAULT CURRENT_TIMESTAMP,
+                  PRIMARY KEY (purchase_id),
+                  KEY idx_labpur_lab (lab_id),
+                  KEY idx_labpur_item (item_id)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+            `);
+            console.log(chalk.green('  ✓ lab_purchases table ready.'));
+
+            // Additive: lab photo. A plain URL string, exactly like
+            // training_skills.image_url — pasted by an admin, resolved at render
+            // time. varchar(512) rather than 255 because signed CDN links
+            // routinely exceed 255 and would silently truncate.
+            const [labCols] = await connection.execute('DESCRIBE labs');
+            if (!labCols.some((c) => c.Field === 'image_url')) {
+                await connection.execute('ALTER TABLE labs ADD COLUMN image_url varchar(512) DEFAULT NULL');
+                console.log(chalk.green('  Added labs.image_url.'));
+            }
+
+            console.log(chalk.green('  ✓ role whitelist / lab schema is ready.'));
+        } catch (migErr) {
+            console.error(chalk.red('  ✗ Migration/Check for role whitelist / labs failed:'), migErr.message);
+        }
+        // ═══ ROLE WHITELIST + INTERN LAB FEATURE — REMOVABLE BLOCK (end) ═══
+
         connection.release();
         return true;
     } catch (error) {

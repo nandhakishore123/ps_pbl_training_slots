@@ -1,0 +1,174 @@
+/* InternDashboard.css — Intern (role 5) lab purchase console.
+   Visual language matches the existing inventory screens (.inv-* on the student
+   buy page, .ic-* on the incharge console). A real stylesheet rather than an
+   injected <style> so Vite links it before first paint — no unstyled flash. */
+
+.in-root {
+  --in-purple:#6c47ff; --in-purple-dim:rgba(108,71,255,0.1); --in-glow:rgba(108,71,255,0.28);
+  --in-bg:#f0f2f8; --in-white:#fff; --in-border:#e5e4eb;
+  --in-text:#1a1040; --in-text2:#6b7280; --in-text3:#9ca3af;
+  --in-green:#10b981; --in-red:#ef4444; --in-gold:#f59e0b;
+  min-height:100vh; background:var(--in-bg); color:var(--in-text);
+  font-family:'Segoe UI',system-ui,sans-serif;
+}
+body.dark-mode .in-root {
+  --in-bg:#0f0f1a; --in-white:#1a1a2e; --in-border:#2d2d4e;
+  --in-text:#e8e6f0; --in-text2:#a89ec9; --in-text3:#6b6b8a;
+}
+
+/* ── Header ── */
+.in-header { background:var(--in-white); border-bottom:1px solid var(--in-border); padding:14px 24px;
+  display:flex; align-items:center; justify-content:space-between; gap:12px; position:sticky; top:0; z-index:50;
+  box-shadow:0 1px 10px rgba(26,16,64,0.05); }
+.in-brand { display:flex; align-items:center; gap:12px; min-width:0; }
+.in-logo { width:40px; height:40px; border-radius:11px; background:linear-gradient(135deg,#6c47ff,#4b2fd6);
+  display:flex; align-items:center; justify-content:center; flex-shrink:0; box-shadow:0 4px 12px var(--in-glow); }
+.in-title { font-size:16px; font-weight:900; }
+.in-sub { font-size:11.5px; color:var(--in-text3); font-weight:600; margin-top:1px; }
+.in-userpill { display:flex; align-items:center; gap:10px; padding:4px 14px 4px 4px; background:var(--in-white);
+  border:1.5px solid var(--in-border); border-radius:50px; }
+.in-avatar { width:34px; height:34px; border-radius:50%; background:linear-gradient(135deg,#6c47ff,#4b2fd6);
+  display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:900; color:#fff; flex-shrink:0; }
+.in-uname { font-size:13px; font-weight:800; }
+.in-dark { background:var(--in-white); border:1.5px solid var(--in-border); border-radius:20px; padding:7px 12px;
+  cursor:pointer; font-size:12.5px; color:var(--in-text2); font-weight:600; font-family:inherit; white-space:nowrap; }
+.in-dark:hover { border-color:var(--in-purple); color:var(--in-purple); }
+.in-iconbtn { width:36px; height:36px; border-radius:9px; border:1.5px solid var(--in-border); background:var(--in-white);
+  color:var(--in-text2); cursor:pointer; display:flex; align-items:center; justify-content:center; }
+.in-iconbtn:hover { border-color:var(--in-red); color:var(--in-red); }
+.in-back { display:flex; align-items:center; gap:7px; background:var(--in-white); border:1.5px solid var(--in-border);
+  color:var(--in-text2); padding:8px 14px; border-radius:9px; font-size:13px; font-weight:700; cursor:pointer;
+  font-family:inherit; white-space:nowrap; }
+.in-back:hover { border-color:var(--in-purple); color:var(--in-purple); background:var(--in-purple-dim); }
+
+.in-wrap { max-width:none; margin:0; padding:22px 24px 48px; }
+
+/* ── Lab cards ── */
+.in-page-title { font-size:18px; font-weight:900; }
+.in-page-sub { font-size:12.5px; color:var(--in-text3); font-weight:600; margin-top:2px; margin-bottom:18px; }
+.in-labs { display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:18px; }
+.in-lab { background:var(--in-white); border:1px solid var(--in-border); border-radius:18px; overflow:hidden;
+  box-shadow:0 6px 26px rgba(26,16,64,0.06); display:flex; flex-direction:column; transition:transform .16s, box-shadow .16s; }
+.in-lab:hover { transform:translateY(-2px); box-shadow:0 14px 38px rgba(26,16,64,0.12); }
+.in-lab-body { padding:18px 20px; cursor:pointer; text-align:left; background:transparent; border:none;
+  font-family:inherit; color:inherit; width:100%; }
+/* ── LAB PHOTO (removable) ── */
+.in-lab-photo { display:block; width:100%; height:150px; object-fit:cover; border-radius:12px;
+  margin-bottom:12px; background:var(--in-bg); }
+.in-lab-photo-empty { display:flex; align-items:center; justify-content:center; color:var(--in-text3);
+  border:1px dashed var(--in-border); }
+.in-labthumb { width:46px; height:46px; object-fit:cover; border-radius:11px; flex-shrink:0;
+  background:var(--in-bg); }
+.in-labthumb-empty { display:flex; align-items:center; justify-content:center; color:var(--in-text3);
+  border:1px dashed var(--in-border); }
+.in-labthumb-empty svg { width:20px; height:20px; }
+/* ── END LAB PHOTO ── */
+
+.in-lab-name { font-size:15.5px; font-weight:900; }
+.in-lab-code { display:inline-block; font-size:10px; font-weight:800; letter-spacing:0.5px; text-transform:uppercase;
+  padding:2px 9px; border-radius:20px; margin-top:6px; background:var(--in-purple-dim); color:var(--in-purple);
+  border:1px solid rgba(108,71,255,0.3); }
+.in-lab-meta { font-size:12px; color:var(--in-text2); font-weight:600; margin-top:8px; line-height:1.6; }
+.in-lab-cta { font-size:12px; font-weight:800; color:var(--in-purple); margin-top:12px; }
+
+.in-lab-log { border-top:1px solid var(--in-border); padding:13px 20px 15px; background:var(--in-bg); }
+.in-log-head { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:8px; }
+.in-log-title { font-size:10.5px; font-weight:800; letter-spacing:0.7px; text-transform:uppercase; color:var(--in-text2); }
+.in-log-link { background:none; border:none; padding:0; font-family:inherit; font-size:11.5px; font-weight:800;
+  color:var(--in-purple); cursor:pointer; white-space:nowrap; }
+.in-log-link:hover { text-decoration:underline; }
+.in-log-row { display:flex; align-items:baseline; justify-content:space-between; gap:10px; padding:5px 0;
+  border-bottom:1px dashed var(--in-border); font-size:12px; }
+.in-log-row:last-child { border-bottom:none; }
+.in-log-item { font-weight:700; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.in-log-qty { font-weight:800; color:var(--in-purple); white-space:nowrap; flex-shrink:0; }
+.in-log-by { font-size:10.5px; color:var(--in-text3); font-weight:600; }
+.in-log-empty { font-size:12px; color:var(--in-text3); font-weight:600; padding:6px 0; }
+
+/* ── Buy view (mirrors the student buying layout) ── */
+.in-grid { display:grid; grid-template-columns:1fr 380px; gap:20px; align-items:start; }
+.in-card { background:var(--in-white); border:1px solid var(--in-border); border-radius:18px; padding:22px;
+  box-shadow:0 6px 26px rgba(26,16,64,0.06); }
+.in-card + .in-card { margin-top:18px; }
+.in-card-title { font-size:15px; font-weight:900; margin-bottom:3px; }
+.in-card-sub { font-size:12px; color:var(--in-text3); margin-bottom:16px; }
+.in-field-label { font-size:11px; font-weight:800; letter-spacing:0.8px; text-transform:uppercase;
+  color:var(--in-text2); margin-bottom:7px; display:block; }
+.in-select, .in-input { width:100%; padding:11px 14px; border:1.5px solid var(--in-border); border-radius:11px;
+  background:var(--in-bg); color:var(--in-text); font-size:13.5px; font-weight:600; outline:none;
+  font-family:inherit; box-sizing:border-box; }
+.in-select:focus, .in-input:focus { border-color:var(--in-purple); }
+.in-row2 { display:flex; gap:12px; align-items:flex-end; }
+.in-unit-chip { flex-shrink:0; padding:11px 14px; border-radius:11px; background:var(--in-purple-dim);
+  border:1.5px solid rgba(108,71,255,0.25); color:var(--in-purple); font-size:13px; font-weight:800; white-space:nowrap; }
+
+.in-item-list { max-height:248px; overflow-y:auto; border:1.5px solid var(--in-border); border-radius:11px;
+  background:var(--in-bg); padding:5px; display:flex; flex-direction:column; gap:3px; }
+.in-item-row { display:flex; align-items:center; justify-content:space-between; gap:10px; width:100%;
+  padding:9px 12px; border:1.5px solid transparent; border-radius:9px; background:transparent; cursor:pointer;
+  font-family:inherit; text-align:left; color:var(--in-text); transition:all .14s; }
+.in-item-row:hover { background:var(--in-purple-dim); }
+.in-item-row.sel { background:var(--in-purple-dim); border-color:var(--in-purple); }
+.in-item-name { font-size:13px; font-weight:700; }
+.in-item-avail { font-size:11.5px; font-weight:700; color:var(--in-text3); white-space:nowrap; flex-shrink:0; }
+.in-item-row.sel .in-item-avail { color:var(--in-purple); }
+.in-item-empty { padding:16px 12px; text-align:center; font-size:12.5px; color:var(--in-text3); font-weight:600; }
+.in-item-count { font-size:11px; font-weight:700; color:var(--in-text3); margin:6px 2px 0; text-align:right; }
+
+.in-btn { width:100%; padding:13px; border:none; border-radius:12px; font-size:14px; font-weight:800; cursor:pointer;
+  font-family:inherit; transition:all .18s; }
+.in-btn-primary { background:linear-gradient(135deg,#6c47ff,#4b2fd6); color:#fff; box-shadow:0 6px 20px var(--in-glow); }
+.in-btn-primary:hover:not(:disabled) { filter:brightness(1.05); }
+.in-btn-ghost { background:var(--in-purple-dim); color:var(--in-purple); border:1.5px solid rgba(108,71,255,0.3); }
+.in-btn:disabled { opacity:0.5; cursor:not-allowed; box-shadow:none; }
+
+.in-hint { font-size:12px; color:var(--in-red); font-weight:700; margin-top:8px; }
+.in-warn { font-size:12px; color:#b45309; font-weight:700; margin-top:8px; }
+
+.in-cart-row { display:flex; align-items:center; gap:12px; padding:12px 14px; border:1px solid var(--in-border);
+  border-radius:12px; margin-bottom:9px; background:var(--in-bg); }
+.in-cart-name { font-size:13px; font-weight:800; flex:1; min-width:0; }
+.in-cart-qty { font-size:12.5px; font-weight:800; color:var(--in-purple); white-space:nowrap; }
+.in-cart-x { width:28px; height:28px; border-radius:8px; border:1px solid var(--in-border); background:transparent;
+  color:var(--in-text3); cursor:pointer; font-size:15px; line-height:1; flex-shrink:0; font-family:inherit; }
+.in-cart-x:hover { border-color:var(--in-red); color:var(--in-red); background:rgba(239,68,68,0.06); }
+.in-empty { text-align:center; padding:26px 16px; color:var(--in-text3); font-size:13px; font-weight:600; }
+.in-spinner { width:28px; height:28px; border:3px solid var(--in-border); border-top-color:var(--in-purple);
+  border-radius:50%; animation:inspin .7s linear infinite; margin:28px auto; }
+@keyframes inspin { to { transform:rotate(360deg); } }
+
+.in-labchip { display:inline-flex; align-items:center; gap:8px; padding:7px 14px; border-radius:20px;
+  background:var(--in-purple-dim); border:1.5px solid rgba(108,71,255,0.3); color:var(--in-purple);
+  font-size:13px; font-weight:800; }
+
+/* ── Status badges (purchase result) ── */
+.in-badge { display:inline-flex; align-items:center; padding:3px 10px; border-radius:20px; font-size:10.5px;
+  font-weight:800; letter-spacing:0.4px; text-transform:uppercase; white-space:nowrap; }
+.in-badge.full { background:rgba(16,185,129,0.12); color:#047857; border:1px solid rgba(16,185,129,0.4); }
+.in-badge.partial { background:rgba(245,158,11,0.14); color:#b45309; border:1px solid rgba(245,158,11,0.45); }
+.in-badge.out { background:rgba(239,68,68,0.12); color:#b91c1c; border:1px solid rgba(239,68,68,0.4); }
+
+/* ── Modal (same shape as the admin/incharge modals) ── */
+.in-overlay { position:fixed; inset:0; background:rgba(15,10,40,0.55); backdrop-filter:blur(5px);
+  -webkit-backdrop-filter:blur(5px); z-index:1000; display:flex; align-items:center; justify-content:center; padding:20px; }
+.in-modal { background:var(--in-white); border:1px solid var(--in-border); border-radius:16px; width:100%;
+  max-width:520px; max-height:86vh; display:flex; flex-direction:column;
+  box-shadow:0 30px 80px rgba(15,10,40,0.4); overflow:hidden; }
+.in-modal-hd { padding:16px 20px; border-bottom:1px solid var(--in-border); display:flex; align-items:center;
+  justify-content:space-between; gap:10px; flex-shrink:0; }
+.in-modal-title { font-size:15px; font-weight:900; }
+.in-modal-x { width:30px; height:30px; border-radius:8px; border:none; background:var(--in-bg); color:var(--in-text2);
+  font-size:17px; cursor:pointer; font-family:inherit; flex-shrink:0; }
+.in-modal-bd { padding:20px; overflow-y:auto; }
+
+.in-sum-row { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:11px 13px;
+  border:1px solid var(--in-border); border-radius:12px; margin-bottom:9px; background:var(--in-bg); }
+.in-sum-name { font-size:13px; font-weight:800; }
+.in-sum-meta { font-size:11.5px; color:var(--in-text3); font-weight:600; margin-top:2px; }
+.in-sum-counts { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
+
+@media (max-width:820px) {
+  .in-grid { grid-template-columns:1fr; }
+  .in-sub { display:none; }
+  .in-wrap { padding:16px 14px 40px; }
+}

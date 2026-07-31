@@ -701,3 +701,176 @@ export const listApproverFaculty = async () => {
   );
   return rows ?? [];
 };
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LAB / INTERN PURCHASE (Stage 3) — REMOVABLE BLOCK (start)
+// Labs master CRUD (admin), the per-lab purchase log, and the intern (role 5)
+// direct-buy against the SHARED inventory_items pool — no request, no approval.
+// To remove: delete this block plus the matching blocks in inventory.services.js,
+// inventory.controller.js and inventory.routes.js.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ── Labs master ──────────────────────────────────────────────
+export const listLabs = async ({ activeOnly = false } = {}) => {
+  const [rows] = await db.execute(
+    `SELECT lab_id, lab_name, lab_code, in_charge, room_no, image_url, is_active, created_at, updated_at
+     FROM labs
+     ${activeOnly ? 'WHERE is_active = 1' : ''}
+     ORDER BY lab_name ASC`
+  );
+  return rows ?? [];
+};
+
+export const getLabById = async (labId) => {
+  const [rows] = await db.execute(
+    `SELECT lab_id, lab_name, lab_code, in_charge, room_no, image_url, is_active, created_at, updated_at
+     FROM labs WHERE lab_id = ? LIMIT 1`,
+    [Number(labId)]
+  );
+  return rows?.[0] ?? null;
+};
+
+export const createLab = async ({ lab_name, lab_code, in_charge, room_no, image_url }) => {
+  const [res] = await db.execute(
+    `INSERT INTO labs (lab_name, lab_code, in_charge, room_no, image_url)
+     VALUES (?, ?, ?, ?, ?)`,
+    [lab_name, lab_code ?? null, in_charge ?? null, room_no ?? null, image_url ?? null]
+  );
+  return res?.insertId ?? null;
+};
+
+// Partial update — only the keys present in `fields` are written.
+export const updateLab = async (labId, fields) => {
+  const allowed = ['lab_name', 'lab_code', 'in_charge', 'room_no', 'image_url', 'is_active'];
+  const sets = [];
+  const params = [];
+  for (const key of allowed) {
+    if (Object.prototype.hasOwnProperty.call(fields, key)) {
+      sets.push(`${key} = ?`);
+      params.push(fields[key]);
+    }
+  }
+  if (!sets.length) return false;
+  params.push(Number(labId));
+  const [res] = await db.execute(`UPDATE labs SET ${sets.join(', ')} WHERE lab_id = ?`, params);
+  return (res?.affectedRows ?? 0) > 0;
+};
+
+// Soft delete only — lab_purchases history keeps pointing at this lab_id.
+export const deactivateLab = async (labId) => {
+  const [res] = await db.execute(`UPDATE labs SET is_active = 0 WHERE lab_id = ?`, [Number(labId)]);
+  return (res?.affectedRows ?? 0) > 0;
+};
+
+// ── Purchase log ─────────────────────────────────────────────
+// `limit` null → the full log ("view full log"); a number → the recent few.
+// The limit is inlined as a validated integer (TiDB dislikes a placeholder in LIMIT).
+export const listLabPurchases = async (labId, limit) => {
+  const clause = limit == null ? '' : `LIMIT ${Number(limit)}`;
+  const [rows] = await db.execute(
+    `SELECT purchase_id, lab_id, item_id, item_name, quantity, unit,
+            buyer_user_id, buyer_name, created_at
+     FROM lab_purchases
+     WHERE lab_id = ?
+     ORDER BY created_at DESC, purchase_id DESC
+     ${clause}`,
+    [Number(labId)]
+  );
+  return rows ?? [];
+};
+
+// ── Intern direct purchase (role 5) ──────────────────────────
+// ONE transaction for the whole cart. Per item: lock the stock row FOR UPDATE,
+// take min(requested, available) — a partial take is a normal outcome, not an
+// error — then decrement, log a negative LAB_PURCHASE txn, and record the
+// lab_purchases row. Items with taken = 0 write nothing but still appear in the
+// summary as OUT_OF_STOCK. Unlike approveBuyingRequest (which pre-checks then
+// writes, leaving a TOCTOU window), the row lock here makes the read and the
+// write atomic, so concurrent carts cannot drive stock negative.
+export const purchaseForLab = async ({ labId, items, buyerUserId, buyerName }) => {
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    // Lock the lab row too, so it cannot be deactivated mid-purchase.
+    const [labRows] = await conn.execute(
+      `SELECT lab_id, lab_name, is_active FROM labs WHERE lab_id = ? LIMIT 1 FOR UPDATE`,
+      [Number(labId)]
+    );
+    const lab = labRows?.[0];
+    if (!lab) { const e = new Error('Lab not found'); e.status = 404; throw e; }
+    if (Number(lab.is_active) !== 1) { const e = new Error('Lab is inactive'); e.status = 400; throw e; }
+
+    // The JWT `name` is Google-supplied and can be absent for non-student roles;
+    // fall back to the login email so the log never shows an anonymous buyer.
+    let resolvedBuyer = buyerName ? String(buyerName).trim().slice(0, 150) : '';
+    if (!resolvedBuyer && buyerUserId != null) {
+      const [uRows] = await conn.execute(`SELECT email FROM users WHERE user_id = ? LIMIT 1`, [Number(buyerUserId)]);
+      resolvedBuyer = uRows?.[0]?.email ? String(uRows[0].email).slice(0, 150) : '';
+    }
+
+    const results = [];
+    for (const it of items) {
+      const itemId = Number(it.item_id);
+      const requested = Number(it.quantity);
+
+      const [srows] = await conn.execute(
+        `SELECT item_id, item_name, unit, current_quantity, is_active
+         FROM inventory_items WHERE item_id = ? LIMIT 1 FOR UPDATE`,
+        [itemId]
+      );
+      const stock = srows?.[0];
+      if (!stock) { const e = new Error(`Item ${itemId} not found`); e.status = 400; throw e; }
+      if (Number(stock.is_active) !== 1) { const e = new Error(`Item ${itemId} is inactive`); e.status = 400; throw e; }
+
+      const available = Math.max(0, Number(stock.current_quantity));
+      const taken = Math.min(requested, available);
+
+      if (taken > 0) {
+        await conn.execute(
+          `UPDATE inventory_items SET current_quantity = current_quantity - ? WHERE item_id = ?`,
+          [taken, itemId]
+        );
+        await conn.execute(
+          `INSERT INTO inventory_stock_txns (item_id, change_qty, reason, request_id, actor_user_id)
+           VALUES (?, ?, 'LAB_PURCHASE', NULL, ?)`,
+          [itemId, -taken, buyerUserId != null ? Number(buyerUserId) : null]
+        );
+        await conn.execute(
+          `INSERT INTO lab_purchases (lab_id, item_id, item_name, quantity, unit, buyer_user_id, buyer_name)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          [Number(labId), itemId, stock.item_name ?? null, taken, stock.unit ?? null,
+            buyerUserId != null ? Number(buyerUserId) : null, resolvedBuyer || null]
+        );
+      }
+
+      results.push({
+        item_id: itemId,
+        item_name: stock.item_name ?? null,
+        unit: stock.unit ?? null,
+        requested,
+        taken,
+        shortfall: Number((requested - taken).toFixed(2)),
+        status: taken === requested ? 'FULL' : (taken > 0 ? 'PARTIAL' : 'OUT_OF_STOCK'),
+      });
+    }
+
+    await conn.commit();
+    return {
+      lab: { lab_id: Number(lab.lab_id), lab_name: lab.lab_name },
+      results,
+      summary: {
+        total_items: results.length,
+        fully: results.filter((r) => r.status === 'FULL').length,
+        partial: results.filter((r) => r.status === 'PARTIAL').length,
+        out_of_stock: results.filter((r) => r.status === 'OUT_OF_STOCK').length,
+      },
+    };
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+};
+// ═══ LAB / INTERN PURCHASE (Stage 3) — REMOVABLE BLOCK (end) ═══

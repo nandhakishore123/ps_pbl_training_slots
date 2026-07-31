@@ -383,3 +383,125 @@ export const setApprovers = async (userId, payload = {}) => {
 
 // Admin dropdown source: active faculty (user_id, name, email).
 export const listFacultyForApprover = async () => model.listApproverFaculty();
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LAB / INTERN PURCHASE (Stage 3) — REMOVABLE BLOCK (start)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Trim + length-cap an optional text field; '' becomes null.
+const optionalText = (value, max, label) => {
+  if (value == null) return null;
+  const clean = String(value).trim();
+  if (!clean) return null;
+  if (clean.length > max) throw badRequest(`${label} must be ${max} characters or fewer`);
+  return clean;
+};
+
+// ── Labs CRUD (admin) ────────────────────────────────────────
+export const listLabs = async ({ active } = {}) => {
+  const activeOnly = String(active ?? '') === '1';
+  return model.listLabs({ activeOnly });
+};
+
+export const createLab = async (payload = {}) => {
+  const labName = String(payload.lab_name ?? '').trim();
+  if (!labName) throw badRequest('lab_name is required');
+  if (labName.length > 150) throw badRequest('lab_name must be 150 characters or fewer');
+
+  const labId = await model.createLab({
+    lab_name: labName,
+    lab_code: optionalText(payload.lab_code, 40, 'lab_code'),
+    in_charge: optionalText(payload.in_charge, 150, 'in_charge'),
+    room_no: optionalText(payload.room_no, 40, 'room_no'),
+    // Lab photo: a pasted URL string, same trim-or-null handling as
+    // training_skills.image_url. Not validated as a URL by design.
+    image_url: optionalText(payload.image_url, 512, 'image_url'),
+  });
+  return { lab_id: labId };
+};
+
+export const updateLab = async (labId, payload = {}) => {
+  const id = Number(labId);
+  if (!id) throw badRequest('Invalid lab id');
+  const lab = await model.getLabById(id);
+  if (!lab) throw notFound('Lab not found');
+
+  // Only the keys actually sent are written — this is a partial update.
+  const fields = {};
+  if (Object.prototype.hasOwnProperty.call(payload, 'lab_name')) {
+    const labName = String(payload.lab_name ?? '').trim();
+    if (!labName) throw badRequest('lab_name cannot be empty');
+    if (labName.length > 150) throw badRequest('lab_name must be 150 characters or fewer');
+    fields.lab_name = labName;
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, 'lab_code')) fields.lab_code = optionalText(payload.lab_code, 40, 'lab_code');
+  if (Object.prototype.hasOwnProperty.call(payload, 'in_charge')) fields.in_charge = optionalText(payload.in_charge, 150, 'in_charge');
+  if (Object.prototype.hasOwnProperty.call(payload, 'room_no')) fields.room_no = optionalText(payload.room_no, 40, 'room_no');
+  if (Object.prototype.hasOwnProperty.call(payload, 'image_url')) fields.image_url = optionalText(payload.image_url, 512, 'image_url');
+  if (Object.prototype.hasOwnProperty.call(payload, 'is_active')) fields.is_active = payload.is_active ? 1 : 0;
+
+  if (!Object.keys(fields).length) throw badRequest('No updatable fields provided');
+  await model.updateLab(id, fields);
+  return model.getLabById(id);
+};
+
+// Soft delete — history in lab_purchases must stay resolvable.
+export const deleteLab = async (labId) => {
+  const id = Number(labId);
+  if (!id) throw badRequest('Invalid lab id');
+  const lab = await model.getLabById(id);
+  if (!lab) throw notFound('Lab not found');
+  await model.deactivateLab(id);
+  return { lab_id: id, is_active: 0 };
+};
+
+// ── Purchase log ─────────────────────────────────────────────
+// ?limit=all (or 0) → the full log; otherwise the N most recent (default 5).
+const DEFAULT_PURCHASE_LIMIT = 5;
+export const listLabPurchases = async (labId, limitParam) => {
+  const id = Number(labId);
+  if (!id) throw badRequest('Invalid lab id');
+  const lab = await model.getLabById(id);
+  if (!lab) throw notFound('Lab not found');
+
+  let limit = DEFAULT_PURCHASE_LIMIT;
+  const raw = String(limitParam ?? '').trim().toLowerCase();
+  if (raw === 'all' || raw === '0') {
+    limit = null;                                  // full log
+  } else if (raw) {
+    const n = Number(raw);
+    if (!Number.isInteger(n) || n < 0) throw badRequest("limit must be a non-negative integer or 'all'");
+    limit = n;
+  }
+
+  const items = await model.listLabPurchases(id, limit);
+  return { lab: { lab_id: Number(lab.lab_id), lab_name: lab.lab_name }, items };
+};
+
+// ── Intern direct purchase (role 5) ──────────────────────────
+// Validates the cart, then hands the whole thing to one model transaction.
+// Partial fulfilment is a SUCCESS, not an error: the response tells the intern
+// exactly what was taken vs short vs skipped.
+export const createLabPurchase = async (userId, userName, { lab_id, items } = {}) => {
+  const labId = Number(lab_id);
+  if (!labId) throw badRequest('lab_id is required');
+
+  if (!Array.isArray(items) || items.length === 0) throw badRequest('At least one item is required');
+
+  const cleaned = items.map((it) => ({
+    item_id: Number(it?.item_id),
+    quantity: Number(it?.quantity),
+  }));
+  for (const it of cleaned) {
+    if (!it.item_id || Number.isNaN(it.item_id)) throw badRequest('Each item needs a valid item_id');
+    if (!(it.quantity > 0)) throw badRequest('Each item quantity must be greater than 0');
+  }
+
+  return model.purchaseForLab({
+    labId,
+    items: cleaned,
+    buyerUserId: userId,
+    buyerName: userName,
+  });
+};
+// ═══ LAB / INTERN PURCHASE (Stage 3) — REMOVABLE BLOCK (end) ═══
