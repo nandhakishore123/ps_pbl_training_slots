@@ -478,6 +478,10 @@ export const listLabPurchases = async (labId, limitParam) => {
   return { lab: { lab_id: Number(lab.lab_id), lab_name: lab.lab_name }, items };
 };
 
+// Read-only cross-lab purchase feed for the incharge/admin (cannot be acted on —
+// intern purchases are direct and already final). Mirrors listBuyingReadOnly.
+export const listLabPurchasesReadOnly = async () => model.listAllLabPurchases();
+
 // ── Intern direct purchase (role 5) ──────────────────────────
 // Validates the cart, then hands the whole thing to one model transaction.
 // Partial fulfilment is a SUCCESS, not an error: the response tells the intern
