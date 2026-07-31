@@ -21,7 +21,6 @@ services:
       timeout: 5s
       retries: 15
       start_period: 60s
-
   backend:
     build:
       context: ./server
@@ -43,6 +42,7 @@ services:
       ACCESS_TOKEN_EXPIRY: ${ACCESS_TOKEN_EXPIRY}
       REFRESH_TOKEN_EXPIRY: ${REFRESH_TOKEN_EXPIRY}
       UPLOAD_PATH: /opt/uploads/slot-matrix
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
     volumes:
       - /opt/uploads/slot-matrix:/opt/uploads/slot-matrix
     ports:
@@ -53,7 +53,6 @@ services:
     networks:
       - slot_matrix_net
       - reverse-proxy
-
   frontend:
     build:
       context: ./client
@@ -72,7 +71,6 @@ services:
       - reverse-proxy
 volumes:
   mysql_data:
-
 networks:
   slot_matrix_net:
     driver: bridge
