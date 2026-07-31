@@ -79,7 +79,7 @@ export default function PCDPLogin() {
 
     // ── INTERN (role 5) — removable ──
     if (numericRoleId === 5) {
-      return '/intern';
+      return '/lab-purchases';
     }
 
     return '/auth/login';

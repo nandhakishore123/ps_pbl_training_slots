@@ -103,7 +103,7 @@ function HomeRedirect() {
 
     // ── INTERN (role 5) — removable ──
     if (roleId === 5) {
-        return <Navigate to="/intern" replace />;
+        return <Navigate to="/lab-purchases" replace />;
     }
 
     return <Navigate to="/auth/login" replace />;
@@ -196,7 +196,9 @@ function AppNavigator() {
                 <Route path="/inventory-incharge" element={<RequireAuth><RequireRole allowedRoles={[4]}><InventoryInchargeDashboard/></RequireRole></RequireAuth>} />
 
                 {/* intern / lab technician routes (role 5) — removable */}
-                <Route path="/intern" element={<RequireAuth><RequireRole allowedRoles={[5]}><InternDashboard/></RequireRole></RequireAuth>} />
+                <Route path="/lab-purchases" element={<RequireAuth><RequireRole allowedRoles={[5]}><InternDashboard/></RequireRole></RequireAuth>} />
+                {/* legacy path — forwards stale bookmarks; gating is applied by the target route */}
+                <Route path="/intern" element={<Navigate to="/lab-purchases" replace />} />
 
 
                 <Route path="/not-found" element={<FileNotFound/>}/>
