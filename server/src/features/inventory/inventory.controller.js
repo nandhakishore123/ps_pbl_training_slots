@@ -304,3 +304,78 @@ export const getApproverFaculty = async (req, res) => {
     return internalServerErrorResponse(res, error.message || 'Failed to fetch faculty');
   }
 };
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LAB / INTERN PURCHASE (Stage 3) — REMOVABLE BLOCK (start)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ── Labs CRUD ────────────────────────────────────────────────
+export const getLabs = async (req, res) => {
+  try {
+    const data = await service.listLabs({ active: req.query?.active });
+    return successResponse(res, 'Labs fetched', { items: data });
+  } catch (error) {
+    if (error?.status) return errorResponse(res, error.message, error.status);
+    console.error('Error in getLabs:', error);
+    return internalServerErrorResponse(res, error.message || 'Failed to fetch labs');
+  }
+};
+
+export const createLab = async (req, res) => {
+  try {
+    const data = await service.createLab(req.body);
+    return createdResponse(res, 'Lab created', data);
+  } catch (error) {
+    if (error?.status) return errorResponse(res, error.message, error.status);
+    console.error('Error in createLab:', error);
+    return internalServerErrorResponse(res, error.message || 'Failed to create lab');
+  }
+};
+
+export const updateLab = async (req, res) => {
+  try {
+    const data = await service.updateLab(req.params.labId, req.body);
+    return successResponse(res, 'Lab updated', data);
+  } catch (error) {
+    if (error?.status) return errorResponse(res, error.message, error.status);
+    console.error('Error in updateLab:', error);
+    return internalServerErrorResponse(res, error.message || 'Failed to update lab');
+  }
+};
+
+// Soft delete (is_active = 0) — never a hard DELETE, so purchase history survives.
+export const deleteLab = async (req, res) => {
+  try {
+    const data = await service.deleteLab(req.params.labId);
+    return successResponse(res, 'Lab deactivated', data);
+  } catch (error) {
+    if (error?.status) return errorResponse(res, error.message, error.status);
+    console.error('Error in deleteLab:', error);
+    return internalServerErrorResponse(res, error.message || 'Failed to deactivate lab');
+  }
+};
+
+// ── Purchase log ─────────────────────────────────────────────
+export const getLabPurchases = async (req, res) => {
+  try {
+    const data = await service.listLabPurchases(req.params.labId, req.query?.limit);
+    return successResponse(res, 'Lab purchases fetched', data);
+  } catch (error) {
+    if (error?.status) return errorResponse(res, error.message, error.status);
+    console.error('Error in getLabPurchases:', error);
+    return internalServerErrorResponse(res, error.message || 'Failed to fetch lab purchases');
+  }
+};
+
+// ── Intern direct purchase ───────────────────────────────────
+export const createLabPurchase = async (req, res) => {
+  try {
+    const data = await service.createLabPurchase(req.user?.user_id, req.user?.name, req.body);
+    return createdResponse(res, 'Lab purchase recorded', data);
+  } catch (error) {
+    if (error?.status) return errorResponse(res, error.message, error.status);
+    console.error('Error in createLabPurchase:', error);
+    return internalServerErrorResponse(res, error.message || 'Failed to record lab purchase');
+  }
+};
+// ═══ LAB / INTERN PURCHASE (Stage 3) — REMOVABLE BLOCK (end) ═══

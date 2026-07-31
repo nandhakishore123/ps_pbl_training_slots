@@ -118,4 +118,39 @@ export const inventoryService = {
   setApprovers(payload) {
     return api.put('/inventory/approvers', payload);
   },
+
+  // ═══ LABS (Stage 4) — REMOVABLE BLOCK (start) ═══
+  // Labs master. Admin (3) manages; incharge (4) and interns (5) may read.
+  // Omit `active` for all labs; pass 1 for only active ones.
+  getLabs(active) {
+    return api.get('/inventory/labs', { params: active ? { active: 1 } : {} });
+  },
+
+  // payload: { lab_name, lab_code?, in_charge?, room_no? }
+  createLab(payload) {
+    return api.post('/inventory/labs', payload);
+  },
+
+  // Partial update — only the keys sent are written (incl. is_active for re-activate).
+  updateLab(labId, payload) {
+    return api.put(`/inventory/labs/${labId}`, payload);
+  },
+
+  // Soft delete → is_active = 0. Purchase history is preserved.
+  deleteLab(labId) {
+    return api.delete(`/inventory/labs/${labId}`);
+  },
+
+  // Per-lab purchase log. limit: number (default 5 server-side) or 'all'.
+  getLabPurchases(labId, limit) {
+    return api.get(`/inventory/labs/${labId}/purchases`, { params: limit != null ? { limit } : {} });
+  },
+
+  // Intern (role 5) direct buy — no request, no approval. Partial fulfilment is
+  // a success: the response reports FULL / PARTIAL / OUT_OF_STOCK per item.
+  // payload: { lab_id, items: [{ item_id, quantity }] }
+  createLabPurchase(payload) {
+    return api.post('/inventory/lab-purchase', payload);
+  },
+  // ═══ LABS (Stage 4) — REMOVABLE BLOCK (end) ═══
 };

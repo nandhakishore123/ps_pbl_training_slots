@@ -28,6 +28,13 @@ import {
   getApprovers,
   setApprovers,
   getApproverFaculty,
+  // ── LAB / INTERN PURCHASE (Stage 3) — REMOVABLE ──
+  getLabs,
+  createLab,
+  updateLab,
+  deleteLab,
+  getLabPurchases,
+  createLabPurchase,
 } from './inventory.controller.js';
 
 const router = express.Router();
@@ -78,5 +85,21 @@ router.get('/admin/returns', authMiddleware, requireRole(3), getAdminReturns);  
 router.get('/approvers', authMiddleware, getApprovers);                              // effective approver user_ids
 router.get('/faculty', authMiddleware, requireRole(3), getApproverFaculty);          // admin dropdown source
 router.put('/approvers', authMiddleware, requireRole(3), setApprovers);              // admin set both approvers
+
+// ═══ LAB / INTERN PURCHASE (Stage 3) — REMOVABLE BLOCK (start) ═══
+// Labs master: admin (3) manages; incharge (4) and interns (5) read the list
+// (interns need it to render their lab cards).
+router.get('/labs', authMiddleware, requireRole(3, 4, 5), getLabs);                  // ?active=1 to filter
+router.post('/labs', authMiddleware, requireRole(3), createLab);                     // { lab_name, lab_code?, in_charge?, room_no? }
+router.put('/labs/:labId', authMiddleware, requireRole(3), updateLab);               // partial update
+router.delete('/labs/:labId', authMiddleware, requireRole(3), deleteLab);            // SOFT delete → is_active = 0
+
+// Per-lab purchase log — ?limit=N (default 5) or ?limit=all for the full log.
+router.get('/labs/:labId/purchases', authMiddleware, requireRole(3, 4, 5), getLabPurchases);
+
+// Intern direct buy — no request, no approval; decrements the shared pool.
+// Role 3 is included so an admin can exercise it without an intern account.
+router.post('/lab-purchase', authMiddleware, requireRole(5, 3), createLabPurchase);  // { lab_id, items:[{item_id, quantity}] }
+// ═══ LAB / INTERN PURCHASE (Stage 3) — REMOVABLE BLOCK (end) ═══
 
 export default router;

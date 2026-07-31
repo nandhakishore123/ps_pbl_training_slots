@@ -69,10 +69,12 @@ const issueSessionForEmail = async (email, nameFallback = '', picture = null) =>
 
 export const verifyGoogleToken = async (credential) => {
     try {
-        if (process.env.NODE_ENV === 'development' || !process.env.GOOGLE_CLIENT_ID) {
-            if (String(credential).includes('@')) {
-                return issueSessionForEmail(credential, 'Test User');
-            }
+        // A credential is ONLY ever a real Google ID token. The former dev
+        // bypass (a raw email accepted as a session in development, or whenever
+        // GOOGLE_CLIENT_ID was unset) is removed: it made an unset env var in
+        // any environment enough to log in as anyone. Fail closed instead.
+        if (!process.env.GOOGLE_CLIENT_ID) {
+            throw new Error('Google sign-in is not configured');
         }
         const ticket = await client.verifyIdToken({
             idToken: credential,

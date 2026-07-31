@@ -77,6 +77,11 @@ export default function PCDPLogin() {
       return '/inventory-incharge';
     }
 
+    // ── INTERN (role 5) — removable ──
+    if (numericRoleId === 5) {
+      return '/intern';
+    }
+
     return '/auth/login';
   };
 
@@ -102,7 +107,7 @@ export default function PCDPLogin() {
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [shake, setShake] = useState(false);
+  // (the error-shake animation went with the disabled username/password submit)
   const [capsLock, setCapsLock] = useState(false);
   const [errors, setErrors] = useState({});
   const [btnHover, setBtnHover] = useState(false);
@@ -126,14 +131,6 @@ export default function PCDPLogin() {
     (type, msg) => pushToast(msg, type !== 'success'),
     [pushToast]
   );
-
-  const validate = useCallback(() => {
-    const errs = {};
-    if (!username.trim()) errs.username = 'Username is required';
-    if (!password.trim()) errs.password = 'Password is required';
-    else if (password.length < 4) errs.password = 'Password too short';
-    return errs;
-  }, [username, password]);
 
   const handleGoogleCredential = async (credential) => {
     try {
@@ -171,45 +168,13 @@ export default function PCDPLogin() {
     }
   };
 
-  const handleLogin = useCallback(async () => {
-    if (accessToken && user) {
-      const targetRoute = getHomeRoute(user.role_id);
-      if (location.pathname !== targetRoute) {
-        navigate(targetRoute, { replace: true });
-      }
-      return;
-    }
-
-    const errs = validate();
-    setErrors(errs);
-    if (Object.keys(errs).length > 0) {
-      setShake(true);
-      setTimeout(() => setShake(false), 600);
-      showToast('error', 'Please fix the errors before signing in.');
-      return;
-    }
-    setLoading(true);
-    try {
-      const payload = await authService.googleLogin(username);
-      const { accessToken: token, user: u } = payload?.data || {};
-
-      if (!payload?.success || !token) {
-        showToast('error', payload?.message || 'Login failed');
-        return;
-      }
-      showToast('success', `Welcome back, ${u?.name || username}! Redirecting...`);
-      // ===== WELCOME INTRO (removable): one-shot flag, real login only =====
-      sessionStorage.setItem('pt_show_intro', '1');
-      // ===== END WELCOME INTRO =====
-      const targetRoute = getHomeRoute(u?.role_id);
-      navigate(targetRoute, { replace: true });
-    } catch (err) {
-      const message = err?.response?.data?.message || err?.message || 'Login failed';
-      showToast('error', message);
-    } finally {
-      setLoading(false);
-    }
-  }, [accessToken, user, location.pathname, navigate, username, password, showToast, validate]);
+  // Username/password sign-in is intentionally INERT. The fields stay visible
+  // and freely typeable, but submitting does nothing at all — no request, no
+  // navigation, no error, no toast. Google sign-in is the only working login,
+  // and the backend no longer accepts anything but a real Google ID token.
+  const handleLogin = useCallback(() => {
+    /* deliberate no-op — silent dead-end */
+  }, []);
 
   useEffect(() => {
     const handler = (e) => {
@@ -333,7 +298,6 @@ export default function PCDPLogin() {
             <div
               style={{
                 ...styles.inputWrap,
-                animation: shake ? 'shake 0.5s ease' : 'none',
               }}
             >
               <span style={styles.inputIcon}>
@@ -404,7 +368,6 @@ export default function PCDPLogin() {
             <div
               style={{
                 ...styles.inputWrap,
-                animation: shake ? 'shake 0.5s ease' : 'none',
               }}
             >
               <span style={styles.inputIcon}>

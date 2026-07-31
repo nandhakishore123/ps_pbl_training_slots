@@ -132,6 +132,17 @@ const CSS = `
   }
 `;
 
+/* ═══ LABS (Stage 4) — REMOVABLE BLOCK (start) ═══
+   Only additive classes; everything else reuses the existing .ad-* styles. */
+const LAB_CSS = `
+  .ad-lab-row { grid-template-columns:1fr 160px 110px auto; }
+  .ad-lab-row.inactive { opacity:0.55; }
+  .ad-pill.inactive { background:rgba(156,163,175,0.16); color:#6b7280; border:1px solid rgba(156,163,175,0.45); }
+  .ad-lab-code { font-size:11px; font-weight:800; color:var(--ad-purple); letter-spacing:0.3px; }
+  @media (max-width:760px) { .ad-lab-row { grid-template-columns:1fr auto; } }
+`;
+/* ═══ LABS (Stage 4) — REMOVABLE BLOCK (end) ═══ */
+
 const money = (n) => Number(n ?? 0).toLocaleString();
 function fmtDateTime(d) {
   const dt = d ? new Date(d) : new Date();
@@ -181,6 +192,19 @@ export default function AdminInventory() {
   const [approverError, setApproverError] = useState('');
   const [approverSaving, setApproverSaving] = useState(false);
 
+  // ═══ LABS (Stage 4) — REMOVABLE BLOCK (start) ═══
+  const [labs, setLabs] = useState([]);
+  const [labsLoading, setLabsLoading] = useState(false);
+  const [labsLoaded, setLabsLoaded] = useState(false);
+  const [labsError, setLabsError] = useState('');
+  const [labModal, setLabModal] = useState(null);      // { mode:'new'|'edit', lab? }
+  const [labForm, setLabForm] = useState({ lab_name: '', lab_code: '', in_charge: '', room_no: '', image_url: '' });
+  const [labSaving, setLabSaving] = useState(false);
+  const [labModalErr, setLabModalErr] = useState('');
+  const [labConfirm, setLabConfirm] = useState(null);  // lab pending deactivation
+  const [labBusy, setLabBusy] = useState(false);
+  // ═══ LABS (Stage 4) — REMOVABLE BLOCK (end) ═══
+
   const [busyId, setBusyId] = useState(null);
   const [rowErr, setRowErr] = useState({});
   const [rejectModal, setRejectModal] = useState(null); // { kind:'BUY'|'RETURN', id }
@@ -197,7 +221,7 @@ export default function AdminInventory() {
   useEffect(() => {
     const el = document.createElement('style');
     el.id = 'ad-styles';
-    el.innerHTML = CSS;
+    el.innerHTML = CSS + LAB_CSS; // LAB_CSS: Stage 4 labs — removable
     if (!document.getElementById('ad-styles')) document.head.appendChild(el);
     return () => { const s = document.getElementById('ad-styles'); if (s) s.remove(); };
   }, []);
@@ -272,6 +296,83 @@ export default function AdminInventory() {
     } finally { setApproverSaving(false); }
   };
 
+  // ═══ LABS (Stage 4) — REMOVABLE BLOCK (start) ═══
+  // Loads ALL labs (active + inactive) so the admin can re-activate.
+  const loadLabs = useCallback(async () => {
+    setLabsLoading(true); setLabsError('');
+    try {
+      const res = await inventoryService.getLabs();
+      setLabs(res?.data?.items || []); setLabsLoaded(true);
+    } catch {
+      setLabsError('Failed to load labs.'); setLabs([]); setLabsLoaded(true);
+    } finally { setLabsLoading(false); }
+  }, []);
+
+  const openNewLab = () => {
+    setLabForm({ lab_name: '', lab_code: '', in_charge: '', room_no: '', image_url: '' });
+    setLabModalErr(''); setLabModal({ mode: 'new' });
+  };
+  const openEditLab = (lab) => {
+    setLabForm({
+      lab_name: lab.lab_name ?? '', lab_code: lab.lab_code ?? '',
+      in_charge: lab.in_charge ?? '', room_no: lab.room_no ?? '',
+      image_url: lab.image_url ?? '',
+    });
+    setLabModalErr(''); setLabModal({ mode: 'edit', lab });
+  };
+  const closeLabModal = () => { if (!labSaving) { setLabModal(null); setLabModalErr(''); } };
+
+  const submitLabModal = async () => {
+    setLabModalErr(''); setLabSaving(true);
+    try {
+      const name = labForm.lab_name.trim();
+      if (!name) throw new Error('Lab name is required.');
+      const payload = {
+        lab_name: name,
+        lab_code: labForm.lab_code.trim(),
+        in_charge: labForm.in_charge.trim(),
+        room_no: labForm.room_no.trim(),
+        image_url: labForm.image_url.trim(),   // lab photo — pasted URL, removable
+      };
+      if (labModal.mode === 'new') {
+        await inventoryService.createLab(payload);
+        showToast('Lab created', false);
+      } else {
+        await inventoryService.updateLab(labModal.lab.lab_id, payload);
+        showToast('Lab updated', false);
+      }
+      setLabModal(null);
+      await loadLabs();
+    } catch (err) {
+      setLabModalErr(err?.response?.data?.message || err?.message || 'Action failed.');
+    } finally { setLabSaving(false); }
+  };
+
+  // Soft delete — confirmed in a modal because history stays attached to the lab.
+  const confirmDeactivate = async () => {
+    setLabBusy(true);
+    try {
+      await inventoryService.deleteLab(labConfirm.lab_id);
+      showToast('Lab deactivated', false);
+      setLabConfirm(null);
+      await loadLabs();
+    } catch (err) {
+      showToast(err?.response?.data?.message || 'Failed to deactivate lab.', true);
+    } finally { setLabBusy(false); }
+  };
+
+  const activateLab = async (lab) => {
+    setLabBusy(true);
+    try {
+      await inventoryService.updateLab(lab.lab_id, { is_active: 1 });
+      showToast('Lab activated', false);
+      await loadLabs();
+    } catch (err) {
+      showToast(err?.response?.data?.message || 'Failed to activate lab.', true);
+    } finally { setLabBusy(false); }
+  };
+  // ═══ LABS (Stage 4) — REMOVABLE BLOCK (end) ═══
+
   useEffect(() => { loadOverview(); }, [loadOverview]);
 
   useEffect(() => {
@@ -284,6 +385,7 @@ export default function AdminInventory() {
       loadStock({ category: '', search: '' });
     }
     if (tab === 'settings' && !approverLoaded) loadApprovers();
+    if (tab === 'labs' && !labsLoaded) loadLabs();   // Stage 4 labs — removable
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
 
@@ -428,6 +530,8 @@ export default function AdminInventory() {
           <button className={`ad-tab${tab === 'returns' ? ' active' : ''}`} onClick={() => setTab('returns')}>Returns</button>
           <button className={`ad-tab${tab === 'stock' ? ' active' : ''}`} onClick={() => setTab('stock')}>Stock</button>
           <button className={`ad-tab${tab === 'settings' ? ' active' : ''}`} onClick={() => setTab('settings')}>Approvers</button>
+          {/* LABS (Stage 4) — removable */}
+          <button className={`ad-tab${tab === 'labs' ? ' active' : ''}`} onClick={() => setTab('labs')}>Labs</button>
         </div>
 
         {/* OVERVIEW */}
@@ -545,6 +649,57 @@ export default function AdminInventory() {
             </div>
           )
         )}
+
+        {/* ═══ LABS (Stage 4) — REMOVABLE BLOCK (start) ═══ */}
+        {tab === 'labs' && (
+          <>
+            <div className="ad-toolbar">
+              <div style={{ flex: 1, minWidth: 200 }}>
+                <div className="ad-appr-title">Labs</div>
+                <div className="ad-appr-sub">Add, edit or deactivate labs. Deactivating is reversible and always keeps purchase history.</div>
+              </div>
+              <button className="ad-btn ad-btn-primary" onClick={openNewLab}>+ Add Lab</button>
+            </div>
+
+            {labsError && <div className="ad-empty" style={{ color: 'var(--ad-red)' }}>{labsError}</div>}
+            {labsLoading ? <div className="ad-spinner" /> : labs.length === 0 ? <div className="ad-empty">No labs yet. Use “+ Add Lab” to create one.</div> : (
+              <>
+                <div className="ad-count">
+                  {labs.length} lab{labs.length !== 1 ? 's' : ''} · {labs.filter((l) => Number(l.is_active) === 1).length} active
+                </div>
+                <div className="ad-card">
+                  {labs.map((lab) => {
+                    const active = Number(lab.is_active) === 1;
+                    return (
+                      <div className={`ad-item ad-lab-row${active ? '' : ' inactive'}`} key={lab.lab_id}>
+                        <div style={{ minWidth: 0 }}>
+                          <div className="ad-item-name">
+                            {lab.lab_name}
+                            {!active && <span className="ad-pill inactive" style={{ marginLeft: 8, padding: '1px 8px' }}>Inactive</span>}
+                          </div>
+                          <div className="ad-item-meta">
+                            {lab.lab_code ? <span className="ad-lab-code">{lab.lab_code}</span> : <span>No code</span>}
+                          </div>
+                        </div>
+                        <div className="ad-item-hide ad-rack">{lab.in_charge || '—'}</div>
+                        <div className="ad-item-hide ad-rack">{lab.room_no || '—'}</div>
+                        <div className="ad-actions">
+                          <button className="ad-btn ad-btn-outline ad-btn-sm" onClick={() => openEditLab(lab)}>Edit</button>
+                          {active ? (
+                            <button className="ad-btn ad-btn-sm ad-reject" style={{ flex: 'none' }} disabled={labBusy} onClick={() => setLabConfirm(lab)}>Deactivate</button>
+                          ) : (
+                            <button className="ad-btn ad-btn-ghost ad-btn-sm" disabled={labBusy} onClick={() => activateLab(lab)}>Activate</button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </>
+        )}
+        {/* ═══ LABS (Stage 4) — REMOVABLE BLOCK (end) ═══ */}
       </div>
 
       {/* Reject modal (buying or return) */}
@@ -611,6 +766,72 @@ export default function AdminInventory() {
           </div>
         </div>
       )}
+
+      {/* ═══ LABS (Stage 4) — REMOVABLE BLOCK (start) ═══ */}
+      {/* Add / edit lab */}
+      {labModal && (
+        <div className="ad-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) closeLabModal(); }}>
+          <div className="ad-modal" role="dialog" aria-modal="true" aria-label={labModal.mode === 'new' ? 'Add lab' : 'Edit lab'}>
+            <div className="ad-modal-hd">
+              <div className="ad-modal-title">{labModal.mode === 'new' ? 'Add Lab' : 'Edit Lab'}</div>
+              <button className="ad-modal-x" onClick={closeLabModal}>×</button>
+            </div>
+            <div className="ad-modal-bd">
+              <label className="ad-label">Lab name *</label>
+              <input className="ad-input" value={labForm.lab_name} autoFocus
+                onChange={(e) => setLabForm((s) => ({ ...s, lab_name: e.target.value }))}
+                placeholder="e.g. Electronics Lab" />
+              <label className="ad-label">Lab code</label>
+              <input className="ad-input" value={labForm.lab_code}
+                onChange={(e) => setLabForm((s) => ({ ...s, lab_code: e.target.value }))} placeholder="Optional — e.g. ECE-1" />
+              <label className="ad-label">In charge</label>
+              <input className="ad-input" value={labForm.in_charge}
+                onChange={(e) => setLabForm((s) => ({ ...s, in_charge: e.target.value }))} placeholder="Optional" />
+              <label className="ad-label">Room no</label>
+              <input className="ad-input" value={labForm.room_no}
+                onChange={(e) => setLabForm((s) => ({ ...s, room_no: e.target.value }))} placeholder="Optional" />
+              {/* Lab photo — pasted URL, same as the course Image URL field. Removable. */}
+              <label className="ad-label">Image URL</label>
+              <input className="ad-input" value={labForm.image_url}
+                onChange={(e) => setLabForm((s) => ({ ...s, image_url: e.target.value }))}
+                placeholder="https://… or a hosted image link" />
+              {labModalErr && <div className="ad-err" style={{ marginBottom: 12 }}>{labModalErr}</div>}
+              <button className="ad-btn ad-btn-primary" style={{ width: '100%' }}
+                disabled={labSaving || !labForm.lab_name.trim()} onClick={submitLabModal}>
+                {labSaving ? 'Saving…' : labModal.mode === 'new' ? 'Create Lab' : 'Save Changes'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Deactivate confirm — same shape as the Reject modal */}
+      {labConfirm && (
+        <div className="ad-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget && !labBusy) setLabConfirm(null); }}>
+          <div className="ad-modal" role="dialog" aria-modal="true" aria-label="Confirm deactivate lab">
+            <div className="ad-modal-hd">
+              <div className="ad-modal-title">Deactivate Lab</div>
+              <button className="ad-modal-x" onClick={() => !labBusy && setLabConfirm(null)}>×</button>
+            </div>
+            <div className="ad-modal-bd">
+              <div style={{ fontSize: 13.5, fontWeight: 700, marginBottom: 6 }}>
+                Deactivate “{labConfirm.lab_name}”?
+              </div>
+              <div style={{ fontSize: 12.5, color: 'var(--ad-text3)', fontWeight: 600, lineHeight: 1.5, marginBottom: 18 }}>
+                Its purchase history is kept. You can activate it again at any time.
+              </div>
+              <div className="ad-two" style={{ marginTop: 0 }}>
+                <button className="ad-btn ad-btn-outline" style={{ flex: 1 }} disabled={labBusy} onClick={() => setLabConfirm(null)}>Cancel</button>
+                <button className="ad-btn ad-btn-primary" style={{ flex: 1, background: 'linear-gradient(135deg,#ef4444,#dc2626)', boxShadow: 'none' }}
+                  disabled={labBusy} onClick={confirmDeactivate}>
+                  {labBusy ? 'Deactivating…' : 'Deactivate'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ═══ LABS (Stage 4) — REMOVABLE BLOCK (end) ═══ */}
     </div>
   );
 }

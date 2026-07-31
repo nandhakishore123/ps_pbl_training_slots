@@ -49,6 +49,9 @@ import FacultyInventoryApproval from '../pages/Faculty/FacultyInventoryApproval.
 //inventory incharge (role 4)
 import InventoryInchargeDashboard from '../pages/InventoryIncharge/InventoryInchargeDashboard.jsx';
 
+//intern / lab technician (role 5) — removable
+import InternDashboard from '../pages/Intern/InternDashboard.jsx';
+
 
 function useBootstrapAuth() {
     const accessToken = useAuthStore((s) => s.accessToken);
@@ -96,6 +99,11 @@ function HomeRedirect() {
 
     if (roleId === 4) {
         return <Navigate to="/inventory-incharge" replace />;
+    }
+
+    // ── INTERN (role 5) — removable ──
+    if (roleId === 5) {
+        return <Navigate to="/intern" replace />;
     }
 
     return <Navigate to="/auth/login" replace />;
@@ -186,6 +194,9 @@ function AppNavigator() {
 
                 {/* inventory incharge routes (role 4) */}
                 <Route path="/inventory-incharge" element={<RequireAuth><RequireRole allowedRoles={[4]}><InventoryInchargeDashboard/></RequireRole></RequireAuth>} />
+
+                {/* intern / lab technician routes (role 5) — removable */}
+                <Route path="/intern" element={<RequireAuth><RequireRole allowedRoles={[5]}><InternDashboard/></RequireRole></RequireAuth>} />
 
 
                 <Route path="/not-found" element={<FileNotFound/>}/>
