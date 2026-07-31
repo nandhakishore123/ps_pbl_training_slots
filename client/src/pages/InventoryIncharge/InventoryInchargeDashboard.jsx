@@ -12,6 +12,8 @@ import './InventoryInchargeDashboard.css';
 // ===== WELCOME INTRO (removable: delete this line + the state block + the render block) =====
 import WelcomeIntro from '../../components/WelcomeIntro';
 // ===== END WELCOME INTRO =====
+// CONSUMPTION REPORT (removable)
+import ConsumptionReportBar from '../../components/ConsumptionReportBar';
 
 const money = (n) => Number(n ?? 0).toLocaleString();
 
@@ -274,8 +276,17 @@ export default function InventoryInchargeDashboard() {
               <path d="M20 7l-8-4-8 4 8 4 8-4z" /><path d="M4 7v10l8 4 8-4V7" /><path d="M12 11v10" />
             </svg>
           </div>
+          {/* BIT LOGO (removable) — public/bit-logo.png. BASE_URL keeps the path
+              correct under the app's '/slot-matrix/' base (a bare '/bit-logo.png'
+              404s). onError hides it so a missing file can't break the header. */}
+          <img
+            className="ic-bitlogo"
+            src={`${import.meta.env.BASE_URL}bit-logo.png`}
+            alt="BIT"
+            onError={(e) => { e.target.style.display = 'none'; }}
+          />
           <div style={{ minWidth: 0 }}>
-            <div className="ic-title">Inventory Console</div>
+            <div className="ic-title">Inventory Console - Consumables Management</div>
             <div className="ic-sub">Manage stock & review requests</div>
           </div>
         </div>
@@ -355,6 +366,8 @@ export default function InventoryInchargeDashboard() {
 
         {tab === 'buying' && (
           <>
+            {/* CONSUMPTION REPORT (removable) */}
+            <ConsumptionReportBar prefix="ic" />
             <div className="ic-note">
               <span>ⓘ</span> Read-only — buying requests are approved by <strong>Faculty</strong>. You cannot approve or reject them here.
             </div>

@@ -16,6 +16,10 @@
   .ic-brand { display:flex; align-items:center; gap:12px; min-width:0; }
   .ic-logo { width:40px; height:40px; border-radius:11px; background:linear-gradient(135deg,#6c47ff,#4b2fd6);
     display:flex; align-items:center; justify-content:center; flex-shrink:0; box-shadow:0 4px 12px var(--ic-glow); }
+  /* BIT LOGO (removable) — medium, sits between the app icon and the title.
+     A divider keeps the two marks visually separate. */
+  .ic-bitlogo { height:44px; width:auto; max-width:150px; object-fit:contain; flex-shrink:0;
+    padding-left:12px; border-left:1px solid var(--ic-border); }
   .ic-title { font-size:16px; font-weight:900; letter-spacing:0.2px; display:flex; align-items:center; gap:9px; }
   .ic-badge { font-size:9.5px; font-weight:800; letter-spacing:0.6px; text-transform:uppercase; padding:3px 9px;
     border-radius:20px; background:var(--ic-purple-dim); color:var(--ic-purple); border:1px solid rgba(108,71,255,0.3); }
@@ -118,5 +122,6 @@
     .ic-item-col-hide { display:none; }
     .ic-actions { grid-column:1 / -1; justify-content:flex-start; }
     .ic-sub, .ic-uname { display:none; }
+    .ic-bitlogo { height:32px; padding-left:8px; }   /* BIT LOGO (removable) */
     .ic-wrap { padding:16px 14px 40px; }
   }

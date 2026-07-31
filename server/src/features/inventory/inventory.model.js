@@ -826,6 +826,133 @@ export const listAllLabPurchases = async () => {
   return groups;
 };
 
+// ═══════════════════════════════════════════════════════════════════════════
+// CONSUMPTION REPORT (students + interns) — REMOVABLE BLOCK (start)
+// One flat view of what was actually TAKEN in a date range, across both flows.
+//   Students → only APPROVED BUY requests, dated by decided_at (the moment
+//              stock was actually decremented; created_at would credit the
+//              wrong period for anything approved later).
+//   Interns  → every lab_purchases row, dated by created_at (direct buys are
+//              final on creation, so there is no separate decision moment).
+// Quantities are deliberately NOT summed per member: units are mixed (pcs, ml,
+// m…) and adding them would produce a meaningless number. Line items are
+// counted instead.
+// ═══════════════════════════════════════════════════════════════════════════
+export const getConsumptionReport = async ({ from, to }) => {
+  // Inclusive of the whole `to` day — callers pass plain YYYY-MM-DD dates.
+  const fromTs = `${from} 00:00:00`;
+  const toTs = `${to} 23:59:59`;
+
+  // ── STUDENT side: approved buys only, one row per item line ──
+  const [studentRows] = await db.execute(
+    `SELECT s.name AS member_name, s.reg_num AS reg,
+            i.item_name, i.quantity, i.unit,
+            r.request_id AS cart_id, r.decided_at AS date
+     FROM inventory_requests r
+     JOIN students s ON s.student_id = r.student_id
+     JOIN inventory_request_items i ON i.request_id = r.request_id
+     WHERE r.request_type = 'BUY'
+       AND r.status = 'APPROVED'
+       AND r.decided_at BETWEEN ? AND ?
+     ORDER BY r.decided_at DESC`,
+    [fromTs, toTs]
+  );
+
+  // ── INTERN side: every lab purchase row in range ──
+  const [internRows] = await db.execute(
+    `SELECT lp.buyer_name AS member_name, lp.buyer_user_id, l.lab_name,
+            lp.item_name, lp.quantity, lp.unit,
+            lp.lab_id, lp.created_at AS date
+     FROM lab_purchases lp
+     LEFT JOIN labs l ON l.lab_id = lp.lab_id
+     WHERE lp.created_at BETWEEN ? AND ?
+     ORDER BY lp.created_at DESC`,
+    [fromTs, toTs]
+  );
+
+  const details = [];
+  for (const r of studentRows ?? []) {
+    details.push({
+      member_name: r.member_name ?? 'Unknown',
+      member_type: 'STUDENT',
+      reg: r.reg ?? null,
+      lab_name: null,
+      item_name: r.item_name,
+      quantity: r.quantity,
+      unit: r.unit ?? null,
+      date: r.date,
+      cart_key: `S-${r.cart_id}`,          // one approved request = one cart
+    });
+  }
+  for (const r of internRows ?? []) {
+    // lab_purchases has no cart id — a cart is (buyer, lab, timestamp), the
+    // same grouping listAllLabPurchases uses.
+    const stamp = r.date instanceof Date ? r.date.getTime() : String(r.date);
+    details.push({
+      member_name: r.member_name ?? 'Unknown',
+      member_type: 'INTERN',
+      reg: null,
+      lab_name: r.lab_name ?? null,
+      item_name: r.item_name,
+      quantity: r.quantity,
+      unit: r.unit ?? null,
+      date: r.date,
+      cart_key: `I-${r.buyer_user_id ?? 'x'}-${r.lab_id ?? 'x'}-${stamp}`,
+    });
+  }
+
+  details.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  // ── Per-member summary ──
+  const byMember = new Map();
+  for (const d of details) {
+    const key = `${d.member_type}|${d.member_name}`;
+    let m = byMember.get(key);
+    if (!m) {
+      m = {
+        member_name: d.member_name,
+        member_type: d.member_type,
+        reg: d.reg ?? null,
+        total_line_items: 0,
+        total_purchases: 0,
+        items: [],              // distinct item names, for the report detail
+        _carts: new Set(),
+        _items: new Set(),
+      };
+      byMember.set(key, m);
+    }
+    m.total_line_items += 1;
+    m._carts.add(d.cart_key);
+    m._items.add(d.item_name);
+    if (!m.reg && d.reg) m.reg = d.reg;
+  }
+
+  const summary = Array.from(byMember.values())
+    .map((m) => {
+      m.total_purchases = m._carts.size;
+      m.items = Array.from(m._items);
+      delete m._carts;
+      delete m._items;
+      return m;
+    })
+    .sort((a, b) => b.total_line_items - a.total_line_items || a.member_name.localeCompare(b.member_name));
+
+  return {
+    from,
+    to,
+    generated_at: new Date(),
+    summary,
+    details,
+    totals: {
+      members: summary.length,
+      student_members: summary.filter((m) => m.member_type === 'STUDENT').length,
+      intern_members: summary.filter((m) => m.member_type === 'INTERN').length,
+      total_line_items: details.length,
+    },
+  };
+};
+// ═══ CONSUMPTION REPORT — REMOVABLE BLOCK (end) ═══
+
 // ── Intern direct purchase (role 5) ──────────────────────────
 // ONE transaction for the whole cart. Per item: lock the stock row FOR UPDATE,
 // take min(requested, available) — a partial take is a normal outcome, not an
