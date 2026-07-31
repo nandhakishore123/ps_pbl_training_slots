@@ -139,6 +139,21 @@ export default function Dashboard() {
               desc="Create, edit & deactivate student accounts"
               onClick={() => navigate('students')}
             />
+            {/* USER MANAGEMENT (non-student roles) — removable */}
+            <NavBox
+              iconColor="purple"
+              icon={
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                  <circle cx="9" cy="7" r="4" />
+                  <path d="M19 8v6" />
+                  <path d="M22 11h-6" />
+                </svg>
+              }
+              label="User Management"
+              desc="Add & manage faculty, admin, incharge & intern accounts"
+              onClick={() => navigate('/user-management')}
+            />
           </div>
         </div>
 

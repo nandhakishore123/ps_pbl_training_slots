@@ -849,8 +849,14 @@ export const purchaseForLab = async ({ labId, items, buyerUserId, buyerName }) =
     if (Number(lab.is_active) !== 1) { const e = new Error('Lab is inactive'); e.status = 400; throw e; }
 
     // The JWT `name` is Google-supplied and can be absent for non-student roles;
-    // fall back to the login email so the log never shows an anonymous buyer.
+    // fall back to the admin-entered profile name, then to the login email, so
+    // the log never shows an anonymous buyer.
     let resolvedBuyer = buyerName ? String(buyerName).trim().slice(0, 150) : '';
+    if (!resolvedBuyer && buyerUserId != null) {
+      // USER MANAGEMENT — removable: name set by an admin in Manage Users.
+      const [pRows] = await conn.execute(`SELECT name FROM user_profiles WHERE user_id = ? LIMIT 1`, [Number(buyerUserId)]);
+      resolvedBuyer = pRows?.[0]?.name ? String(pRows[0].name).trim().slice(0, 150) : '';
+    }
     if (!resolvedBuyer && buyerUserId != null) {
       const [uRows] = await conn.execute(`SELECT email FROM users WHERE user_id = ? LIMIT 1`, [Number(buyerUserId)]);
       resolvedBuyer = uRows?.[0]?.email ? String(uRows[0].email).slice(0, 150) : '';

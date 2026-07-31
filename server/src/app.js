@@ -15,6 +15,8 @@ import announcementsRoutes from './features/announcements/announcements.routes.j
 import feedbackRoutes from './features/feedback/feedback.routes.js';
 import surveyRoutes from './features/survey/survey.routes.js';
 import inventoryRoutes from './features/inventory/inventory.routes.js';
+// USER MANAGEMENT (non-student roles) — removable
+import manageUsersRoutes from './features/manageusers/manageusers.routes.js';
 
 const app = express();
 
@@ -70,6 +72,10 @@ app.use('/courses', express.static(coursesPath));
 app.use('/api/auth', authRoutes);
 app.use('/api/points', pointsRoutes);
 app.use('/api/training', trainingRoutes);
+// USER MANAGEMENT (non-student roles) — removable. Mounted BEFORE adminRoutes so
+// /manage-users resolves here under its stricter role-3 gate; every other
+// /api/admin path falls through to adminRoutes unchanged.
+app.use('/api/admin', manageUsersRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/faculty', facultyRoutes);
 app.use('/api/superadmin', superAdminRoutes);
