@@ -571,6 +571,33 @@ export const testConnection = async () => {
         }
         // ═══ ROLE WHITELIST + INTERN LAB FEATURE — REMOVABLE BLOCK (end) ═══
 
+        // ═══════════════════════════════════════════════════════════════════
+        // USER MANAGEMENT (non-student roles 2,3,4,5) — REMOVABLE BLOCK (start)
+        // Names for non-student users. `users` has no name column, and only
+        // students/faculties carry one (in their own profile tables), so roles
+        // 3/4/5 had nowhere to store a display name. One row per user_id.
+        // TiDB-safe: no FKs; the UNIQUE key makes the write an upsert target.
+        // To remove: delete this block and DROP TABLE user_profiles.
+        // ═══════════════════════════════════════════════════════════════════
+        try {
+            console.log(chalk.yellow('  Checking user_profiles table...'));
+            await connection.execute(`
+                CREATE TABLE IF NOT EXISTS user_profiles (
+                  profile_id bigint NOT NULL AUTO_INCREMENT,
+                  user_id bigint NOT NULL,
+                  name varchar(150) NOT NULL,
+                  created_at timestamp DEFAULT CURRENT_TIMESTAMP,
+                  updated_at timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                  PRIMARY KEY (profile_id),
+                  UNIQUE KEY uq_user_profiles_user (user_id)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+            `);
+            console.log(chalk.green('  ✓ user_profiles table ready.'));
+        } catch (migErr) {
+            console.error(chalk.red('  ✗ Migration/Check for user_profiles failed:'), migErr.message);
+        }
+        // ═══ USER MANAGEMENT — REMOVABLE BLOCK (end) ═══
+
         connection.release();
         return true;
     } catch (error) {

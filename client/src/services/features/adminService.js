@@ -435,5 +435,31 @@ export const adminService = {
 
   deleteSurvey(id) {
     return api.delete(`/survey/${id}`);
-  }
+  },
+
+  // ═══ USER MANAGEMENT (non-student roles 2,3,4,5) — REMOVABLE BLOCK (start) ═══
+  // Admin-only. Students (role 1) are handled by the student endpoints above.
+  getManageUsers() {
+    return api.get('/admin/manage-users');
+  },
+
+  // payload: { email, name, role_id }  — role_id must be 2, 3, 4 or 5
+  createManageUser(payload) {
+    return api.post('/admin/manage-users', payload);
+  },
+
+  // The backend also blocks an admin changing their own role.
+  switchUserRole(userId, roleId) {
+    return api.put(`/admin/manage-users/${userId}/role`, { role_id: roleId });
+  },
+
+  // The backend also blocks an admin deactivating themselves.
+  setUserActive(userId, isActive) {
+    return api.put(`/admin/manage-users/${userId}/active`, { is_active: isActive ? 1 : 0 });
+  },
+
+  setUserName(userId, name) {
+    return api.put(`/admin/manage-users/${userId}/name`, { name });
+  },
+  // ═══ USER MANAGEMENT — REMOVABLE BLOCK (end) ═══
 };
