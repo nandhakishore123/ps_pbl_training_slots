@@ -779,6 +779,53 @@ export const listLabPurchases = async (labId, limit) => {
   return rows ?? [];
 };
 
+// Cross-lab purchase feed for the incharge/admin read-only view.
+// lab_purchases stores ONE ROW PER ITEM with no purchase-group id, so a cart of
+// three items is three rows sharing only (buyer_user_id, lab_id, created_at).
+// Group on that triple in JS — same stitch-after-query approach as
+// listAllBuyingRequests — so one cart renders as one card.
+// LEFT JOIN labs so history survives if a lab row is ever hard-deleted.
+export const listAllLabPurchases = async () => {
+  const [rows] = await db.execute(
+    `SELECT lp.purchase_id, lp.lab_id, l.lab_name, lp.item_id, lp.item_name,
+            lp.quantity, lp.unit, lp.buyer_user_id, lp.buyer_name, lp.created_at
+     FROM lab_purchases lp
+     LEFT JOIN labs l ON l.lab_id = lp.lab_id
+     ORDER BY lp.created_at DESC, lp.purchase_id DESC`
+  );
+
+  const groups = [];
+  const byKey = new Map();
+  for (const r of rows ?? []) {
+    // created_at is a Date from mysql2 — normalise to a stable scalar for the key.
+    const stamp = r.created_at instanceof Date ? r.created_at.getTime() : String(r.created_at);
+    const key = `${r.buyer_user_id ?? 'x'}|${r.lab_id ?? 'x'}|${stamp}`;
+    let group = byKey.get(key);
+    if (!group) {
+      group = {
+        purchase_key: key,
+        purchase_id: r.purchase_id,          // first (newest) row id — stable React key
+        lab_id: r.lab_id,
+        lab_name: r.lab_name ?? null,
+        buyer_user_id: r.buyer_user_id,
+        buyer_name: r.buyer_name ?? null,
+        created_at: r.created_at,
+        items: [],
+      };
+      byKey.set(key, group);
+      groups.push(group);                     // preserves the SQL ordering
+    }
+    group.items.push({
+      purchase_id: r.purchase_id,
+      item_id: r.item_id,
+      item_name: r.item_name,
+      quantity: r.quantity,
+      unit: r.unit,
+    });
+  }
+  return groups;
+};
+
 // ── Intern direct purchase (role 5) ──────────────────────────
 // ONE transaction for the whole cart. Per item: lock the stock row FOR UPDATE,
 // take min(requested, available) — a partial take is a normal outcome, not an

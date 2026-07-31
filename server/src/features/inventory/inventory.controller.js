@@ -367,6 +367,18 @@ export const getLabPurchases = async (req, res) => {
   }
 };
 
+// Read-only cross-lab purchase feed (incharge/admin view), grouped per cart.
+export const getLabPurchasesFeed = async (req, res) => {
+  try {
+    const data = await service.listLabPurchasesReadOnly();
+    return successResponse(res, 'Lab purchases fetched', { items: data });
+  } catch (error) {
+    if (error?.status) return errorResponse(res, error.message, error.status);
+    console.error('Error in getLabPurchasesFeed:', error);
+    return internalServerErrorResponse(res, error.message || 'Failed to fetch lab purchases');
+  }
+};
+
 // ── Intern direct purchase ───────────────────────────────────
 export const createLabPurchase = async (req, res) => {
   try {

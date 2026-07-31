@@ -43,7 +43,7 @@ export default function InventoryInchargeDashboard() {
   // ===== END WELCOME INTRO =====
 
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('pt-dark') === '1');
-  const [tab, setTab] = useState('stock'); // 'stock' | 'buying' | 'returns'
+  const [tab, setTab] = useState('stock'); // 'stock' | 'buying' | 'returns' | 'labpurchases'
 
   // Stock
   const [stock, setStock] = useState([]);
@@ -57,6 +57,12 @@ export default function InventoryInchargeDashboard() {
   const [buying, setBuying] = useState([]);
   const [buyingLoading, setBuyingLoading] = useState(false);
   const [buyingLoaded, setBuyingLoaded] = useState(false);
+
+  // ── LAB PURCHASES (intern role 5) — read-only view, REMOVABLE ──
+  const [labPurchases, setLabPurchases] = useState([]);
+  const [labPurchasesLoading, setLabPurchasesLoading] = useState(false);
+  const [labPurchasesLoaded, setLabPurchasesLoaded] = useState(false);
+  // ── END LAB PURCHASES ──
 
   // Return Approvals (incharge's exclusive area)
   const [returns, setReturns] = useState([]);
@@ -155,10 +161,27 @@ export default function InventoryInchargeDashboard() {
     }
   }, []);
 
+  // ── LAB PURCHASES (intern role 5) — read-only view, REMOVABLE ──
+  const loadLabPurchases = useCallback(async () => {
+    setLabPurchasesLoading(true);
+    try {
+      const res = await inventoryService.getLabPurchasesFeed();
+      setLabPurchases(res?.data?.items || []);
+      setLabPurchasesLoaded(true);
+    } catch {
+      setLabPurchases([]);
+      setLabPurchasesLoaded(true);
+    } finally {
+      setLabPurchasesLoading(false);
+    }
+  }, []);
+  // ── END LAB PURCHASES ──
+
   // Lazy-load buying / returns lists when their tab is first opened
   useEffect(() => {
     if (tab === 'buying' && !buyingLoaded) loadBuying();
     if (tab === 'returns' && !returnsLoaded) loadReturns();
+    if (tab === 'labpurchases' && !labPurchasesLoaded) loadLabPurchases();  // removable
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
 
@@ -277,6 +300,8 @@ export default function InventoryInchargeDashboard() {
           <button className={`ic-tab${tab === 'stock' ? ' active' : ''}`} onClick={() => setTab('stock')}>Stock Management</button>
           <button className={`ic-tab${tab === 'buying' ? ' active' : ''}`} onClick={() => setTab('buying')}>Buying Requests</button>
           <button className={`ic-tab${tab === 'returns' ? ' active' : ''}`} onClick={() => setTab('returns')}>Return Approvals</button>
+          {/* LAB PURCHASES (intern role 5) — removable */}
+          <button className={`ic-tab${tab === 'labpurchases' ? ' active' : ''}`} onClick={() => setTab('labpurchases')}>Lab Purchases</button>
         </div>
 
         {tab === 'stock' && (
@@ -414,6 +439,39 @@ export default function InventoryInchargeDashboard() {
             )}
           </>
         )}
+
+        {/* ══ LAB PURCHASES (intern role 5) — read-only, REMOVABLE (start) ══ */}
+        {tab === 'labpurchases' && (
+          <>
+            <div className="ic-note">
+              <span>ⓘ</span> Read-only — intern lab purchases are direct and already final. This is a view only.
+            </div>
+            {labPurchasesLoading ? (
+              <div className="ic-spinner" />
+            ) : labPurchases.length === 0 ? (
+              <div className="ic-empty">No lab purchases yet.</div>
+            ) : (
+              labPurchases.map((p) => (
+                <div className="ic-req" key={p.purchase_key || p.purchase_id}>
+                  <div className="ic-req-top">
+                    <div>
+                      <div className="ic-req-name">{p.buyer_name || 'Intern'}
+                        <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--ic-text3)', marginLeft: 8 }}>{p.lab_name || 'Unknown lab'}</span>
+                      </div>
+                      <div className="ic-req-meta">
+                        {fmtDateTime(p.created_at)} · <span className="ic-pill type" style={{ padding: '1px 8px' }}>Direct purchase</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="ic-req-items">
+                    {(p.items || []).map((it) => `${it.item_name} (${money(it.quantity)} ${it.unit || ''})`).join(' · ') || '—'}
+                  </div>
+                </div>
+              ))
+            )}
+          </>
+        )}
+        {/* ══ LAB PURCHASES — REMOVABLE (end) ══ */}
       </div>
 
       {/* Return reject modal */}

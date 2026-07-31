@@ -34,6 +34,7 @@ import {
   updateLab,
   deleteLab,
   getLabPurchases,
+  getLabPurchasesFeed,
   createLabPurchase,
 } from './inventory.controller.js';
 
@@ -96,6 +97,10 @@ router.delete('/labs/:labId', authMiddleware, requireRole(3), deleteLab);       
 
 // Per-lab purchase log — ?limit=N (default 5) or ?limit=all for the full log.
 router.get('/labs/:labId/purchases', authMiddleware, requireRole(3, 4, 5), getLabPurchases);
+
+// Cross-lab read-only feed, grouped per cart (incharge/admin view). Distinct
+// path so it cannot collide with /labs/:labId/purchases. Students excluded.
+router.get('/lab-purchases-feed', authMiddleware, requireRole(3, 4, 5), getLabPurchasesFeed);
 
 // Intern direct buy — no request, no approval; decrements the shared pool.
 // Role 3 is included so an admin can exercise it without an intern account.

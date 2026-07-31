@@ -152,5 +152,10 @@ export const inventoryService = {
   createLabPurchase(payload) {
     return api.post('/inventory/lab-purchase', payload);
   },
+
+  // Read-only cross-lab feed for the incharge/admin, grouped one card per cart.
+  getLabPurchasesFeed() {
+    return api.get('/inventory/lab-purchases-feed');
+  },
   // ═══ LABS (Stage 4) — REMOVABLE BLOCK (end) ═══
 };
