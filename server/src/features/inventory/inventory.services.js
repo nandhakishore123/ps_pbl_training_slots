@@ -482,6 +482,30 @@ export const listLabPurchases = async (labId, limitParam) => {
 // intern purchases are direct and already final). Mirrors listBuyingReadOnly.
 export const listLabPurchasesReadOnly = async () => model.listAllLabPurchases();
 
+// ═══ CONSUMPTION REPORT — REMOVABLE BLOCK (start) ═══
+// Accepts plain YYYY-MM-DD strings; the model widens `to` to end-of-day.
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+const parseReportDate = (value, label) => {
+  const clean = String(value ?? '').trim();
+  if (!clean) throw badRequest(`${label} is required (YYYY-MM-DD)`);
+  if (!DATE_RE.test(clean)) throw badRequest(`${label} must be a date in YYYY-MM-DD format`);
+  const d = new Date(`${clean}T00:00:00`);
+  if (Number.isNaN(d.getTime())) throw badRequest(`${label} is not a valid date`);
+  return clean;
+};
+
+export const getConsumptionReport = async ({ from, to } = {}) => {
+  const cleanFrom = parseReportDate(from, 'from');
+  const cleanTo = parseReportDate(to, 'to');
+  if (cleanTo < cleanFrom) throw badRequest('"to" date cannot be earlier than "from" date');
+
+  // An empty range is a normal result, not an error — the model returns
+  // empty arrays and the caller renders an empty report.
+  return model.getConsumptionReport({ from: cleanFrom, to: cleanTo });
+};
+// ═══ CONSUMPTION REPORT — REMOVABLE BLOCK (end) ═══
+
 // ── Intern direct purchase (role 5) ──────────────────────────
 // Validates the cart, then hands the whole thing to one model transaction.
 // Partial fulfilment is a SUCCESS, not an error: the response tells the intern

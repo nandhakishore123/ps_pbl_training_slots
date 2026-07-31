@@ -7,6 +7,8 @@ import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { useStore } from '../../store/useStore';
 import { inventoryService } from '../../services/features/inventoryService';
+// CONSUMPTION REPORT (removable)
+import ConsumptionReportBar from '../../components/ConsumptionReportBar';
 
 const CSS = `
   .ad-root {
@@ -549,12 +551,17 @@ export default function AdminInventory() {
 
         {/* BUYING */}
         {tab === 'buying' && (
-          buyingLoading ? <div className="ad-spinner" /> : buying.length === 0 ? <div className="ad-empty">No buying requests.</div> : (
-            <>
-              <div className="ad-count">{buying.length} buying request{buying.length !== 1 ? 's' : ''} (all purposes & statuses)</div>
-              {buying.map(renderBuying)}
-            </>
-          )
+          <>
+            {/* CONSUMPTION REPORT (removable) — outside the empty-list branch so
+                the report stays available even with no buying requests. */}
+            <ConsumptionReportBar prefix="ad" onNotify={(msg, isErr) => showToast(msg, isErr)} />
+            {buyingLoading ? <div className="ad-spinner" /> : buying.length === 0 ? <div className="ad-empty">No buying requests.</div> : (
+              <>
+                <div className="ad-count">{buying.length} buying request{buying.length !== 1 ? 's' : ''} (all purposes & statuses)</div>
+                {buying.map(renderBuying)}
+              </>
+            )}
+          </>
         )}
 
         {/* RETURNS */}

@@ -157,5 +157,11 @@ export const inventoryService = {
   getLabPurchasesFeed() {
     return api.get('/inventory/lab-purchases-feed');
   },
+
+  // Consumption report (admin + incharge): approved student buys + intern lab
+  // purchases in a date range. Dates are plain 'YYYY-MM-DD' strings.
+  getConsumptionReport(from, to) {
+    return api.get('/inventory/reports/consumption', { params: { from, to } });
+  },
   // ═══ LABS (Stage 4) — REMOVABLE BLOCK (end) ═══
 };
