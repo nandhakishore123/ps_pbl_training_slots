@@ -309,7 +309,7 @@ export default function InventoryInchargeDashboard() {
         {/* Tabs */}
         <div className="ic-tabs">
           <button className={`ic-tab${tab === 'stock' ? ' active' : ''}`} onClick={() => setTab('stock')}>Stock Management</button>
-          <button className={`ic-tab${tab === 'buying' ? ' active' : ''}`} onClick={() => setTab('buying')}>Buying Requests</button>
+          <button className={`ic-tab${tab === 'buying' ? ' active' : ''}`} onClick={() => setTab('buying')}>Consumables Requests</button>
           <button className={`ic-tab${tab === 'returns' ? ' active' : ''}`} onClick={() => setTab('returns')}>Return Approvals</button>
           {/* LAB PURCHASES (intern role 5) — removable */}
           <button className={`ic-tab${tab === 'labpurchases' ? ' active' : ''}`} onClick={() => setTab('labpurchases')}>Lab Purchases</button>
