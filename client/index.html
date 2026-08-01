@@ -2,8 +2,16 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/slot_matrix_logo.png" />
+    <link rel="icon" type="image/png" href="/slot_matrix_logo.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- PWA: the manifest link + SW registration are injected by vite-plugin-pwa
+         (already base-aware); these are the bits it does not emit. -->
+    <meta name="theme-color" content="#6c47ff" />
+    <meta name="description" content="BIT Consumables Inventory Management" />
+    <link rel="apple-touch-icon" href="/slot-matrix/pwa-192x192.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="BIT Inventory" />
     <!-- Google Fonts (moved here from the StudentDashboard injected <style> @import
          so fonts load before first paint). Preconnect + link is faster than @import. -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
