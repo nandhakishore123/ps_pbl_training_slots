@@ -405,3 +405,29 @@ export const createLabPurchase = async (req, res) => {
   }
 };
 // ═══ LAB / INTERN PURCHASE (Stage 3) — REMOVABLE BLOCK (end) ═══
+
+// ═══ INTERN LAB RETURNS — REMOVABLE BLOCK (start) ═══
+// Both handlers take the user from req.user (same as createLabPurchase) — the
+// body may only say WHICH purchase and HOW MUCH, never WHO.
+export const getMyReturnablePurchases = async (req, res) => {
+  try {
+    const data = await service.getMyReturnablePurchases(req.user?.user_id);
+    return successResponse(res, 'Returnable purchases fetched', { items: data });
+  } catch (error) {
+    if (error?.status) return errorResponse(res, error.message, error.status);
+    console.error('Error in getMyReturnablePurchases:', error);
+    return internalServerErrorResponse(res, error.message || 'Failed to fetch returnable purchases');
+  }
+};
+
+export const createLabReturn = async (req, res) => {
+  try {
+    const data = await service.submitLabReturn(req.user?.user_id, req.user?.name, req.body);
+    return createdResponse(res, 'Lab return recorded', data);
+  } catch (error) {
+    if (error?.status) return errorResponse(res, error.message, error.status);
+    console.error('Error in createLabReturn:', error);
+    return internalServerErrorResponse(res, error.message || 'Failed to record lab return');
+  }
+};
+// ═══ INTERN LAB RETURNS — REMOVABLE BLOCK (end) ═══

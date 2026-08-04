@@ -449,14 +449,15 @@ export const testConnection = async () => {
         // ROLE WHITELIST + INTERN LAB FEATURE — REMOVABLE BLOCK (start)
         // Adds: role 5 'INTERN' (Intern / Lab Technician), an email→role_id
         // whitelist ("whitelist always wins" at login), a `labs` master table,
-        // and a `lab_purchases` log for intern direct-buy.
+        // a `lab_purchases` log for intern direct-buy, and a `lab_returns` log
+        // for intern direct-return (stock added back against a past purchase).
         // Order is strict: fk_users_role is enforced live, so the enum must be
         // widened BEFORE role 5 is seeded, and role 5 must exist BEFORE any
         // user row may reference it.
         // TiDB-safe: no FKs on the new tables (role validation is
         // application-level), equality-keyed, explicit KEY lines.
         // To remove the feature: delete this whole block, then manually
-        // DROP TABLE role_whitelist, labs, lab_purchases and DELETE the role 5
+        // DROP TABLE role_whitelist, labs, lab_purchases, lab_returns and DELETE the role 5
         // row (the enum widening is harmless to leave in place).
         // ═══════════════════════════════════════════════════════════════════
         try {
@@ -564,6 +565,39 @@ export const testConnection = async () => {
                 await connection.execute('ALTER TABLE labs ADD COLUMN image_url varchar(512) DEFAULT NULL');
                 console.log(chalk.green('  Added labs.image_url.'));
             }
+
+            // ── INTERN LAB RETURNS — REMOVABLE SUB-BLOCK (start) ────────────
+            // Intern direct-return log. One row per return event, always against
+            // ONE lab_purchases row, so a purchase can be returned in several
+            // instalments and each is auditable on its own. lab_id / item_name /
+            // unit are snapshots copied from the purchase — the same denormalised
+            // style as lab_purchases, so history survives a catalog rename.
+            // purchase_id is an FK by convention only (TiDB-safe: no FKs); the
+            // "cannot return more than purchased" cap is enforced in the model's
+            // transaction (SUM over this table vs the locked purchase row), NOT
+            // by a constraint.
+            // To remove: DROP TABLE lab_returns and revert the lab_returns
+            // additions in inventory.model.js (incl. the consumption-report net).
+            await connection.execute(`
+                CREATE TABLE IF NOT EXISTS lab_returns (
+                  return_id bigint NOT NULL AUTO_INCREMENT,
+                  purchase_id bigint NOT NULL,
+                  lab_id bigint NOT NULL,
+                  item_id bigint NOT NULL,
+                  item_name varchar(255) DEFAULT NULL,
+                  quantity decimal(12,2) NOT NULL,
+                  unit varchar(30) DEFAULT NULL,
+                  returner_user_id bigint DEFAULT NULL,
+                  returner_name varchar(150) DEFAULT NULL,
+                  created_at timestamp DEFAULT CURRENT_TIMESTAMP,
+                  PRIMARY KEY (return_id),
+                  KEY idx_labret_purchase (purchase_id),
+                  KEY idx_labret_item (item_id),
+                  KEY idx_labret_returner (returner_user_id)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+            `);
+            console.log(chalk.green('  ✓ lab_returns table ready.'));
+            // ── INTERN LAB RETURNS — REMOVABLE SUB-BLOCK (end) ──────────────
 
             console.log(chalk.green('  ✓ role whitelist / lab schema is ready.'));
         } catch (migErr) {

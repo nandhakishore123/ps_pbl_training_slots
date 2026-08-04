@@ -164,4 +164,19 @@ export const inventoryService = {
     return api.get('/inventory/reports/consumption', { params: { from, to } });
   },
   // ═══ LABS (Stage 4) — REMOVABLE BLOCK (end) ═══
+
+  // ═══ INTERN LAB RETURNS — REMOVABLE BLOCK (start) ═══
+  // The intern's OWN past purchases that still have something left to return.
+  // Scoped server-side by the JWT — there is no user parameter by design.
+  getMyReturnablePurchases() {
+    return api.get('/inventory/my-returnable-purchases');
+  },
+
+  // Direct return against ONE past purchase — no request, no approval; adds
+  // stock back. The server caps this at (purchased − already returned) and
+  // rejects a purchase the caller does not own.
+  submitLabReturn(purchase_id, quantity) {
+    return api.post('/inventory/lab-return', { purchase_id, quantity });
+  },
+  // ═══ INTERN LAB RETURNS — REMOVABLE BLOCK (end) ═══
 };

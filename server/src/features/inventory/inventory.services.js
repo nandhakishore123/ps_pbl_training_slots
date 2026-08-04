@@ -533,3 +533,31 @@ export const createLabPurchase = async (userId, userName, { lab_id, items } = {}
   });
 };
 // ═══ LAB / INTERN PURCHASE (Stage 3) — REMOVABLE BLOCK (end) ═══
+
+// ═══ INTERN LAB RETURNS — REMOVABLE BLOCK (start) ═══
+// An intern returns some/all of one of their OWN past lab purchases. `userId`
+// always comes from the JWT in the controller, never from the body — it is both
+// the list filter and the ownership check.
+export const getMyReturnablePurchases = async (userId) => {
+  if (!userId) throw badRequest('Missing user');
+  return model.listMyReturnablePurchases(userId);
+};
+
+// Shape validation only. The real cap (quantity <= purchased − already returned)
+// and the ownership check are enforced inside the model transaction, where the
+// purchase row is locked — checking them here too would just be a racy preview.
+export const submitLabReturn = async (userId, userName, { purchase_id, quantity } = {}) => {
+  const purchaseId = Number(purchase_id);
+  if (!purchaseId || Number.isNaN(purchaseId)) throw badRequest('purchase_id is required');
+
+  const qty = Number(quantity);
+  if (!(qty > 0)) throw badRequest('Return quantity must be greater than 0');
+
+  return model.returnLabPurchase({
+    purchase_id: purchaseId,
+    quantity: qty,
+    returnerUserId: userId,
+    returnerName: userName,
+  });
+};
+// ═══ INTERN LAB RETURNS — REMOVABLE BLOCK (end) ═══

@@ -858,10 +858,19 @@ export const getConsumptionReport = async ({ from, to }) => {
     [fromTs, toTs]
   );
 
-  // ── INTERN side: every lab purchase row in range ──
+  // ── INTERN side: every lab purchase row in range, NET of returns ──
+  // INTERN LAB RETURNS (removable): a purchase that was later returned was not
+  // consumed, so `quantity` alone overstates it. The correlated SUM subtracts
+  // EVERY return booked against that purchase, regardless of when the return
+  // happened — the report answers "of what was bought in this range, how much
+  // was actually kept", and a return dated after `to` still means the item came
+  // back. Returns are never added as rows of their own, so nothing is
+  // double-counted. Revert this subquery if lab_returns is dropped.
   const [internRows] = await db.execute(
     `SELECT lp.buyer_name AS member_name, lp.buyer_user_id, l.lab_name,
             lp.item_name, lp.quantity, lp.unit,
+            COALESCE((SELECT SUM(lr.quantity) FROM lab_returns lr
+                      WHERE lr.purchase_id = lp.purchase_id), 0) AS returned_qty,
             lp.lab_id, lp.created_at AS date
      FROM lab_purchases lp
      LEFT JOIN labs l ON l.lab_id = lp.lab_id
@@ -885,6 +894,12 @@ export const getConsumptionReport = async ({ from, to }) => {
     });
   }
   for (const r of internRows ?? []) {
+    // INTERN LAB RETURNS (removable): net consumed = bought − returned. A fully
+    // returned purchase consumed nothing, so it is dropped rather than listed as
+    // a 0-quantity line — otherwise it would still inflate total_line_items and
+    // the per-member counts below.
+    const netQty = Number((Number(r.quantity) - Number(r.returned_qty ?? 0)).toFixed(2));
+    if (!(netQty > 0)) continue;
     // lab_purchases has no cart id — a cart is (buyer, lab, timestamp), the
     // same grouping listAllLabPurchases uses.
     const stamp = r.date instanceof Date ? r.date.getTime() : String(r.date);
@@ -894,7 +909,7 @@ export const getConsumptionReport = async ({ from, to }) => {
       reg: null,
       lab_name: r.lab_name ?? null,
       item_name: r.item_name,
-      quantity: r.quantity,
+      quantity: netQty,
       unit: r.unit ?? null,
       date: r.date,
       cart_key: `I-${r.buyer_user_id ?? 'x'}-${r.lab_id ?? 'x'}-${stamp}`,
@@ -1054,3 +1069,145 @@ export const purchaseForLab = async ({ labId, items, buyerUserId, buyerName }) =
   }
 };
 // ═══ LAB / INTERN PURCHASE (Stage 3) — REMOVABLE BLOCK (end) ═══
+
+// ═══ INTERN LAB RETURNS — REMOVABLE BLOCK (start) ═══════════════════════════
+// An intern returns some/all of ONE of their OWN past lab purchases. Direct (no
+// approval, mirroring the direct buy), per-lab (the lab is DERIVED from the
+// purchase, never chosen by the caller), and capped at
+// purchased − already-returned so the pool can never be over-credited.
+// To remove: delete this block, the lab_returns net in getConsumptionReport,
+// the service/controller/route entries, then DROP TABLE lab_returns.
+
+// This intern's OWN purchases that still have something left to return.
+// remaining_returnable = quantity − SUM(returns against that purchase).
+// Owner filtering is done in SQL (buyer_user_id = ?) — the caller passes the id
+// from the JWT, never from the request body. Rows with nothing left are dropped
+// by the outer WHERE so the Returns list only ever shows actionable purchases.
+// The correlated SUM sits in a derived table so the computed column can be
+// filtered without a HAVING-without-GROUP-BY.
+export const listMyReturnablePurchases = async (userId) => {
+  const [rows] = await db.execute(
+    `SELECT purchase_id, lab_id, lab_name, item_id, item_name, unit,
+            purchased_qty, already_returned,
+            (purchased_qty - already_returned) AS remaining_returnable,
+            created_at
+     FROM (
+       SELECT lp.purchase_id, lp.lab_id, l.lab_name, lp.item_id, lp.item_name, lp.unit,
+              lp.quantity AS purchased_qty,
+              COALESCE((SELECT SUM(lr.quantity) FROM lab_returns lr
+                        WHERE lr.purchase_id = lp.purchase_id), 0) AS already_returned,
+              lp.created_at
+       FROM lab_purchases lp
+       LEFT JOIN labs l ON l.lab_id = lp.lab_id
+       WHERE lp.buyer_user_id = ?
+     ) t
+     WHERE purchased_qty - already_returned > 0
+     ORDER BY created_at DESC, purchase_id DESC`,
+    [Number(userId)]
+  );
+  // decimal(12,2) arrives as a string from mysql2 — normalise the three numbers
+  // the caller does arithmetic/comparisons on.
+  return (rows ?? []).map((r) => ({
+    ...r,
+    purchased_qty: Number(r.purchased_qty),
+    already_returned: Number(r.already_returned),
+    remaining_returnable: Number(r.remaining_returnable),
+  }));
+};
+
+// Record ONE return against ONE purchase, in a single transaction.
+// The purchase row is locked FOR UPDATE (same idiom as purchaseForLab) BEFORE
+// the already-returned SUM is read, so two concurrent returns on the same
+// purchase serialise on that lock and cannot both pass the cap check.
+// Stock is added back with the relative-increment idiom from approveReturnRequest.
+export const returnLabPurchase = async ({ purchase_id, quantity, returnerUserId, returnerName }) => {
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    const [prows] = await conn.execute(
+      `SELECT purchase_id, lab_id, item_id, item_name, quantity, unit, buyer_user_id
+       FROM lab_purchases WHERE purchase_id = ? LIMIT 1 FOR UPDATE`,
+      [Number(purchase_id)]
+    );
+    const purchase = prows?.[0];
+    if (!purchase) { const e = new Error('Purchase not found'); e.status = 404; throw e; }
+
+    // OWNERSHIP — an intern may only return against their own purchase. Checked
+    // against the locked row, never against anything the client sent.
+    if (returnerUserId == null || Number(purchase.buyer_user_id) !== Number(returnerUserId)) {
+      const e = new Error('You can only return items from your own purchases');
+      e.status = 403;
+      throw e;
+    }
+
+    const [srows] = await conn.execute(
+      `SELECT COALESCE(SUM(quantity), 0) AS returned FROM lab_returns WHERE purchase_id = ?`,
+      [Number(purchase_id)]
+    );
+    const alreadyReturned = Number(srows?.[0]?.returned ?? 0);
+    const purchasedQty = Number(purchase.quantity);
+    const remaining = Number((purchasedQty - alreadyReturned).toFixed(2));
+
+    const qty = Number(quantity);
+    if (!(qty > 0)) { const e = new Error('Return quantity must be greater than 0'); e.status = 400; throw e; }
+    if (qty > remaining) {
+      const e = new Error(
+        remaining > 0
+          ? `Cannot return more than ${remaining} ${purchase.unit || ''}`.trim() + ` remaining for "${purchase.item_name}"`
+          : `"${purchase.item_name}" has already been fully returned`
+      );
+      e.status = 400;
+      throw e;
+    }
+
+    // Same buyer_name resolution as purchaseForLab: JWT name → admin-entered
+    // profile name → login email, so the log never shows an anonymous returner.
+    let resolvedReturner = returnerName ? String(returnerName).trim().slice(0, 150) : '';
+    if (!resolvedReturner && returnerUserId != null) {
+      // USER MANAGEMENT — removable: name set by an admin in Manage Users.
+      const [pfRows] = await conn.execute(`SELECT name FROM user_profiles WHERE user_id = ? LIMIT 1`, [Number(returnerUserId)]);
+      resolvedReturner = pfRows?.[0]?.name ? String(pfRows[0].name).trim().slice(0, 150) : '';
+    }
+    if (!resolvedReturner && returnerUserId != null) {
+      const [uRows] = await conn.execute(`SELECT email FROM users WHERE user_id = ? LIMIT 1`, [Number(returnerUserId)]);
+      resolvedReturner = uRows?.[0]?.email ? String(uRows[0].email).slice(0, 150) : '';
+    }
+
+    await conn.execute(
+      `UPDATE inventory_items SET current_quantity = current_quantity + ? WHERE item_id = ?`,
+      [qty, Number(purchase.item_id)]
+    );
+    // request_id is NULL — a lab return has no inventory_requests row, exactly
+    // like the negative 'LAB_PURCHASE' txn it reverses.
+    await conn.execute(
+      `INSERT INTO inventory_stock_txns (item_id, change_qty, reason, request_id, actor_user_id)
+       VALUES (?, ?, 'LAB_RETURN', NULL, ?)`,
+      [Number(purchase.item_id), qty, returnerUserId != null ? Number(returnerUserId) : null]
+    );
+    await conn.execute(
+      `INSERT INTO lab_returns (purchase_id, lab_id, item_id, item_name, quantity, unit, returner_user_id, returner_name)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [Number(purchase.purchase_id), Number(purchase.lab_id), Number(purchase.item_id),
+        purchase.item_name ?? null, qty, purchase.unit ?? null,
+        returnerUserId != null ? Number(returnerUserId) : null, resolvedReturner || null]
+    );
+
+    await conn.commit();
+    return {
+      purchase_id: Number(purchase.purchase_id),
+      lab_id: Number(purchase.lab_id),
+      item_id: Number(purchase.item_id),
+      item_name: purchase.item_name ?? null,
+      unit: purchase.unit ?? null,
+      returned: qty,
+      remaining_after: Number((remaining - qty).toFixed(2)),
+    };
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+};
+// ═══ INTERN LAB RETURNS — REMOVABLE BLOCK (end) ═════════════════════════════

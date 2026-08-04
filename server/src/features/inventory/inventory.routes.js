@@ -37,6 +37,9 @@ import {
   getLabPurchasesFeed,
   getConsumptionReport,
   createLabPurchase,
+  // ── INTERN LAB RETURNS — REMOVABLE ──
+  getMyReturnablePurchases,
+  createLabReturn,
 } from './inventory.controller.js';
 
 const router = express.Router();
@@ -111,5 +114,15 @@ router.get('/reports/consumption', authMiddleware, requireRole(3, 4), getConsump
 // Role 3 is included so an admin can exercise it without an intern account.
 router.post('/lab-purchase', authMiddleware, requireRole(5, 3), createLabPurchase);  // { lab_id, items:[{item_id, quantity}] }
 // ═══ LAB / INTERN PURCHASE (Stage 3) — REMOVABLE BLOCK (end) ═══
+
+// ═══ INTERN LAB RETURNS — REMOVABLE BLOCK (start) ═══
+// Intern direct return against their OWN past purchase — no request, no
+// approval; adds stock back to the shared pool. Role 3 is included for the same
+// reason as /lab-purchase (an admin can exercise it without an intern account),
+// but both handlers scope to req.user, so an admin only ever sees/returns their
+// own purchases here.
+router.get('/my-returnable-purchases', authMiddleware, requireRole(5, 3), getMyReturnablePurchases);
+router.post('/lab-return', authMiddleware, requireRole(5, 3), createLabReturn);      // { purchase_id, quantity }
+// ═══ INTERN LAB RETURNS — REMOVABLE BLOCK (end) ═══
 
 export default router;
