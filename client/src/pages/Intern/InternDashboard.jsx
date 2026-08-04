@@ -1,7 +1,10 @@
 // InternDashboard.jsx — Intern / Lab Technician (role_id = 5) console.
-// Two views in one route:
-//   'labs' → grid of active lab cards, each with its 5 most recent purchases
-//   'buy'  → the buying UI (category → item → qty → cart → submit) for one lab
+// Two TABS in one route (`tab`), the first holding the original two views (`view`):
+//   'purchases' tab
+//     'labs' → grid of active lab cards, each with its 5 most recent purchases
+//     'buy'  → the buying UI (category → item → qty → cart → submit) for one lab
+//   'returns' tab → INTERN LAB RETURNS (removable): the intern's own past
+//     purchases that still have something left to return, one card each.
 // The buy UI mirrors the student page (InventoryRequest.jsx) MINUS the Returning
 // tab and the Purpose/Project-Training selector — an intern buy is direct, with
 // no request and no approval. Submitting POSTs /inventory/lab-purchase, which
@@ -73,7 +76,8 @@ export default function InternDashboard() {
   const initials = String(name).trim().charAt(0).toUpperCase() || 'I';
 
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('pt-dark') === '1');
-  const [view, setView] = useState('labs');        // 'labs' | 'buy'
+  const [tab, setTab] = useState('purchases');     // 'purchases' | 'returns'  (INTERN LAB RETURNS — removable)
+  const [view, setView] = useState('labs');        // 'labs' | 'buy'  (within the 'purchases' tab)
   const [activeLab, setActiveLab] = useState(null); // { lab_id, lab_name }
 
   // ── Labs + their recent purchases ──
@@ -99,10 +103,71 @@ export default function InternDashboard() {
   const [submitErr, setSubmitErr] = useState('');
   const [result, setResult] = useState(null);       // purchase response → summary popup
 
+  // ── INTERN LAB RETURNS (removable): Returns tab state ──
+  const [returnables, setReturnables] = useState([]);      // returnable past purchases
+  const [retLoading, setRetLoading] = useState(false);
+  const [retError, setRetError] = useState('');
+  const [retQty, setRetQty] = useState({});                // { [purchase_id]: '4' }
+  const [retErr, setRetErr] = useState({});                // { [purchase_id]: 'message' }
+  const [retBusy, setRetBusy] = useState(null);            // purchase_id of the in-flight return
+  const [toast, setToast] = useState('');
+
   useEffect(() => {
     document.body.classList.toggle('dark-mode', darkMode);
     localStorage.setItem('pt-dark', darkMode ? '1' : '0');
   }, [darkMode]);
+
+  // ── INTERN LAB RETURNS (removable) ──
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(''), 3600);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  // The intern's own returnable purchases. Re-fetched on every entry to the tab
+  // (and after each return) — remaining quantities go stale as soon as anything
+  // is bought or returned, so caching would only show wrong caps.
+  const loadReturnables = useCallback(async () => {
+    setRetLoading(true); setRetError('');
+    try {
+      const res = await inventoryService.getMyReturnablePurchases();
+      setReturnables(res?.data?.items || []);
+    } catch {
+      setRetError('Failed to load your returnable purchases.'); setReturnables([]);
+    } finally { setRetLoading(false); }
+  }, []);
+
+  useEffect(() => { if (tab === 'returns') loadReturnables(); }, [tab, loadReturnables]);
+
+  // Return some/all of ONE past purchase. The client cap below is only a guard
+  // rail for typos — the server re-checks ownership and the remaining quantity
+  // inside its transaction, so a stale list can never over-return.
+  const submitReturn = async (p) => {
+    const id = p.purchase_id;
+    const remaining = Number(p.remaining_returnable);
+    const qty = Number(retQty[id]);
+
+    setRetErr((m) => ({ ...m, [id]: '' }));
+    if (!(qty > 0)) { setRetErr((m) => ({ ...m, [id]: 'Enter a quantity greater than 0.' })); return; }
+    if (qty > remaining) {
+      setRetErr((m) => ({ ...m, [id]: `You can only return up to ${money(remaining)} ${p.unit || ''}.`.trim() }));
+      return;
+    }
+
+    setRetBusy(id);
+    try {
+      const res = await inventoryService.submitLabReturn(id, qty);
+      const d = res?.data || {};
+      setToast(
+        `Returned ${money(d.returned ?? qty)} ${p.unit || ''} of ${p.item_name} — ${money(d.remaining_after ?? 0)} remaining`
+          .replace(/\s+/g, ' ')
+      );
+      setRetQty((m) => ({ ...m, [id]: '' }));
+      await loadReturnables();   // remaining drops; a fully-returned purchase disappears
+    } catch (err) {
+      setRetErr((m) => ({ ...m, [id]: err?.response?.data?.message || 'Failed to record the return. Please try again.' }));
+    } finally { setRetBusy(null); }
+  };
 
   // Recent purchases for ONE lab (used on load and after a purchase).
   const loadRecent = useCallback(async (labId) => {
@@ -260,15 +325,18 @@ export default function InternDashboard() {
       {/* Header */}
       <div className="in-header">
         <div className="in-brand">
-          {view === 'buy' && <button className="in-back" onClick={backToLabs}>← Labs</button>}
+          {tab === 'purchases' && view === 'buy' && <button className="in-back" onClick={backToLabs}>← Labs</button>}
           <div className="in-logo">
             <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.9">
               <path d="M20 7l-8-4-8 4 8 4 8-4z" /><path d="M4 7v10l8 4 8-4V7" /><path d="M12 11v10" />
             </svg>
           </div>
           <div style={{ minWidth: 0 }}>
-            <div className="in-title">Lab Purchases</div>
-            <div className="in-sub">Buy items directly for your lab</div>
+            {/* Title follows the active tab (INTERN LAB RETURNS — removable). */}
+            <div className="in-title">{tab === 'returns' ? 'Returns' : 'Lab Purchases'}</div>
+            <div className="in-sub">
+              {tab === 'returns' ? 'Return items from your past purchases' : 'Buy items directly for your lab'}
+            </div>
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -287,8 +355,18 @@ export default function InternDashboard() {
       </div>
 
       <div className="in-wrap">
+        {/* ══ TAB STRIP (INTERN LAB RETURNS — removable) ══ */}
+        <div className="in-tabs">
+          <button className={`in-tab${tab === 'purchases' ? ' active' : ''}`} onClick={() => setTab('purchases')}>
+            Lab Purchases
+          </button>
+          <button className={`in-tab${tab === 'returns' ? ' active' : ''}`} onClick={() => setTab('returns')}>
+            Returns
+          </button>
+        </div>
+
         {/* ══ LAB CARDS ══ */}
-        {view === 'labs' && (
+        {tab === 'purchases' && view === 'labs' && (
           <>
             <div className="in-page-title">Select a lab</div>
             <div className="in-page-sub">Choose the lab you're buying for. Each card shows its most recent purchases.</div>
@@ -350,7 +428,7 @@ export default function InternDashboard() {
         )}
 
         {/* ══ BUY VIEW ══ */}
-        {view === 'buy' && activeLab && (
+        {tab === 'purchases' && view === 'buy' && activeLab && (
           <>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 18 }}>
               {/* LAB PHOTO (removable) */}
@@ -455,7 +533,86 @@ export default function InternDashboard() {
             </div>
           </>
         )}
+        {/* ══ RETURNS VIEW (INTERN LAB RETURNS — removable) ══ */}
+        {tab === 'returns' && (
+          <>
+            <div className="in-page-title">Return items</div>
+            <div className="in-page-sub">
+              Your past purchases that still have something left to return. Returning puts the stock straight
+              back into the shared pool — no approval needed.
+            </div>
+
+            {retError && <div className="in-empty" style={{ color: 'var(--in-red)' }}>{retError}</div>}
+            {retLoading ? <div className="in-spinner" /> : returnables.length === 0 ? (
+              <div className="in-empty">You have no items to return.</div>
+            ) : (
+              <div className="in-rets">
+                {returnables.map((p) => {
+                  const remaining = Number(p.remaining_returnable);
+                  const typed = Number(retQty[p.purchase_id]);
+                  const over = typed > remaining;
+                  const busy = retBusy === p.purchase_id;
+                  return (
+                    <div className="in-card" key={p.purchase_id}>
+                      <div className="in-ret-hd">
+                        <div style={{ minWidth: 0 }}>
+                          <div className="in-card-title">{p.item_name}</div>
+                          <div className="in-ret-meta">
+                            {p.lab_name || 'Unknown lab'} · bought {fmtDateTime(p.created_at)}
+                          </div>
+                        </div>
+                        <span className="in-labchip">{money(remaining)} {p.unit || ''} left</span>
+                      </div>
+
+                      <div className="in-ret-stats">
+                        <div className="in-ret-stat">
+                          <span>Purchased</span><b>{money(p.purchased_qty)} {p.unit || ''}</b>
+                        </div>
+                        <div className="in-ret-stat">
+                          <span>Returned</span><b>{money(p.already_returned)} {p.unit || ''}</b>
+                        </div>
+                        <div className="in-ret-stat left">
+                          <span>Remaining</span><b>{money(remaining)} {p.unit || ''}</b>
+                        </div>
+                      </div>
+
+                      <label className="in-field-label">Quantity to return</label>
+                      <div className="in-row2">
+                        <input className="in-input" type="number" min="0" step="any" max={remaining}
+                          placeholder={`Up to ${money(remaining)}`}
+                          value={retQty[p.purchase_id] ?? ''} disabled={busy}
+                          onChange={(e) => setRetQty((m) => ({ ...m, [p.purchase_id]: e.target.value }))} />
+                        <div className="in-unit-chip">{p.unit || '—'}</div>
+                        <button className="in-btn in-btn-ghost"
+                          style={{ width: 'auto', padding: '11px 18px', whiteSpace: 'nowrap' }}
+                          disabled={busy || over || !(typed > 0)} onClick={() => submitReturn(p)}>
+                          {busy ? 'Returning…' : 'Return'}
+                        </button>
+                      </div>
+
+                      <button className="in-log-link in-ret-all" disabled={busy}
+                        onClick={() => setRetQty((m) => ({ ...m, [p.purchase_id]: String(remaining) }))}>
+                        Return all {money(remaining)} {p.unit || ''}
+                      </button>
+
+                      {/* Client-side cap. The server re-checks it regardless. */}
+                      {over && (
+                        <div className="in-warn">
+                          Only {money(remaining)} {p.unit || ''} left to return on this purchase.
+                        </div>
+                      )}
+                      {retErr[p.purchase_id] && <div className="in-hint">{retErr[p.purchase_id]}</div>}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </>
+        )}
       </div>
+
+      {/* ══ RETURN TOAST (INTERN LAB RETURNS — removable) ══ */}
+      {toast && <div className="in-toast" role="status">{toast}</div>}
 
       {/* ══ PURCHASE SUMMARY POPUP ══ */}
       {result && (
