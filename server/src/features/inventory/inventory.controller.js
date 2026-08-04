@@ -43,8 +43,8 @@ export const getItem = async (req, res) => {
 // ── Student BUYING flow ──────────────────────────────────────
 export const createRequest = async (req, res) => {
   try {
-    const { purpose_type, purpose, items } = req.body;
-    const data = await service.createBuyingRequest(req.user?.user_id, { purpose_type, purpose, items });
+    const { purpose_type, purpose, items, lab_id } = req.body;
+    const data = await service.createBuyingRequest(req.user?.user_id, { purpose_type, purpose, items, lab_id });
     return createdResponse(res, 'Request submitted', data);
   } catch (error) {
     if (error?.status) return errorResponse(res, error.message, error.status);
@@ -312,7 +312,7 @@ export const getApproverFaculty = async (req, res) => {
 // ── Labs CRUD ────────────────────────────────────────────────
 export const getLabs = async (req, res) => {
   try {
-    const data = await service.listLabs({ active: req.query?.active });
+    const data = await service.listLabs({ active: req.query?.active, roleId: req.user?.role_id });
     return successResponse(res, 'Labs fetched', { items: data });
   } catch (error) {
     if (error?.status) return errorResponse(res, error.message, error.status);

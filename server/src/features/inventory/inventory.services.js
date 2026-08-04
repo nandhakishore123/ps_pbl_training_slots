@@ -108,7 +108,7 @@ export const getItem = async (itemId) => {
 // Create a PENDING buying request with multiple items. Stock is NOT changed
 // here — only on faculty approval (Stage 4). Item name/unit are resolved from
 // inventory_items server-side (never trust client-supplied snapshots).
-export const createBuyingRequest = async (userId, { purpose_type, purpose, items }) => {
+export const createBuyingRequest = async (userId, { purpose_type, purpose, items, lab_id }) => {
   const studentId = await getStudentIdByUserId(userId);
   if (!studentId) throw notFound('Student not found');
 
@@ -116,6 +116,16 @@ export const createBuyingRequest = async (userId, { purpose_type, purpose, items
   if (!['PROJECT', 'TRAINING'].includes(purposeType)) {
     throw badRequest('purpose_type must be PROJECT or TRAINING');
   }
+
+  // The lab is REQUIRED on a new buying request and is resolved server-side —
+  // a deactivated or unknown lab_id is rejected rather than silently stored.
+  // (Existing rows predating the column keep lab_id NULL; only new requests are
+  // held to this.)
+  const labId = Number(lab_id);
+  if (!labId || Number.isNaN(labId)) throw badRequest('Please select a lab');
+  const lab = await model.getLabById(labId);
+  if (!lab) throw badRequest('Selected lab not found');
+  if (Number(lab.is_active) !== 1) throw badRequest('Selected lab is no longer active');
   const purposeText = String(purpose ?? '').trim();
   if (!purposeText) throw badRequest('purpose is required');
   if (!Array.isArray(items) || items.length === 0) {
@@ -152,13 +162,17 @@ export const createBuyingRequest = async (userId, { purpose_type, purpose, items
     requestType: 'BUY',
     purposeType,
     purpose: purposeText,
+    labId,
     items: lineItems,
   });
 
   // Return the freshly-created request (header + items) for the Inventory Pass.
   const all = await model.listRequestsForStudent(studentId);
   return all.find((r) => Number(r.request_id) === Number(requestId))
-    || { request_id: requestId, status: 'PENDING', purpose_type: purposeType, purpose: purposeText, items: lineItems };
+    || {
+      request_id: requestId, status: 'PENDING', purpose_type: purposeType, purpose: purposeText,
+      lab_id: labId, lab_name: lab.lab_name, items: lineItems,
+    };
 };
 
 export const listMyRequests = async (userId) => {
@@ -413,8 +427,12 @@ const optionalText = (value, max, label) => {
 };
 
 // ── Labs CRUD (admin) ────────────────────────────────────────
-export const listLabs = async ({ active } = {}) => {
-  const activeOnly = String(active ?? '') === '1';
+// `roleId` is passed by the controller so a STUDENT (role 1) is always forced to
+// active-only — they read this list purely to pick a lab for a buying request,
+// and must not be able to see (or select) a deactivated lab by dropping the
+// ?active=1 param. Every other role keeps the previous opt-in behaviour.
+export const listLabs = async ({ active, roleId } = {}) => {
+  const activeOnly = Number(roleId) === 1 || String(active ?? '') === '1';
   return model.listLabs({ activeOnly });
 };
 
