@@ -428,6 +428,21 @@ export const testConnection = async () => {
                 await connection.execute('ALTER TABLE inventory_request_items ADD COLUMN return_quantity decimal(12,2) DEFAULT NULL');
                 console.log(chalk.green('  Added inventory_request_items.return_quantity.'));
             }
+            // Additive: the lab a student's BUY request is for. NULLABLE by design —
+            // requests created before this column existed keep NULL, and RETURN
+            // requests never set it. Required-ness is enforced in the service for
+            // NEW buying requests only. FK by convention (TiDB-safe: no FKs), so
+            // every read LEFT JOINs labs and tolerates a NULL/dangling lab_id.
+            const [invReqCols] = await connection.execute('DESCRIBE inventory_requests');
+            if (!invReqCols.some((c) => c.Field === 'lab_id')) {
+                await connection.execute('ALTER TABLE inventory_requests ADD COLUMN lab_id bigint DEFAULT NULL');
+                console.log(chalk.green('  Added inventory_requests.lab_id.'));
+            }
+            const [invReqIdx] = await connection.execute("SHOW INDEX FROM inventory_requests WHERE Key_name = 'idx_invreq_lab'");
+            if (!invReqIdx.length) {
+                await connection.execute('ALTER TABLE inventory_requests ADD INDEX idx_invreq_lab (lab_id)');
+                console.log(chalk.green('  Added inventory_requests.idx_invreq_lab.'));
+            }
             // Admin-configurable inventory settings (key/value). Currently holds the two
             // buying approver user_ids ('project_approver_user_id', 'training_approver_user_id').
             // TiDB-safe: no FKs, PK on setting_key so writes use ON DUPLICATE KEY UPDATE.

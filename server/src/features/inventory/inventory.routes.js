@@ -93,8 +93,11 @@ router.put('/approvers', authMiddleware, requireRole(3), setApprovers);         
 
 // ═══ LAB / INTERN PURCHASE (Stage 3) — REMOVABLE BLOCK (start) ═══
 // Labs master: admin (3) manages; incharge (4) and interns (5) read the list
-// (interns need it to render their lab cards).
-router.get('/labs', authMiddleware, requireRole(3, 4, 5), getLabs);                  // ?active=1 to filter
+// (interns need it to render their lab cards). Students (1) read it too, for the
+// required "Select Lab" dropdown on a buying request — but the service FORCES
+// active-only for role 1, so a student cannot list inactive labs by omitting
+// ?active=1.
+router.get('/labs', authMiddleware, requireRole(1, 3, 4, 5), getLabs);               // ?active=1 to filter
 router.post('/labs', authMiddleware, requireRole(3), createLab);                     // { lab_name, lab_code?, in_charge?, room_no? }
 router.put('/labs/:labId', authMiddleware, requireRole(3), updateLab);               // partial update
 router.delete('/labs/:labId', authMiddleware, requireRole(3), deleteLab);            // SOFT delete → is_active = 0

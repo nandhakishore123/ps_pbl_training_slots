@@ -58,12 +58,14 @@ export const getItemsByIds = async (ids) => {
 // ── Request writes ───────────────────────────────────────────
 // TiDB-safe: no FKs; child rows keyed by the parent insertId. Both accept an
 // optional `conn` so they can enlist in the caller's transaction.
-export const createRequest = async ({ studentId, requestType, purposeType, purpose }, conn) => {
+// `labId` is set for student BUY requests (validated in the service) and stays
+// NULL everywhere else — the RETURN flow writes its own INSERT and never passes it.
+export const createRequest = async ({ studentId, requestType, purposeType, purpose, labId }, conn) => {
   const exec = conn || db;
   const [result] = await exec.execute(
-    `INSERT INTO inventory_requests (student_id, request_type, purpose_type, purpose, status)
-     VALUES (?, ?, ?, ?, 'PENDING')`,
-    [Number(studentId), requestType, purposeType ?? null, purpose ?? null]
+    `INSERT INTO inventory_requests (student_id, request_type, purpose_type, purpose, lab_id, status)
+     VALUES (?, ?, ?, ?, ?, 'PENDING')`,
+    [Number(studentId), requestType, purposeType ?? null, purpose ?? null, labId != null ? Number(labId) : null]
   );
   return result?.insertId ?? null;
 };
@@ -80,11 +82,11 @@ export const addRequestItems = async (requestId, items, conn) => {
 };
 
 // Header + its line items, created atomically (a request always has its items).
-export const createRequestWithItems = async ({ studentId, requestType, purposeType, purpose, items }) => {
+export const createRequestWithItems = async ({ studentId, requestType, purposeType, purpose, labId, items }) => {
   const conn = await db.getConnection();
   try {
     await conn.beginTransaction();
-    const requestId = await createRequest({ studentId, requestType, purposeType, purpose }, conn);
+    const requestId = await createRequest({ studentId, requestType, purposeType, purpose, labId }, conn);
     await addRequestItems(requestId, items, conn);
     await conn.commit();
     return requestId;
@@ -99,12 +101,16 @@ export const createRequestWithItems = async ({ studentId, requestType, purposeTy
 // A student's requests (newest first) with their line items nested. Items for
 // all requests are fetched in one IN(...) query, then grouped in app code.
 export const listRequestsForStudent = async (studentId) => {
+  // LEFT JOIN labs: lab_id is NULL on RETURN requests and on BUY rows created
+  // before the column existed — those must still be listed, with lab_name null.
   const [reqs] = await db.execute(
-    `SELECT request_id, student_id, request_type, purpose_type, purpose, status,
-            approver_user_id, approver_role, decided_at, remarks, created_at, updated_at
-     FROM inventory_requests
-     WHERE student_id = ?
-     ORDER BY created_at DESC`,
+    `SELECT r.request_id, r.student_id, r.request_type, r.purpose_type, r.purpose, r.status,
+            r.lab_id, l.lab_name,
+            r.approver_user_id, r.approver_role, r.decided_at, r.remarks, r.created_at, r.updated_at
+     FROM inventory_requests r
+     LEFT JOIN labs l ON l.lab_id = r.lab_id
+     WHERE r.student_id = ?
+     ORDER BY r.created_at DESC`,
     [Number(studentId)]
   );
   if (!reqs.length) return [];
@@ -243,10 +249,11 @@ export const createItem = async (
 export const listAllBuyingRequests = async () => {
   const [reqs] = await db.execute(
     `SELECT r.request_id, r.student_id, s.name AS student_name, s.reg_num AS student_reg,
-            r.request_type, r.purpose_type, r.purpose, r.status,
+            r.request_type, r.purpose_type, r.purpose, r.status, r.lab_id, l.lab_name,
             r.approver_user_id, r.approver_role, r.decided_at, r.remarks, r.created_at, r.updated_at
      FROM inventory_requests r
      JOIN students s ON s.student_id = r.student_id
+     LEFT JOIN labs l ON l.lab_id = r.lab_id
      WHERE r.request_type = 'BUY'
      ORDER BY r.created_at DESC`
   );
@@ -292,10 +299,11 @@ export const getInventoryCounts = async () => {
 export const listBuyingForApprover = async (purposeType) => {
   const [reqs] = await db.execute(
     `SELECT r.request_id, r.student_id, s.name AS student_name, s.reg_num AS student_reg,
-            r.request_type, r.purpose_type, r.purpose, r.status,
+            r.request_type, r.purpose_type, r.purpose, r.status, r.lab_id, l.lab_name,
             r.approver_user_id, r.approver_role, r.decided_at, r.remarks, r.created_at, r.updated_at
      FROM inventory_requests r
      JOIN students s ON s.student_id = r.student_id
+     LEFT JOIN labs l ON l.lab_id = r.lab_id
      WHERE r.request_type = 'BUY' AND r.purpose_type = ?
      ORDER BY r.created_at DESC`,
     [purposeType]
@@ -844,13 +852,17 @@ export const getConsumptionReport = async ({ from, to }) => {
   const toTs = `${to} 23:59:59`;
 
   // ── STUDENT side: approved buys only, one row per item line ──
+  // LEFT JOIN labs so the report's Lab column populates for students too. LEFT,
+  // not inner: requests predating inventory_requests.lab_id have it NULL and
+  // must still be counted as consumption (they just show no lab).
   const [studentRows] = await db.execute(
     `SELECT s.name AS member_name, s.reg_num AS reg,
-            i.item_name, i.quantity, i.unit,
+            i.item_name, i.quantity, i.unit, l.lab_name,
             r.request_id AS cart_id, r.decided_at AS date
      FROM inventory_requests r
      JOIN students s ON s.student_id = r.student_id
      JOIN inventory_request_items i ON i.request_id = r.request_id
+     LEFT JOIN labs l ON l.lab_id = r.lab_id
      WHERE r.request_type = 'BUY'
        AND r.status = 'APPROVED'
        AND r.decided_at BETWEEN ? AND ?
@@ -885,7 +897,7 @@ export const getConsumptionReport = async ({ from, to }) => {
       member_name: r.member_name ?? 'Unknown',
       member_type: 'STUDENT',
       reg: r.reg ?? null,
-      lab_name: null,
+      lab_name: r.lab_name ?? null,
       item_name: r.item_name,
       quantity: r.quantity,
       unit: r.unit ?? null,

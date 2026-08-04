@@ -188,6 +188,10 @@ export default function InventoryRequest() {
   const [cart, setCart] = useState([]);
   const [purpose, setPurpose] = useState('');
   const [purposeType, setPurposeType] = useState('');
+  // ── SELECT LAB (required on a buying request) ──
+  const [labs, setLabs] = useState([]);
+  const [labsErr, setLabsErr] = useState('');
+  const [labId, setLabId] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitErr, setSubmitErr] = useState('');
   const [pass, setPass] = useState(null); // created request → Inventory Pass
@@ -305,7 +309,24 @@ export default function InventoryRequest() {
 
   const removeFromCart = (itemId) => setCart((prev) => prev.filter((c) => c.item_id !== itemId));
 
-  const canSubmit = cart.length > 0 && purpose.trim() !== '' && ['PROJECT', 'TRAINING'].includes(purposeType) && !submitting;
+  // ── SELECT LAB ──
+  // Active labs for the required dropdown. Loaded once on mount; a failure is
+  // non-fatal to the rest of the page — the picker just reports it and submit
+  // stays blocked (the server requires lab_id regardless).
+  useEffect(() => {
+    let ignore = false;
+    (async () => {
+      try {
+        const res = await inventoryService.getLabs(1);   // active labs only
+        if (!ignore) setLabs(res?.data?.items || []);
+      } catch {
+        if (!ignore) { setLabs([]); setLabsErr('Could not load labs. Please refresh and try again.'); }
+      }
+    })();
+    return () => { ignore = true; };
+  }, []);
+
+  const canSubmit = cart.length > 0 && purpose.trim() !== '' && ['PROJECT', 'TRAINING'].includes(purposeType) && labId && !submitting;
 
   const submit = async () => {
     if (!canSubmit) return;
@@ -316,11 +337,18 @@ export default function InventoryRequest() {
         purpose_type: purposeType,
         purpose: purpose.trim(),
         items: cart.map((c) => ({ item_id: c.item_id, quantity: c.quantity })),
+        lab_id: Number(labId),          // SELECT LAB — required server-side
       });
-      setPass(res?.data || null);
+      // The pass modal needs the lab name; the create response carries it, but
+      // fall back to the picked option so the modal is never blank.
+      const created = res?.data || null;
+      setPass(created && !created.lab_name
+        ? { ...created, lab_name: labs.find((l) => String(l.lab_id) === String(labId))?.lab_name ?? null }
+        : created);
       setCart([]);
       setPurpose('');
       setPurposeType('');
+      setLabId('');
       setSelectedCategory('');
       setSelectedItemId('');
       setQuantity('');
@@ -445,6 +473,8 @@ export default function InventoryRequest() {
                 <div style={{ marginTop: 12 }}>
                   <div className="inv-pass-kv"><span className="inv-pass-k">Purpose</span><span className="inv-pass-v">{pass.purpose || '—'}</span></div>
                   <div className="inv-pass-kv"><span className="inv-pass-k">Type</span><span className="inv-pass-v">{pass.purpose_type || purposeType || '—'}</span></div>
+                  {/* SELECT LAB */}
+                  <div className="inv-pass-kv"><span className="inv-pass-k">Lab</span><span className="inv-pass-v">{pass.lab_name || '—'}</span></div>
                   <div className="inv-pass-kv"><span className="inv-pass-k">Request #</span><span className="inv-pass-v">{pass.request_id}</span></div>
                   <div className="inv-pass-kv"><span className="inv-pass-k">Date</span><span className="inv-pass-v">{fmtDateTime(pass.created_at)}</span></div>
                 </div>
@@ -526,11 +556,20 @@ export default function InventoryRequest() {
                   <textarea className="inv-textarea" placeholder="e.g. For the microbial staining experiment in my final-year project…"
                     value={purpose} onChange={(e) => setPurpose(e.target.value)} style={{ marginBottom: 16 }} />
                   <label className="inv-field-label">Requested for</label>
-                  <select className="inv-select" value={purposeType} onChange={(e) => setPurposeType(e.target.value)} style={{ marginBottom: 18 }}>
+                  <select className="inv-select" value={purposeType} onChange={(e) => setPurposeType(e.target.value)} style={{ marginBottom: 16 }}>
                     <option value="">Select Project or Training…</option>
                     <option value="PROJECT">Project</option>
                     <option value="TRAINING">Training</option>
                   </select>
+
+                  {/* ── SELECT LAB (required) ── */}
+                  <label className="inv-field-label">Lab</label>
+                  <select className="inv-select" value={labId} onChange={(e) => setLabId(e.target.value)}
+                    disabled={labs.length === 0} style={{ marginBottom: labsErr ? 8 : 18 }}>
+                    <option value="" disabled>-- Select Lab --</option>
+                    {labs.map((l) => <option key={l.lab_id} value={l.lab_id}>{l.lab_name}</option>)}
+                  </select>
+                  {labsErr && <div className="inv-hint" style={{ marginBottom: 14 }}>{labsErr}</div>}
                   <button className="inv-btn inv-btn-primary" disabled={!canSubmit} onClick={submit}>
                     {submitting ? 'Submitting…' : 'Submit Request'}
                   </button>
@@ -663,6 +702,11 @@ export default function InventoryRequest() {
                 <div className="inv-req-items">
                   {(r.items || []).map((it) => `${it.item_name} (${money(it.quantity)} ${it.unit || ''})`).join(' · ') || '—'}
                 </div>
+                {/* SELECT LAB — BUY requests only; a RETURN genuinely has no lab.
+                    '—' covers requests created before lab_id existed. */}
+                {r.request_type !== 'RETURN' && (
+                  <div className="inv-req-meta" style={{ marginTop: 6 }}>Lab: {r.lab_name || '—'}</div>
+                )}
                 {r.purpose && <div className="inv-req-meta" style={{ marginTop: 6 }}>Purpose: {r.purpose}</div>}
               </div>
             ))
