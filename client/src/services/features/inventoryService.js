@@ -47,6 +47,11 @@ export const inventoryService = {
   },
 
   // ── Faculty buying approval (role 2 by purpose; Admin) ─────
+  // Resolves to { scopes, project, training } — `scopes` lists the purposes the
+  // caller is the assigned approver for (both, for an admin or a faculty holding
+  // both assignments), and the two arrays hold that purpose's requests.
+  // `purposeType` narrows the response FOR ADMIN ONLY; faculty are always scoped
+  // server-side by their assignment, so the faculty page passes nothing.
   getPendingBuying(purposeType) {
     return api.get('/inventory/buying/pending', { params: { purpose_type: purposeType } });
   },
