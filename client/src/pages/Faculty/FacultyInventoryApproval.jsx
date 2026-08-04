@@ -1,5 +1,8 @@
 // FacultyInventoryApproval.jsx — Stage 4: faculty approve/reject BUYING requests,
-// routed by purpose (backend returns only this faculty's purpose_type). Admin sees all.
+// split into one TAB per purpose the caller is the assigned approver for. The
+// server returns { scopes, project, training } — a faculty assigned to only one
+// purpose gets one scope (and no tab strip), a faculty assigned to both (or an
+// admin) gets both tabs. The page never decides what it may see.
 // Approve reduces stock (transaction); insufficient stock fails cleanly. Reject = no stock change.
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -42,6 +45,16 @@ const CSS = `
   .fa-wrap { max-width:none; margin:0; padding:22px 24px 48px; }
   .fa-scope { font-size:20px; font-weight:900; margin-bottom:4px; }
   .fa-scope-sub { font-size:12.5px; color:var(--fa-text3); font-weight:600; margin-bottom:20px; }
+
+  /* Purpose tabs (Project | Training) — pill style, matching .ic-tabs on the
+     Inventory Incharge console. Only rendered when the caller holds both. */
+  .fa-tabs { display:flex; gap:8px; background:var(--fa-white); border:1px solid var(--fa-border);
+    border-radius:14px; padding:6px; margin-bottom:20px; max-width:420px; }
+  .fa-tab { flex:1; padding:11px 14px; border-radius:9px; border:none; background:transparent; font-size:13.5px;
+    font-weight:800; color:var(--fa-text2); cursor:pointer; font-family:inherit; white-space:nowrap;
+    transition:all .16s; }
+  .fa-tab:hover:not(.active) { color:var(--fa-purple); background:var(--fa-purple-dim); }
+  .fa-tab.active { background:linear-gradient(135deg,#6c47ff,#4b2fd6); color:#fff; box-shadow:0 4px 14px var(--fa-glow); }
 
   .fa-req { background:var(--fa-white); border:1px solid var(--fa-border); border-radius:16px; padding:18px 20px;
     margin-bottom:14px; box-shadow:0 6px 24px rgba(26,16,64,0.06); }
@@ -121,8 +134,10 @@ function StatusPill({ status }) {
 const SCOPE_TITLE = {
   PROJECT: 'Project Buying Requests',
   TRAINING: 'Training Buying Requests',
-  ALL: 'All Buying Requests',
 };
+
+// Short label for the tab strip.
+const SCOPE_TAB = { PROJECT: 'Project', TRAINING: 'Training' };
 
 export default function FacultyInventoryApproval() {
   const navigate = useNavigate();
@@ -132,8 +147,11 @@ export default function FacultyInventoryApproval() {
   const initials = String(name).trim().charAt(0).toUpperCase() || 'F';
 
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('pt-dark') === '1');
-  const [scope, setScope] = useState('');
-  const [requests, setRequests] = useState([]);
+  // The purposes this faculty is the assigned approver for, and the active tab.
+  // Both come from the server — the page never decides what it may see.
+  const [scopes, setScopes] = useState([]);              // ['PROJECT'] | ['TRAINING'] | both
+  const [tab, setTab] = useState('');                     // active purpose
+  const [byPurpose, setByPurpose] = useState({ PROJECT: [], TRAINING: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [busyId, setBusyId] = useState(null);           // request currently being approved/rejected
@@ -158,11 +176,17 @@ export default function FacultyInventoryApproval() {
     setError('');
     try {
       const res = await inventoryService.getPendingBuying();
-      setScope(res?.data?.scope || '');
-      setRequests(res?.data?.items || []);
+      const d = res?.data || {};
+      const sc = Array.isArray(d.scopes) ? d.scopes : [];
+      setScopes(sc);
+      setByPurpose({ PROJECT: d.project || [], TRAINING: d.training || [] });
+      // Keep the tab the user is on across a reload (approve/reject re-loads);
+      // only fall back to the first scope when the current one is gone.
+      setTab((t) => (sc.includes(t) ? t : sc[0] || ''));
     } catch (err) {
       setError(err?.response?.data?.message || 'Failed to load buying requests.');
-      setRequests([]);
+      setScopes([]);
+      setByPurpose({ PROJECT: [], TRAINING: [] });
     } finally {
       setLoading(false);
     }
@@ -220,8 +244,11 @@ export default function FacultyInventoryApproval() {
     try { await authService.logout(); } finally { navigate('/auth/login', { replace: true }); }
   };
 
-  const pending = requests.filter((r) => String(r.status).toUpperCase() === 'PENDING');
-  const decided = requests.filter((r) => String(r.status).toUpperCase() !== 'PENDING');
+  // Only the active tab's requests are rendered; the pending/decided split is
+  // unchanged, just scoped to that purpose.
+  const active = byPurpose[tab] || [];
+  const pending = active.filter((r) => String(r.status).toUpperCase() === 'PENDING');
+  const decided = active.filter((r) => String(r.status).toUpperCase() !== 'PENDING');
 
   const renderReq = (r, isPending) => (
     <div className={`fa-req${isPending ? '' : ' decided'}`} key={r.request_id}>
@@ -293,23 +320,35 @@ export default function FacultyInventoryApproval() {
       </div>
 
       <div className="fa-wrap">
-        <div className="fa-scope">{SCOPE_TITLE[scope] || 'Buying Requests'}</div>
+        {/* Purpose tabs — one per assignment. Rendered only when the caller holds
+            both; with a single assignment the heading below already names it. */}
+        {scopes.length > 1 && (
+          <div className="fa-tabs">
+            {scopes.map((s) => (
+              <button key={s} className={`fa-tab${tab === s ? ' active' : ''}`} onClick={() => setTab(s)}>
+                {SCOPE_TAB[s] || s}
+              </button>
+            ))}
+          </div>
+        )}
+
+        <div className="fa-scope">{SCOPE_TITLE[tab] || 'Buying Requests'}</div>
         <div className="fa-scope-sub">
-          {scope === 'ALL'
-            ? 'You can approve or reject any buying request.'
-            : scope
-              ? `You approve ${scope.charAt(0) + scope.slice(1).toLowerCase()} purpose requests. Approving reduces stock.`
-              : 'Approving reduces stock; rejecting does not.'}
+          {tab
+            ? `You approve ${SCOPE_TAB[tab] || tab} purpose requests. Approving reduces stock.`
+            : 'Approving reduces stock; rejecting does not.'}
         </div>
 
         {error && <div className="fa-empty" style={{ color: 'var(--fa-red)' }}>{error}</div>}
 
         {loading ? (
           <div className="fa-spinner" />
+        ) : scopes.length === 0 ? (
+          !error && <div className="fa-empty">You are not assigned as an inventory approver.</div>
         ) : (
           <>
-            {pending.length === 0 && decided.length === 0 && !error && (
-              <div className="fa-empty">No buying requests to review.</div>
+            {pending.length === 0 && decided.length === 0 && (
+              <div className="fa-empty">No {SCOPE_TAB[tab] || tab} requests.</div>
             )}
 
             {pending.length > 0 && (

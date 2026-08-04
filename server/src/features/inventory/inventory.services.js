@@ -56,26 +56,34 @@ const getApproverIds = async () => {
   };
 };
 
-// Which purpose_type a caller may act on:
-//   null       → admin (all purposes)
-//   'PROJECT'  → project approver
-//   'TRAINING' → training approver
-//   undefined  → not an approver (forbidden)
-const approverPurposeFor = async (userId, roleId) => {
-  if (Number(roleId) === 3) return null;
+const ALL_PURPOSES = ['PROJECT', 'TRAINING'];
+
+// Which purpose_types a caller may act on, as a SET:
+//   ['PROJECT','TRAINING'] → admin, or one faculty assigned to BOTH
+//   ['PROJECT'] / ['TRAINING'] → faculty assigned to exactly one
+//   []                     → not an approver (forbidden)
+// This used to return a SINGLE purpose and tested project first, returning
+// early — so a faculty holding both assignments was permanently classified
+// PROJECT and could never see or act on TRAINING requests. Returning the full
+// set is what makes the two-tab page (and the both-approver case) work.
+const approverPurposesFor = async (userId, roleId) => {
+  if (Number(roleId) === 3) return [...ALL_PURPOSES];   // admin → every purpose
   const { project, training } = await getApproverIds();
-  if (Number(userId) === project) return 'PROJECT';
-  if (Number(userId) === training) return 'TRAINING';
-  return undefined;
+  const purposes = [];
+  if (Number(userId) === project) purposes.push('PROJECT');
+  if (Number(userId) === training) purposes.push('TRAINING');
+  return purposes;
 };
 
 // Throw 403 unless the caller may act on a request of `purposeType`.
 const authorizeApprover = async (userId, roleId, purposeType) => {
-  const purpose = await approverPurposeFor(userId, roleId);
-  if (purpose === null) return; // admin
-  if (purpose === undefined) throw forbidden('You are not assigned as an inventory approver');
-  if (purpose !== String(purposeType || '').toUpperCase()) {
-    throw forbidden(`You can only act on ${purpose} requests`);
+  // Admin bypasses purpose routing entirely, exactly as before — a BUY row with
+  // a missing/odd purpose_type must stay actionable by an admin.
+  if (Number(roleId) === 3) return;
+  const purposes = await approverPurposesFor(userId, roleId);
+  if (purposes.length === 0) throw forbidden('You are not assigned as an inventory approver');
+  if (!purposes.includes(String(purposeType || '').toUpperCase())) {
+    throw forbidden(`You can only act on ${purposes.join(' and ')} requests`);
   }
 };
 
@@ -214,27 +222,34 @@ export const listBuyingReadOnly = async () => {
 };
 
 // ── Faculty buying approval (Stage 4) ────────────────────────
-// List the buying requests this caller may approve, routed by purpose_type.
-// Returns { scope, items } where scope is 'PROJECT' | 'TRAINING' | 'ALL'.
+// List the buying requests this caller may approve, split per purpose so the
+// page can render one tab per assignment.
+// Returns { scopes, project, training }:
+//   scopes   → the purposes this caller holds, e.g. ['PROJECT','TRAINING']
+//   project  → PROJECT requests (empty unless 'PROJECT' is in scopes)
+//   training → TRAINING requests (empty unless 'TRAINING' is in scopes)
+// Both arrays are always present so the client never has to null-check; each
+// request keeps the exact fields listBuyingForApprover already returned.
 export const listBuyingForFaculty = async (userId, roleId, purposeTypeParam) => {
-  const purpose = await approverPurposeFor(userId, roleId);
-  if (purpose === undefined) throw forbidden('You are not assigned as an inventory approver');
+  const purposes = await approverPurposesFor(userId, roleId);
+  if (purposes.length === 0) throw forbidden('You are not assigned as an inventory approver');
 
-  if (purpose === null) {
-    // Admin: honour an optional ?purpose_type filter, else return both.
+  // ?purpose_type still narrows the response FOR ADMIN ONLY (it drove the old
+  // admin filter). For faculty it is ignored — their assignment set is
+  // authoritative, so the query string can never widen or narrow what they see.
+  let scopes = purposes;
+  if (Number(roleId) === 3) {
     const p = String(purposeTypeParam || '').toUpperCase();
-    if (['PROJECT', 'TRAINING'].includes(p)) {
-      return { scope: p, items: await model.listBuyingForApprover(p) };
-    }
-    const [proj, train] = await Promise.all([
-      model.listBuyingForApprover('PROJECT'),
-      model.listBuyingForApprover('TRAINING'),
-    ]);
-    const all = [...proj, ...train].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-    return { scope: 'ALL', items: all };
+    if (ALL_PURPOSES.includes(p)) scopes = [p];
   }
 
-  return { scope: purpose, items: await model.listBuyingForApprover(purpose) };
+  const lists = await Promise.all(scopes.map((p) => model.listBuyingForApprover(p)));
+  const out = { scopes, project: [], training: [] };
+  scopes.forEach((p, i) => {
+    if (p === 'PROJECT') out.project = lists[i];
+    else out.training = lists[i];
+  });
+  return out;
 };
 
 // Approve a buying request (authorize by purpose, then reduce stock atomically).
