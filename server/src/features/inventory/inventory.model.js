@@ -245,6 +245,67 @@ export const createItem = async (
   }
 };
 
+// Full item edit (Admin role 3 / Incharge role 4) — ADDITIVE.
+// Writes the catalog fields AND (optionally) current_quantity in ONE transaction.
+// A quantity change is logged as a STOCK_EDIT txn carrying the signed delta —
+// the same idiom as adjustStock above — but ONLY when the value actually
+// differs, so a field-only edit (e.g. fixing a rack location) adds no noise to
+// the stock history.
+export const updateItem = async (itemId, fields, actorUserId) => {
+  // Editable columns. current_quantity is deliberately NOT here: it needs the
+  // changed/unchanged check plus a txn row, handled separately below.
+  const allowed = ['category', 'subcategory', 'item_name', 'sub_name', 'unit', 'rack_location', 'is_returnable'];
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [rows] = await conn.execute(
+      `SELECT current_quantity FROM inventory_items WHERE item_id = ? LIMIT 1`,
+      [Number(itemId)]
+    );
+    if (!rows.length) { const e = new Error('Item not found'); e.status = 404; throw e; }
+
+    const sets = [];
+    const params = [];
+    for (const key of allowed) {
+      if (Object.prototype.hasOwnProperty.call(fields, key)) {
+        sets.push(`${key} = ?`);
+        params.push(fields[key]);
+      }
+    }
+
+    // Quantity: only written — and only logged — when it really changes.
+    const oldQty = Number(rows[0].current_quantity);
+    let changeQty = 0;
+    if (Object.prototype.hasOwnProperty.call(fields, 'current_quantity')) {
+      const newQty = Number(fields.current_quantity);
+      if (newQty !== oldQty) {
+        changeQty = newQty - oldQty;
+        sets.push('current_quantity = ?');
+        params.push(newQty);
+      }
+    }
+
+    if (sets.length) {
+      params.push(Number(itemId));
+      await conn.execute(`UPDATE inventory_items SET ${sets.join(', ')} WHERE item_id = ?`, params);
+    }
+    if (changeQty !== 0) {
+      await conn.execute(
+        `INSERT INTO inventory_stock_txns (item_id, change_qty, reason, request_id, actor_user_id)
+         VALUES (?, ?, 'STOCK_EDIT', NULL, ?)`,
+        [Number(itemId), changeQty, actorUserId != null ? Number(actorUserId) : null]
+      );
+    }
+    await conn.commit();
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+  return getItemById(itemId);
+};
+
 // All BUY requests (newest first) with student name/reg + nested items — incharge READ-ONLY view.
 export const listAllBuyingRequests = async () => {
   const [reqs] = await db.execute(

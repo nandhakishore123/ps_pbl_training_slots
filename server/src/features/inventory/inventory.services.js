@@ -230,6 +230,50 @@ export const addNewItem = async (userId, payload = {}) => {
   return { item_id: itemId };
 };
 
+// Full item edit (Admin role 3 / Incharge role 4) — ADDITIVE.
+// Same required-field rules as addNewItem (category, item_name, unit), plus
+// length caps so an over-long value returns a clean 400 instead of a raw MySQL
+// error. current_quantity is OPTIONAL: omit it and stock — and its txn history —
+// is left completely untouched.
+export const updateItem = async (userId, itemId, payload = {}) => {
+  const id = Number(itemId);
+  if (!id) throw badRequest('Invalid item id');
+
+  const category = String(payload.category ?? '').trim();
+  const itemName = String(payload.item_name ?? '').trim();
+  const unit = String(payload.unit ?? '').trim();
+  if (!category) throw badRequest('category is required');
+  if (!itemName) throw badRequest('item_name is required');
+  if (!unit) throw badRequest('unit is required');
+  if (category.length > 60) throw badRequest('category must be 60 characters or fewer');
+  if (itemName.length > 255) throw badRequest('item_name must be 255 characters or fewer');
+  if (unit.length > 30) throw badRequest('unit must be 30 characters or fewer');
+
+  const fields = {
+    category,
+    item_name: itemName,
+    unit,
+    // optionalText trims, caps the length (400 if over) and turns '' into null —
+    // matching how addNewItem nullifies empty optionals.
+    subcategory: optionalText(payload.subcategory, 80, 'subcategory'),
+    sub_name: optionalText(payload.sub_name, 255, 'sub_name'),
+    rack_location: optionalText(payload.rack_location, 120, 'rack_location'),
+    is_returnable: payload.is_returnable ? 1 : 0,
+  };
+
+  // Only send a quantity when one was actually supplied — the model decides
+  // whether it changed and whether a STOCK_EDIT txn is warranted.
+  if (payload.current_quantity != null && payload.current_quantity !== '') {
+    const qty = Number(payload.current_quantity);
+    if (Number.isNaN(qty) || qty < 0) throw badRequest('current_quantity must be 0 or greater');
+    fields.current_quantity = qty;
+  }
+
+  const updated = await model.updateItem(id, fields, userId);
+  if (!updated) throw notFound('Item not found');
+  return updated;
+};
+
 // Read-only buying-request list for the incharge (cannot approve buying — Stage 4/faculty).
 export const listBuyingReadOnly = async () => {
   return model.listAllBuyingRequests();

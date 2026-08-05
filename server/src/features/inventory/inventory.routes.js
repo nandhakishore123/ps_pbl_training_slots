@@ -11,6 +11,7 @@ import {
   editStock,
   addStock,
   addItem,
+  updateItem,
   getBuying,
   getPendingBuying,
   approveBuying,
@@ -58,6 +59,10 @@ router.get('/stock', authMiddleware, requireRole(3, 4), getStock);             /
 router.post('/stock/:id/edit', authMiddleware, requireRole(3, 4), editStock);  // { quantity } → set absolute
 router.post('/stock/:id/add', authMiddleware, requireRole(3, 4), addStock);    // { quantity } → add arrivals
 router.post('/items', authMiddleware, requireRole(3, 4), addItem);             // new catalog item
+// Full edit of an existing item — all catalog fields + optional current_quantity
+// (a quantity change is logged as a STOCK_EDIT txn). ADDITIVE; does not affect
+// the GET /items/:id read above, which stays open to any authenticated user.
+router.put('/items/:id', authMiddleware, requireRole(3, 4), updateItem);
 router.get('/buying', authMiddleware, requireRole(3, 4), getBuying);           // read-only buying list
 
 // ── Faculty buying approval (role 2 by purpose; Admin role 3) ─
