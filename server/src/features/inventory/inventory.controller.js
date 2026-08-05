@@ -109,6 +109,18 @@ export const addItem = async (req, res) => {
   }
 };
 
+// Full item edit — all catalog fields plus (optionally) current_quantity. ADDITIVE.
+export const updateItem = async (req, res) => {
+  try {
+    const data = await service.updateItem(req.user?.user_id, req.params.id, req.body);
+    return successResponse(res, 'Item updated', data);
+  } catch (error) {
+    if (error?.status) return errorResponse(res, error.message, error.status);
+    console.error('Error in updateItem:', error);
+    return internalServerErrorResponse(res, error.message || 'Failed to update item');
+  }
+};
+
 export const getBuying = async (req, res) => {
   try {
     const data = await service.listBuyingReadOnly();

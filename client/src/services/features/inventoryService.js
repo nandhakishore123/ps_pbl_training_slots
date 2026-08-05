@@ -42,6 +42,13 @@ export const inventoryService = {
     return api.post('/inventory/items', payload);
   },
 
+  // Full item edit — all catalog fields plus current_quantity. A quantity change
+  // is logged server-side as a STOCK_EDIT txn; a field-only edit logs nothing.
+  // payload: { category, subcategory, item_name, sub_name, unit, current_quantity, rack_location, is_returnable }
+  updateItem(itemId, payload) {
+    return api.put(`/inventory/items/${itemId}`, payload);
+  },
+
   getBuyingReadOnly() {
     return api.get('/inventory/buying');
   },

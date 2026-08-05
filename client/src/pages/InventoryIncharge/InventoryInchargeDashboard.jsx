@@ -75,7 +75,7 @@ export default function InventoryInchargeDashboard() {
   const [retRejectFor, setRetRejectFor] = useState(null);
   const [retRejectRemarks, setRetRejectRemarks] = useState('');
 
-  // Action modal: { mode:'edit'|'add'|'new', item? }
+  // Action modal: { mode:'editItem'|'add'|'new', item? }
   const [modal, setModal] = useState(null);
   const [qtyInput, setQtyInput] = useState('');
   const [newItem, setNewItem] = useState({ category: '', subcategory: '', item_name: '', sub_name: '', unit: '', current_quantity: '', rack_location: '', is_returnable: false });
@@ -216,7 +216,23 @@ export default function InventoryInchargeDashboard() {
     }
   };
 
-  const openEdit = (item) => { setModal({ mode: 'edit', item }); setQtyInput(String(item.current_quantity ?? '')); setModalErr(''); };
+  // Full item edit — the same form as "Add New Item", pre-filled from the row.
+  // Replaces the old qty-only "Edit qty": quantity is now just one field of it.
+  // `item` is kept on the modal state so submit knows which id to PUT.
+  const openEditItem = (item) => {
+    setModal({ mode: 'editItem', item });
+    setNewItem({
+      category: item.category ?? '',
+      subcategory: item.subcategory ?? '',
+      item_name: item.item_name ?? '',
+      sub_name: item.sub_name ?? '',
+      unit: item.unit ?? '',
+      current_quantity: String(item.current_quantity ?? ''),
+      rack_location: item.rack_location ?? '',
+      is_returnable: Number(item.is_returnable) === 1,
+    });
+    setModalErr('');
+  };
   const openAdd = (item) => { setModal({ mode: 'add', item }); setQtyInput(''); setModalErr(''); };
   const openNew = () => {
     setModal({ mode: 'new' });
@@ -229,23 +245,25 @@ export default function InventoryInchargeDashboard() {
     setModalErr('');
     setSaving(true);
     try {
-      if (modal.mode === 'edit') {
-        const q = Number(qtyInput);
-        if (Number.isNaN(q) || q < 0) throw new Error('Enter a quantity of 0 or more.');
-        await inventoryService.editStock(modal.item.item_id, q);
-      } else if (modal.mode === 'add') {
+      if (modal.mode === 'add') {
         const q = Number(qtyInput);
         if (!(q > 0)) throw new Error('Enter a quantity greater than 0.');
         await inventoryService.addStock(modal.item.item_id, q);
-      } else if (modal.mode === 'new') {
+      } else {
+        // 'new' and 'editItem' share the same form, validation and payload shape.
         if (!newItem.category.trim() || !newItem.item_name.trim() || !newItem.unit.trim()) {
           throw new Error('Category, item name and unit are required.');
         }
-        await inventoryService.addNewItem({
+        const payload = {
           ...newItem,
           current_quantity: Number(newItem.current_quantity || 0),
           is_returnable: !!newItem.is_returnable,
-        });
+        };
+        if (modal.mode === 'editItem') {
+          await inventoryService.updateItem(modal.item.item_id, payload);
+        } else {
+          await inventoryService.addNewItem(payload);
+        }
       }
       setModal(null);
       await loadStock();
@@ -353,7 +371,7 @@ export default function InventoryInchargeDashboard() {
                       </div>
                       <div className="ic-item-col-hide ic-rack">{it.rack_location || '—'}</div>
                       <div className="ic-actions">
-                        <button className="ic-btn ic-btn-outline ic-btn-sm" onClick={() => openEdit(it)}>Edit qty</button>
+                        <button className="ic-btn ic-btn-outline ic-btn-sm" onClick={() => openEditItem(it)}>Edit</button>
                         <button className="ic-btn ic-btn-ghost ic-btn-sm" onClick={() => openAdd(it)}>Add stock</button>
                       </div>
                     </div>
@@ -512,12 +530,14 @@ export default function InventoryInchargeDashboard() {
           <div className="ic-modal">
             <div className="ic-modal-hd">
               <div className="ic-modal-title">
-                {modal.mode === 'edit' ? 'Edit Quantity' : modal.mode === 'add' ? 'Add Stock' : 'Add New Item'}
+                {modal.mode === 'add' ? 'Add Stock' : modal.mode === 'editItem' ? 'Edit Item' : 'Add New Item'}
               </div>
               <button className="ic-modal-x" onClick={closeModal}>×</button>
             </div>
             <div className="ic-modal-bd">
-              {modal.mode !== 'new' && (
+              {/* 'editItem' shows the item's identity through the form itself, so this
+                  name/current-qty header is only needed for the quantity-only Add stock. */}
+              {modal.mode === 'add' && (
                 <div style={{ marginBottom: 14 }}>
                   <div style={{ fontSize: 14, fontWeight: 800 }}>{modal.item.item_name}</div>
                   <div style={{ fontSize: 12, color: 'var(--ic-text3)', fontWeight: 600, marginTop: 2 }}>
@@ -526,19 +546,14 @@ export default function InventoryInchargeDashboard() {
                 </div>
               )}
 
-              {modal.mode === 'edit' && (
-                <>
-                  <label className="ic-label">New quantity ({modal.item.unit || 'units'})</label>
-                  <input className="ic-input" type="number" min="0" step="any" value={qtyInput} onChange={(e) => setQtyInput(e.target.value)} autoFocus />
-                </>
-              )}
               {modal.mode === 'add' && (
                 <>
                   <label className="ic-label">Quantity to add ({modal.item.unit || 'units'})</label>
                   <input className="ic-input" type="number" min="0" step="any" value={qtyInput} onChange={(e) => setQtyInput(e.target.value)} autoFocus />
                 </>
               )}
-              {modal.mode === 'new' && (
+              {/* Same field block for both 'new' and 'editItem' — only the labels differ. */}
+              {modal.mode !== 'add' && (
                 <>
                   <label className="ic-label">Category *</label>
                   <input className="ic-input" list="ic-cats" value={newItem.category} onChange={(e) => setNewItem((s) => ({ ...s, category: e.target.value }))} placeholder="e.g. Chemicals" />
@@ -551,7 +566,7 @@ export default function InventoryInchargeDashboard() {
                   <input className="ic-input" value={newItem.sub_name} onChange={(e) => setNewItem((s) => ({ ...s, sub_name: e.target.value }))} placeholder="Optional" />
                   <label className="ic-label">Unit *</label>
                   <input className="ic-input" value={newItem.unit} onChange={(e) => setNewItem((s) => ({ ...s, unit: e.target.value }))} placeholder="e.g. ML, G, Nos" />
-                  <label className="ic-label">Initial quantity</label>
+                  <label className="ic-label">{modal.mode === 'editItem' ? 'Current quantity' : 'Initial quantity'}</label>
                   <input className="ic-input" type="number" min="0" step="any" value={newItem.current_quantity} onChange={(e) => setNewItem((s) => ({ ...s, current_quantity: e.target.value }))} placeholder="0" />
                   <label className="ic-label">Rack location</label>
                   <input className="ic-input" value={newItem.rack_location} onChange={(e) => setNewItem((s) => ({ ...s, rack_location: e.target.value }))} placeholder="Optional" />
@@ -564,7 +579,7 @@ export default function InventoryInchargeDashboard() {
 
               {modalErr && <div className="ic-hint">{modalErr}</div>}
               <button className="ic-btn ic-btn-primary" style={{ width: '100%' }} disabled={saving} onClick={submitModal}>
-                {saving ? 'Saving…' : modal.mode === 'edit' ? 'Update Quantity' : modal.mode === 'add' ? 'Add Stock' : 'Create Item'}
+                {saving ? 'Saving…' : modal.mode === 'add' ? 'Add Stock' : modal.mode === 'editItem' ? 'Save Changes' : 'Create Item'}
               </button>
             </div>
           </div>

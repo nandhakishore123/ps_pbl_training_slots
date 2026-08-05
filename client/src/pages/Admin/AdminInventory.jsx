@@ -212,7 +212,7 @@ export default function AdminInventory() {
   const [rejectModal, setRejectModal] = useState(null); // { kind:'BUY'|'RETURN', id }
   const [rejectRemarks, setRejectRemarks] = useState('');
 
-  const [stockModal, setStockModal] = useState(null); // { mode:'edit'|'add'|'new', item? }
+  const [stockModal, setStockModal] = useState(null); // { mode:'editItem'|'add'|'new', item? }
   const [qtyInput, setQtyInput] = useState('');
   const [newItem, setNewItem] = useState({ category: '', subcategory: '', item_name: '', sub_name: '', unit: '', current_quantity: '', rack_location: '', is_returnable: false });
   const [saving, setSaving] = useState(false);
@@ -429,22 +429,42 @@ export default function AdminInventory() {
   };
 
   // ── Stock modal ──
-  const openEdit = (item) => { setStockModal({ mode: 'edit', item }); setQtyInput(String(item.current_quantity ?? '')); setModalErr(''); };
+  // Full item edit — the same form as "Add New Item", pre-filled from the row.
+  // Replaces the old qty-only "Edit qty": quantity is now just one field of it.
+  // `item` is kept on the modal state so submit knows which id to PUT.
+  const openEditItem = (item) => {
+    setStockModal({ mode: 'editItem', item });
+    setNewItem({
+      category: item.category ?? '',
+      subcategory: item.subcategory ?? '',
+      item_name: item.item_name ?? '',
+      sub_name: item.sub_name ?? '',
+      unit: item.unit ?? '',
+      current_quantity: String(item.current_quantity ?? ''),
+      rack_location: item.rack_location ?? '',
+      is_returnable: Number(item.is_returnable) === 1,
+    });
+    setModalErr('');
+  };
   const openAdd = (item) => { setStockModal({ mode: 'add', item }); setQtyInput(''); setModalErr(''); };
   const openNew = () => { setStockModal({ mode: 'new' }); setNewItem({ category: categoryFilter || '', subcategory: '', item_name: '', sub_name: '', unit: '', current_quantity: '', rack_location: '', is_returnable: false }); setModalErr(''); };
   const closeStockModal = () => { if (!saving) { setStockModal(null); setModalErr(''); } };
   const submitStockModal = async () => {
     setModalErr(''); setSaving(true);
     try {
-      if (stockModal.mode === 'edit') {
-        const q = Number(qtyInput); if (Number.isNaN(q) || q < 0) throw new Error('Enter a quantity of 0 or more.');
-        await inventoryService.editStock(stockModal.item.item_id, q);
-      } else if (stockModal.mode === 'add') {
+      if (stockModal.mode === 'add') {
         const q = Number(qtyInput); if (!(q > 0)) throw new Error('Enter a quantity greater than 0.');
         await inventoryService.addStock(stockModal.item.item_id, q);
       } else {
+        // 'new' and 'editItem' share the same form, validation and payload shape.
         if (!newItem.category.trim() || !newItem.item_name.trim() || !newItem.unit.trim()) throw new Error('Category, item name and unit are required.');
-        await inventoryService.addNewItem({ ...newItem, current_quantity: Number(newItem.current_quantity || 0), is_returnable: !!newItem.is_returnable });
+        const payload = { ...newItem, current_quantity: Number(newItem.current_quantity || 0), is_returnable: !!newItem.is_returnable };
+        if (stockModal.mode === 'editItem') {
+          await inventoryService.updateItem(stockModal.item.item_id, payload);
+          showToast('Item updated', false);
+        } else {
+          await inventoryService.addNewItem(payload);
+        }
       }
       setStockModal(null); await loadStock(); loadOverview();
     } catch (err) { setModalErr(err?.response?.data?.message || err?.message || 'Action failed.'); }
@@ -602,7 +622,7 @@ export default function AdminInventory() {
                         <div className="ad-item-hide"><span className={`ad-qty${low ? ' low' : ''}`}>{money(it.current_quantity)}</span> <span className="ad-qty-unit">{it.unit || ''}</span></div>
                         <div className="ad-item-hide ad-rack">{it.rack_location || '—'}</div>
                         <div className="ad-actions">
-                          <button className="ad-btn ad-btn-outline ad-btn-sm" onClick={() => openEdit(it)}>Edit qty</button>
+                          <button className="ad-btn ad-btn-outline ad-btn-sm" onClick={() => openEditItem(it)}>Edit</button>
                           <button className="ad-btn ad-btn-ghost ad-btn-sm" onClick={() => openAdd(it)}>Add stock</button>
                         </div>
                       </div>
@@ -733,19 +753,21 @@ export default function AdminInventory() {
         <div className="ad-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) closeStockModal(); }}>
           <div className="ad-modal">
             <div className="ad-modal-hd">
-              <div className="ad-modal-title">{stockModal.mode === 'edit' ? 'Edit Quantity' : stockModal.mode === 'add' ? 'Add Stock' : 'Add New Item'}</div>
+              <div className="ad-modal-title">{stockModal.mode === 'add' ? 'Add Stock' : stockModal.mode === 'editItem' ? 'Edit Item' : 'Add New Item'}</div>
               <button className="ad-modal-x" onClick={closeStockModal}>×</button>
             </div>
             <div className="ad-modal-bd">
-              {stockModal.mode !== 'new' && (
+              {/* 'editItem' shows the item's identity through the form itself, so this
+                  name/current-qty header is only needed for the quantity-only Add stock. */}
+              {stockModal.mode === 'add' && (
                 <div style={{ marginBottom: 14 }}>
                   <div style={{ fontSize: 14, fontWeight: 800 }}>{stockModal.item.item_name}</div>
                   <div style={{ fontSize: 12, color: 'var(--ad-text3)', fontWeight: 600, marginTop: 2 }}>Current: {money(stockModal.item.current_quantity)} {stockModal.item.unit || ''}</div>
                 </div>
               )}
-              {stockModal.mode === 'edit' && (<><label className="ad-label">New quantity ({stockModal.item.unit || 'units'})</label><input className="ad-input" type="number" min="0" step="any" value={qtyInput} onChange={(e) => setQtyInput(e.target.value)} autoFocus /></>)}
               {stockModal.mode === 'add' && (<><label className="ad-label">Quantity to add ({stockModal.item.unit || 'units'})</label><input className="ad-input" type="number" min="0" step="any" value={qtyInput} onChange={(e) => setQtyInput(e.target.value)} autoFocus /></>)}
-              {stockModal.mode === 'new' && (
+              {/* Same field block for both 'new' and 'editItem' — only the labels differ. */}
+              {stockModal.mode !== 'add' && (
                 <>
                   <label className="ad-label">Category *</label>
                   <input className="ad-input" list="ad-cats" value={newItem.category} onChange={(e) => setNewItem((s) => ({ ...s, category: e.target.value }))} placeholder="e.g. Chemicals" />
@@ -758,7 +780,7 @@ export default function AdminInventory() {
                   <input className="ad-input" value={newItem.sub_name} onChange={(e) => setNewItem((s) => ({ ...s, sub_name: e.target.value }))} placeholder="Optional" />
                   <label className="ad-label">Unit *</label>
                   <input className="ad-input" value={newItem.unit} onChange={(e) => setNewItem((s) => ({ ...s, unit: e.target.value }))} placeholder="e.g. ML, G, Nos" />
-                  <label className="ad-label">Initial quantity</label>
+                  <label className="ad-label">{stockModal.mode === 'editItem' ? 'Current quantity' : 'Initial quantity'}</label>
                   <input className="ad-input" type="number" min="0" step="any" value={newItem.current_quantity} onChange={(e) => setNewItem((s) => ({ ...s, current_quantity: e.target.value }))} placeholder="0" />
                   <label className="ad-label">Rack location</label>
                   <input className="ad-input" value={newItem.rack_location} onChange={(e) => setNewItem((s) => ({ ...s, rack_location: e.target.value }))} placeholder="Optional" />
@@ -767,7 +789,7 @@ export default function AdminInventory() {
               )}
               {modalErr && <div className="ad-err" style={{ marginBottom: 12 }}>{modalErr}</div>}
               <button className="ad-btn ad-btn-primary" style={{ width: '100%' }} disabled={saving} onClick={submitStockModal}>
-                {saving ? 'Saving…' : stockModal.mode === 'edit' ? 'Update Quantity' : stockModal.mode === 'add' ? 'Add Stock' : 'Create Item'}
+                {saving ? 'Saving…' : stockModal.mode === 'add' ? 'Add Stock' : stockModal.mode === 'editItem' ? 'Save Changes' : 'Create Item'}
               </button>
             </div>
           </div>
