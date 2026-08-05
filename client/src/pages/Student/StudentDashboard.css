@@ -61,6 +61,21 @@
     margin-top: 1px;
   }
 
+  /* ── HEADER TITLE WRAPPING (Student Dashboard header only) ──
+     Everything here is scoped under .pt-header-left, a class that exists only on
+     this page — PointsDashboard, TrainingSlots and RewardPoints render the same
+     .pt-header-* names but inject their own rules, and this file is a global
+     stylesheet, so an unscoped .pt-header-title rule would reach them too.
+     These are inert while there is room, so the desktop header is unchanged. */
+  .pt-header-left { min-width: 0; }
+  .pt-header-left > div { min-width: 0; }
+  .pt-header-left .pt-header-title,
+  .pt-header-left .pt-header-sub {
+    min-width: 0;
+    white-space: normal;
+    overflow-wrap: break-word;
+  }
+
   /* ── DARK TOGGLE ── */
   .pt-dark-toggle {
     background: none;
@@ -180,6 +195,53 @@
       width: 34px;
       height: 34px;
     }
+
+    /* ══ HEADER OVERLAP FIX — ADDITIVE, Student-Dashboard-only ══
+       The cluster on the right is flex-shrink:0 and ~325px wide on its own;
+       with the header's 32px padding and 12px gap that is ~369px claimed before
+       .pt-header-left (flex:1; min-width:0) gets anything, so on a phone the
+       title column collapsed to 0px and its glyphs painted over the medal icon.
+       Wrapping alone cannot fix that — there is no width to wrap into — so the
+       cluster gives a little back and the title gets a floor to wrap inside.
+       Every selector below sits under .pt-header-left / .pt-header-right-mobile,
+       which exist on this page only. The bare .pt-header-title rule above is
+       left untouched so other screens keep their own sizing. */
+
+    /* Reserve room for the icon + the longest word ("Training") so the title
+       always has somewhere to wrap to. !important overrides the inline
+       min-width:0 on this element. */
+    .pt-header-left {
+      min-width: 102px !important;
+      flex: 1 1 auto;
+    }
+    .pt-header-left .pt-header-icon {
+      width: 32px; height: 32px;
+      font-size: 16px;
+    }
+    /* Wraps to "Points &" / "Training" instead of overflowing its box. */
+    .pt-header-left .pt-header-title {
+      font-size: 13.5px;
+      line-height: 1.2;
+    }
+
+    /* Trim the cluster so the width above is available rather than overflowing
+       the viewport. The controls all stay visible and keep working. */
+    .pt-header-right-mobile { gap: 6px; min-width: 0; }
+    .pt-header-right-mobile .pt-icon-btn { width: 30px; height: 30px; }
+    .pt-header-right-mobile .pt-dark-toggle { padding: 4px 7px; font-size: 11px; }
+    /* The profile badge is the widest item (~147px) and is flex-shrink:0 with a
+       nowrap name, so it never yielded. Letting it shrink hands back only what
+       the title needs; the name already ellipsises, so nothing is cut off
+       abruptly. Positional selector because the badge carries inline styles and
+       no class of its own — it is the first control in the cluster. */
+    .pt-header-right-mobile > button:first-child {
+      flex-shrink: 1 !important;
+      min-width: 0 !important;
+    }
+    .pt-header-right-mobile > button:first-child > div:last-child {
+      min-width: 0 !important;
+    }
+
     .pt-boxes-col {
       padding: 16px 16px 0;
       gap: 10px;
@@ -190,6 +252,17 @@
     }
     .pt-box-label { font-size: 14px; }
     .pt-box-desc  { font-size: 11px; }
+  }
+
+  /* One more notch for very narrow phones (≤380px), so "Training" still fits on
+     a single line inside its column. Must stay after the 640px block — both
+     min-width declarations are !important, so source order decides. Same
+     Student-Dashboard-only scoping as above. */
+  @media (max-width: 380px) {
+    .pt-header-left { min-width: 92px !important; }
+    .pt-header-left .pt-header-title { font-size: 12.5px; }
+    .pt-header-right-mobile { gap: 5px; }
+    .pt-header-right-mobile .pt-dark-toggle { padding: 4px 6px; font-size: 10.5px; }
   }
 
   @media (min-width: 641px) {
