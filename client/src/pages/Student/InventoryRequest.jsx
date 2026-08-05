@@ -4,151 +4,345 @@
 // Returning + approvals + stock changes come in later stages (see TODOs).
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { motion, MotionConfig } from 'framer-motion';
 import { useAuthStore } from '../../store/authStore';
 import { inventoryService } from '../../services/features/inventoryService';
 
 // ── Scoped premium styles (self-contained; follows body.dark-mode) ──
+// Shares its design language with the intern console (InternDashboard.css): the
+// same layered-shadow scale, gradient surfaces, focus ring and easing curve, only
+// under this page's own --iv-* names. Every selector is .inv-*-scoped — this
+// stylesheet is injected into <head>, so an unscoped rule would leak app-wide.
+// Motion split, same as the intern page: framer-motion owns `transform` on the
+// elements it animates, CSS owns colour/shadow/opacity. Never both on one element.
 const CSS = `
   .inv-root {
-    --iv-purple:#6c47ff; --iv-purple-dim:rgba(108,71,255,0.1); --iv-purple-glow:rgba(108,71,255,0.28);
+    /* brand */
+    --iv-purple:#6c47ff; --iv-purple-2:#4b2fd6; --iv-purple-lt:#7d5cff;
+    --iv-purple-dim:rgba(108,71,255,0.1); --iv-purple-soft:rgba(108,71,255,0.055);
+    --iv-purple-glow:rgba(108,71,255,0.28);
+    /* surfaces */
     --iv-bg:#f0f2f8; --iv-white:#fff; --iv-border:#e5e4eb;
     --iv-text:#1a1040; --iv-text2:#6b7280; --iv-text3:#9ca3af;
     --iv-green:#10b981; --iv-red:#ef4444; --iv-gold:#f59e0b;
-    min-height:100vh; background:var(--iv-bg); color:var(--iv-text);
-    font-family:'Segoe UI',system-ui,sans-serif;
+    --iv-amber-ink:#b45309;
+    /* premium surface system */
+    --iv-card:linear-gradient(180deg,#fff 0%,#fbfbff 100%);
+    --iv-glass:rgba(255,255,255,0.78);
+    --iv-inset:#f6f6fc;
+    --iv-hairline:rgba(26,16,64,0.08);
+    --iv-shadow-sm:0 1px 2px rgba(26,16,64,0.04), 0 2px 8px rgba(26,16,64,0.04);
+    --iv-shadow-md:0 2px 4px rgba(26,16,64,0.04), 0 10px 28px rgba(26,16,64,0.07);
+    --iv-shadow-lg:0 8px 18px rgba(26,16,64,0.07), 0 26px 54px rgba(26,16,64,0.14);
+    --iv-shadow-brand:0 6px 18px rgba(108,71,255,0.32), 0 2px 6px rgba(108,71,255,0.18);
+    --iv-ring:0 0 0 3px rgba(108,71,255,0.16);
+    --iv-r-lg:20px; --iv-r-md:14px; --iv-r-sm:11px;
+    --iv-ease:cubic-bezier(.22,.61,.36,1);
+    /* Reuses the app-wide font vars from index.css; the literal names are only a
+       fallback for when this page renders outside that stylesheet. */
+    --iv-font-head:var(--font-head,'Outfit','Segoe UI',system-ui,sans-serif);
+    --iv-font-body:var(--font-body,'Plus Jakarta Sans','Segoe UI',system-ui,sans-serif);
+
+    min-height:100vh; color:var(--iv-text);
+    background:
+      radial-gradient(1100px 560px at 12% -12%, rgba(108,71,255,0.07), transparent 62%),
+      radial-gradient(900px 480px at 92% 4%, rgba(108,71,255,0.045), transparent 60%),
+      var(--iv-bg);
+    background-attachment:fixed;
+    font-family:var(--iv-font-body);
+    -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
   }
   body.dark-mode .inv-root {
     --iv-bg:#0f0f1a; --iv-white:#1a1a2e; --iv-border:#2d2d4e;
     --iv-text:#e8e6f0; --iv-text2:#a89ec9; --iv-text3:#6b6b8a;
+    --iv-amber-ink:#fbbf24;
+    --iv-card:linear-gradient(180deg,#1e1c33 0%,#191828 100%);
+    --iv-glass:rgba(23,23,40,0.78);
+    --iv-inset:rgba(11,10,24,0.5);
+    --iv-hairline:rgba(255,255,255,0.07);
+    --iv-purple-dim:rgba(108,71,255,0.16);
+    --iv-purple-soft:rgba(108,71,255,0.08);
+    --iv-shadow-sm:0 1px 2px rgba(0,0,0,0.28), 0 2px 8px rgba(0,0,0,0.22);
+    --iv-shadow-md:0 2px 6px rgba(0,0,0,0.3), 0 12px 30px rgba(0,0,0,0.3);
+    --iv-shadow-lg:0 10px 22px rgba(0,0,0,0.34), 0 28px 60px rgba(0,0,0,0.46);
+    --iv-ring:0 0 0 3px rgba(108,71,255,0.26);
   }
-  .inv-header { background:var(--iv-white); border-bottom:1px solid var(--iv-border); padding:14px 24px;
+
+  /* Outfit for headings (it carries a real 900), Plus Jakarta Sans for body copy. */
+  .inv-htitle, .inv-card-title, .inv-req-id, .inv-obl-name { font-family:var(--iv-font-head); }
+
+  .inv-header { background:var(--iv-glass); backdrop-filter:blur(16px) saturate(180%);
+    -webkit-backdrop-filter:blur(16px) saturate(180%);
+    border-bottom:1px solid var(--iv-hairline); padding:14px 24px;
     display:flex; align-items:center; justify-content:space-between; gap:12px; position:sticky; top:0; z-index:50;
-    box-shadow:0 1px 10px rgba(26,16,64,0.05); }
-  .inv-back { display:flex; align-items:center; gap:7px; background:var(--iv-white); border:1.5px solid var(--iv-border);
-    color:var(--iv-text2); padding:8px 14px; border-radius:9px; font-size:13px; font-weight:700; cursor:pointer;
-    transition:all .18s; font-family:inherit; white-space:nowrap; }
+    box-shadow:0 1px 0 var(--iv-hairline), 0 10px 30px rgba(26,16,64,0.05); }
+  .inv-back { display:flex; align-items:center; gap:7px; background:var(--iv-card); border:1px solid var(--iv-border);
+    color:var(--iv-text2); padding:8px 14px; border-radius:10px; font-size:13px; font-weight:700; cursor:pointer;
+    font-family:inherit; white-space:nowrap; box-shadow:var(--iv-shadow-sm);
+    transition:color .2s var(--iv-ease), border-color .2s var(--iv-ease), background .2s var(--iv-ease),
+      transform .2s var(--iv-ease); }
   .inv-back:hover { border-color:var(--iv-purple); color:var(--iv-purple); background:var(--iv-purple-dim); }
-  .inv-htitle { font-size:17px; font-weight:900; letter-spacing:0.2px; }
+  .inv-back:active, .inv-dark:active { transform:translateY(1px); }
+  .inv-htitle { font-size:17px; font-weight:900; letter-spacing:-0.3px; }
   .inv-hsub { font-size:11.5px; color:var(--iv-text3); font-weight:600; margin-top:1px; }
-  .inv-userpill { display:flex; align-items:center; gap:10px; padding:4px 14px 4px 4px; background:var(--iv-white);
-    border:1.5px solid var(--iv-border); border-radius:50px; }
-  .inv-avatar { width:36px; height:36px; border-radius:50%; background:linear-gradient(135deg,#6c47ff,#4b2fd6);
-    display:flex; align-items:center; justify-content:center; font-size:15px; font-weight:900; color:#fff; flex-shrink:0; }
+  .inv-userpill { display:flex; align-items:center; gap:10px; padding:4px 14px 4px 4px; background:var(--iv-card);
+    border:1px solid var(--iv-border); border-radius:50px; box-shadow:var(--iv-shadow-sm);
+    transition:border-color .22s var(--iv-ease); }
+  .inv-userpill:hover { border-color:rgba(108,71,255,0.35); }
+  .inv-avatar { width:36px; height:36px; border-radius:50%;
+    background:linear-gradient(135deg,var(--iv-purple-lt),var(--iv-purple-2));
+    display:flex; align-items:center; justify-content:center; font-size:15px; font-weight:800; color:#fff;
+    flex-shrink:0; box-shadow:0 3px 10px var(--iv-purple-glow), inset 0 1px 0 rgba(255,255,255,0.3); }
   .inv-uname { font-size:13px; font-weight:800; line-height:1.15; }
   .inv-uroll { font-size:10.5px; color:var(--iv-text3); font-weight:700; letter-spacing:0.4px; }
-  .inv-dark { background:var(--iv-white); border:1.5px solid var(--iv-border); border-radius:20px; padding:6px 12px;
-    cursor:pointer; font-size:12.5px; color:var(--iv-text2); font-weight:600; font-family:inherit; white-space:nowrap; }
-  .inv-dark:hover { border-color:var(--iv-purple); color:var(--iv-purple); }
+  .inv-dark { background:var(--iv-card); border:1px solid var(--iv-border); border-radius:20px; padding:7px 13px;
+    cursor:pointer; font-size:12.5px; color:var(--iv-text2); font-weight:700; font-family:inherit; white-space:nowrap;
+    box-shadow:var(--iv-shadow-sm);
+    transition:color .2s var(--iv-ease), border-color .2s var(--iv-ease), background .2s var(--iv-ease),
+      transform .2s var(--iv-ease); }
+  .inv-dark:hover { border-color:var(--iv-purple); color:var(--iv-purple); background:var(--iv-purple-dim); }
 
-  .inv-wrap { max-width:none; margin:0; padding:22px 24px 44px; }
+  .inv-wrap { max-width:none; margin:0; padding:24px 24px 48px; }
 
-  .inv-tabs { display:flex; gap:8px; background:var(--iv-white); border:1px solid var(--iv-border); border-radius:14px;
-    padding:6px; margin-bottom:20px; }
-  .inv-tab { flex:1; padding:11px 14px; border-radius:9px; border:none; background:transparent; font-size:13.5px;
+  .inv-tabs { display:flex; gap:4px; background:var(--iv-inset); border:1px solid var(--iv-border);
+    border-radius:var(--iv-r-md); padding:5px; margin-bottom:22px; box-shadow:var(--iv-shadow-sm); }
+  .inv-tab { flex:1; padding:10px 14px; border-radius:10px; border:none; background:transparent; font-size:13.5px;
     font-weight:800; color:var(--iv-text2); cursor:pointer; font-family:inherit; display:flex; align-items:center;
-    justify-content:center; gap:8px; transition:all .18s; }
-  .inv-tab.active { background:linear-gradient(135deg,#6c47ff,#4b2fd6); color:#fff; box-shadow:0 4px 14px var(--iv-purple-glow); }
+    justify-content:center; gap:8px;
+    transition:color .22s var(--iv-ease), background .22s var(--iv-ease), box-shadow .22s var(--iv-ease),
+      transform .22s var(--iv-ease); }
+  .inv-tab:hover:not(.active):not(.disabled) { color:var(--iv-purple); background:var(--iv-purple-dim); }
+  .inv-tab:active:not(.disabled) { transform:translateY(1px); }
+  .inv-tab.active { background:linear-gradient(135deg,var(--iv-purple-lt),var(--iv-purple-2)); color:#fff;
+    box-shadow:var(--iv-shadow-brand), inset 0 1px 0 rgba(255,255,255,0.22); }
+  .inv-tab:focus-visible { outline:none; box-shadow:var(--iv-ring); }
   .inv-tab.disabled { cursor:not-allowed; opacity:0.55; }
   .inv-soon { font-size:9px; font-weight:800; letter-spacing:0.6px; text-transform:uppercase; padding:2px 8px;
-    border-radius:20px; background:rgba(245,158,11,0.16); color:#b45309; border:1px solid rgba(245,158,11,0.4); }
+    border-radius:20px; background:rgba(245,158,11,0.16); color:var(--iv-amber-ink); border:1px solid rgba(245,158,11,0.4); }
 
-  .inv-grid { display:grid; grid-template-columns:1fr 380px; gap:20px; align-items:start; }
-  .inv-card { background:var(--iv-white); border:1px solid var(--iv-border); border-radius:18px; padding:22px;
-    box-shadow:0 6px 26px rgba(26,16,64,0.06); }
+  .inv-grid { display:grid; grid-template-columns:1fr 380px; gap:22px; align-items:start; }
+  .inv-card { background:var(--iv-card); border:1px solid var(--iv-border); border-radius:var(--iv-r-lg); padding:24px;
+    box-shadow:var(--iv-shadow-md);
+    transition:box-shadow .3s var(--iv-ease), border-color .3s var(--iv-ease); }
   .inv-card + .inv-card { margin-top:18px; }
-  .inv-card-title { font-size:15px; font-weight:900; margin-bottom:3px; }
-  .inv-card-sub { font-size:12px; color:var(--iv-text3); margin-bottom:16px; }
+  .inv-card-title { font-size:15.5px; font-weight:800; margin-bottom:4px; letter-spacing:-0.2px; }
+  .inv-card-sub { font-size:12px; color:var(--iv-text3); margin-bottom:18px; line-height:1.55; }
 
   .inv-field-label { font-size:11px; font-weight:800; letter-spacing:0.8px; text-transform:uppercase;
-    color:var(--iv-text2); margin-bottom:7px; display:block; }
-  .inv-select, .inv-input, .inv-textarea { width:100%; padding:11px 14px; border:1.5px solid var(--iv-border);
-    border-radius:11px; background:var(--iv-bg); color:var(--iv-text); font-size:13.5px; font-weight:600; outline:none;
-    font-family:inherit; box-sizing:border-box; }
-  .inv-select:focus, .inv-input:focus, .inv-textarea:focus { border-color:var(--iv-purple); }
-  .inv-textarea { resize:vertical; min-height:76px; line-height:1.5; }
+    color:var(--iv-text2); margin-bottom:8px; display:block; }
+  .inv-select, .inv-input, .inv-textarea { width:100%; padding:12px 14px; border:1.5px solid var(--iv-border);
+    border-radius:var(--iv-r-sm); background:var(--iv-inset); color:var(--iv-text); font-size:13.5px; font-weight:600;
+    outline:none; font-family:inherit; box-sizing:border-box;
+    transition:border-color .2s var(--iv-ease), box-shadow .2s var(--iv-ease), background .2s var(--iv-ease); }
+  .inv-select:hover:not(:disabled), .inv-input:hover:not(:disabled), .inv-textarea:hover:not(:disabled) {
+    border-color:rgba(108,71,255,0.4); }
+  .inv-select:focus, .inv-input:focus, .inv-textarea:focus { border-color:var(--iv-purple); box-shadow:var(--iv-ring);
+    background:var(--iv-white); }
+  .inv-select:disabled, .inv-input:disabled, .inv-textarea:disabled { opacity:0.6; cursor:not-allowed; }
+  .inv-textarea { resize:vertical; min-height:82px; line-height:1.55; }
   .inv-row2 { display:flex; gap:12px; align-items:flex-end; }
-  .inv-unit-chip { flex-shrink:0; padding:11px 14px; border-radius:11px; background:var(--iv-purple-dim);
+  .inv-unit-chip { flex-shrink:0; padding:12px 14px; border-radius:var(--iv-r-sm); background:var(--iv-purple-dim);
     border:1.5px solid rgba(108,71,255,0.25); color:var(--iv-purple); font-size:13px; font-weight:800; white-space:nowrap; }
 
-  .inv-item-list { max-height:248px; overflow-y:auto; border:1.5px solid var(--iv-border); border-radius:11px;
-    background:var(--iv-bg); padding:5px; display:flex; flex-direction:column; gap:3px; }
+  .inv-item-list { max-height:248px; overflow-y:auto; border:1.5px solid var(--iv-border); border-radius:var(--iv-r-sm);
+    background:var(--iv-inset); padding:6px; display:flex; flex-direction:column; gap:3px;
+    scrollbar-width:thin; scrollbar-color:rgba(108,71,255,0.35) transparent; }
+  .inv-item-list::-webkit-scrollbar { width:9px; }
+  .inv-item-list::-webkit-scrollbar-track { background:transparent; }
+  .inv-item-list::-webkit-scrollbar-thumb { background:rgba(108,71,255,0.28); border-radius:20px;
+    border:3px solid transparent; background-clip:content-box; }
+  .inv-item-list::-webkit-scrollbar-thumb:hover { background:rgba(108,71,255,0.5); background-clip:content-box; }
   .inv-item-row { display:flex; align-items:center; justify-content:space-between; gap:10px; width:100%;
-    padding:9px 12px; border:1.5px solid transparent; border-radius:9px; background:transparent; cursor:pointer;
-    font-family:inherit; text-align:left; color:var(--iv-text); transition:all .14s; }
+    padding:10px 12px; border:1.5px solid transparent; border-radius:9px; background:transparent; cursor:pointer;
+    font-family:inherit; text-align:left; color:var(--iv-text);
+    transition:background .16s var(--iv-ease), border-color .16s var(--iv-ease), box-shadow .16s var(--iv-ease); }
   .inv-item-row:hover { background:var(--iv-purple-dim); }
-  .inv-item-row.sel { background:var(--iv-purple-dim); border-color:var(--iv-purple); }
+  .inv-item-row.sel { background:var(--iv-purple-dim); border-color:var(--iv-purple); box-shadow:var(--iv-shadow-sm); }
   .inv-item-name { font-size:13px; font-weight:700; }
   .inv-item-avail { font-size:11.5px; font-weight:700; color:var(--iv-text3); white-space:nowrap; flex-shrink:0; }
   .inv-item-row.sel .inv-item-avail { color:var(--iv-purple); }
-  .inv-item-empty { padding:16px 12px; text-align:center; font-size:12.5px; color:var(--iv-text3); font-weight:600; }
-  .inv-item-count { font-size:11px; font-weight:700; color:var(--iv-text3); margin:6px 2px 0; text-align:right; }
+  .inv-item-empty { padding:18px 12px; text-align:center; font-size:12.5px; color:var(--iv-text3); font-weight:600; }
+  .inv-item-count { font-size:11px; font-weight:700; color:var(--iv-text3); margin:7px 2px 0; text-align:right; }
 
   .inv-btn { width:100%; padding:13px; border:none; border-radius:12px; font-size:14px; font-weight:800; cursor:pointer;
-    font-family:inherit; transition:all .18s; }
-  .inv-btn-primary { background:linear-gradient(135deg,#6c47ff,#4b2fd6); color:#fff; box-shadow:0 6px 20px var(--iv-purple-glow); }
-  .inv-btn-primary:hover:not(:disabled) { filter:brightness(1.05); }
-  .inv-btn:disabled { opacity:0.5; cursor:not-allowed; box-shadow:none; }
+    font-family:inherit; position:relative; overflow:hidden;
+    transition:transform .18s var(--iv-ease), box-shadow .24s var(--iv-ease), background .24s var(--iv-ease),
+      border-color .24s var(--iv-ease), opacity .2s var(--iv-ease), filter .2s var(--iv-ease); }
+  .inv-btn-primary { color:#fff; box-shadow:var(--iv-shadow-brand), inset 0 1px 0 rgba(255,255,255,0.22);
+    background:linear-gradient(135deg,var(--iv-purple-lt) 0%,var(--iv-purple) 48%,var(--iv-purple-2) 100%); }
+  /* Soft sheen across the top half — reads as depth, not as a shine effect. */
+  .inv-btn-primary::after { content:''; position:absolute; inset:0 0 50% 0; pointer-events:none;
+    background:linear-gradient(180deg,rgba(255,255,255,0.16),transparent); }
+  .inv-btn-primary:hover:not(:disabled) { transform:translateY(-1px); filter:brightness(1.04);
+    box-shadow:0 10px 28px rgba(108,71,255,0.42), 0 3px 8px rgba(108,71,255,0.22),
+      inset 0 1px 0 rgba(255,255,255,0.26); }
   .inv-btn-ghost { background:var(--iv-purple-dim); color:var(--iv-purple); border:1.5px solid rgba(108,71,255,0.3); }
+  .inv-btn-ghost:hover:not(:disabled) { background:rgba(108,71,255,0.17); border-color:var(--iv-purple);
+    transform:translateY(-1px); box-shadow:0 4px 14px rgba(108,71,255,0.18); }
+  .inv-btn:active:not(:disabled) { transform:translateY(1px) scale(.994); }
+  .inv-btn:focus-visible { outline:none; box-shadow:var(--iv-ring), var(--iv-shadow-brand); }
+  .inv-btn:disabled { opacity:0.45; cursor:not-allowed; box-shadow:none; transform:none; filter:grayscale(0.25); }
 
-  .inv-hint { font-size:12px; color:var(--iv-red); font-weight:700; margin-top:8px; }
+  .inv-hint { font-size:12px; color:var(--iv-red); font-weight:700; margin-top:9px;
+    padding:9px 12px; border-radius:10px; background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.22); }
 
   .inv-cart-row { display:flex; align-items:center; gap:12px; padding:12px 14px; border:1px solid var(--iv-border);
-    border-radius:12px; margin-bottom:9px; background:var(--iv-bg); }
+    border-radius:12px; margin-bottom:10px; background:var(--iv-inset);
+    transition:border-color .2s var(--iv-ease), box-shadow .2s var(--iv-ease), background .2s var(--iv-ease); }
+  .inv-cart-row:hover { border-color:rgba(108,71,255,0.32); box-shadow:var(--iv-shadow-sm); }
   .inv-cart-name { font-size:13px; font-weight:800; flex:1; min-width:0; }
   .inv-cart-qty { font-size:12.5px; font-weight:800; color:var(--iv-purple); white-space:nowrap; }
   .inv-cart-x { width:28px; height:28px; border-radius:8px; border:1px solid var(--iv-border); background:transparent;
-    color:var(--iv-text3); cursor:pointer; font-size:15px; line-height:1; flex-shrink:0; font-family:inherit; }
-  .inv-cart-x:hover { border-color:var(--iv-red); color:var(--iv-red); background:rgba(239,68,68,0.06); }
-  .inv-empty { text-align:center; padding:26px 16px; color:var(--iv-text3); font-size:13px; font-weight:600; }
+    color:var(--iv-text3); cursor:pointer; font-size:15px; line-height:1; flex-shrink:0; font-family:inherit;
+    transition:color .18s var(--iv-ease), border-color .18s var(--iv-ease), background .18s var(--iv-ease),
+      transform .18s var(--iv-ease); }
+  .inv-cart-x:hover { border-color:var(--iv-red); color:var(--iv-red); background:rgba(239,68,68,0.09);
+    transform:rotate(90deg); }
+  .inv-empty { text-align:center; padding:28px 18px; color:var(--iv-text3); font-size:13px; font-weight:600;
+    border:1px dashed var(--iv-border); border-radius:var(--iv-r-md); background:var(--iv-purple-soft); }
 
-  .inv-pill { display:inline-flex; align-items:center; gap:6px; padding:4px 12px; border-radius:20px; font-size:11px;
+  .inv-pill { display:inline-flex; align-items:center; gap:6px; padding:5px 13px; border-radius:20px; font-size:11px;
     font-weight:800; letter-spacing:0.4px; text-transform:uppercase; }
   .inv-pill.pending { background:rgba(245,158,11,0.12); color:#b45309; border:1px solid rgba(245,158,11,0.4); }
   .inv-pill.approved { background:rgba(16,185,129,0.12); color:#047857; border:1px solid rgba(16,185,129,0.4); }
   .inv-pill.rejected { background:rgba(239,68,68,0.12); color:#b91c1c; border:1px solid rgba(239,68,68,0.4); }
+  /* The 700-weight inks above are unreadable on the dark surface — lift them. */
+  body.dark-mode .inv-root .inv-pill.pending { color:#fbbf24; background:rgba(245,158,11,0.18); }
+  body.dark-mode .inv-root .inv-pill.approved { color:#34d399; background:rgba(16,185,129,0.16); }
+  body.dark-mode .inv-root .inv-pill.rejected { color:#f87171; background:rgba(239,68,68,0.16); }
+  /* …but the pass header is always dark purple, so its pill keeps the light inks. */
+  .inv-pass-top .inv-pill { background:rgba(255,255,255,0.18); color:#fff; border-color:rgba(255,255,255,0.45);
+    backdrop-filter:blur(4px); -webkit-backdrop-filter:blur(4px); }
 
   /* Inventory Pass */
-  .inv-pass { background:var(--iv-white); border:1px solid var(--iv-border); border-radius:20px; overflow:hidden;
-    box-shadow:0 16px 50px rgba(26,16,64,0.14); }
-  .inv-pass-top { background:linear-gradient(135deg,#6c47ff 0%,#4b2fd6 60%,#3a1f9e 100%); padding:22px 24px; color:#fff;
-    position:relative; overflow:hidden; }
-  .inv-pass-orb { position:absolute; border-radius:50%; background:rgba(255,255,255,0.10); }
+  .inv-pass { background:var(--iv-card); border:1px solid var(--iv-border); border-radius:var(--iv-r-lg); overflow:hidden;
+    box-shadow:var(--iv-shadow-lg), 0 0 0 1px var(--iv-hairline); }
+  .inv-pass-top { background:linear-gradient(135deg,#7d5cff 0%,#6c47ff 34%,#4b2fd6 68%,#3a1f9e 100%);
+    padding:24px; color:#fff; position:relative; overflow:hidden;
+    box-shadow:inset 0 -1px 0 rgba(255,255,255,0.14); }
+  .inv-pass-orb { position:absolute; border-radius:50%; background:rgba(255,255,255,0.10);
+    filter:blur(0.5px); pointer-events:none; }
   .inv-pass-body { padding:22px 24px; }
-  .inv-pass-kv { display:flex; justify-content:space-between; gap:14px; padding:9px 0; border-bottom:1px dashed var(--iv-border); font-size:13px; }
+  .inv-pass-kv { display:flex; justify-content:space-between; gap:14px; padding:10px 0;
+    border-bottom:1px dashed var(--iv-hairline); font-size:13px; }
   .inv-pass-kv:last-child { border-bottom:none; }
   .inv-pass-k { color:var(--iv-text2); font-weight:700; }
   .inv-pass-v { font-weight:800; text-align:right; }
-  .inv-pass-item { display:flex; justify-content:space-between; gap:12px; padding:9px 12px; background:var(--iv-bg);
-    border:1px solid var(--iv-border); border-radius:10px; margin-bottom:7px; font-size:13px; }
+  .inv-pass-item { display:flex; justify-content:space-between; gap:12px; padding:10px 12px; background:var(--iv-inset);
+    border:1px solid var(--iv-border); border-radius:10px; margin-bottom:8px; font-size:13px;
+    transition:border-color .2s var(--iv-ease); }
+  .inv-pass-item:hover { border-color:rgba(108,71,255,0.3); }
 
-  .inv-req { border:1px solid var(--iv-border); border-radius:14px; padding:14px 16px; margin-bottom:11px; background:var(--iv-white); }
-  .inv-req-top { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:8px; }
-  .inv-req-id { font-size:13px; font-weight:900; }
-  .inv-req-meta { font-size:11.5px; color:var(--iv-text3); font-weight:600; margin-top:2px; }
-  .inv-req-items { font-size:12.5px; color:var(--iv-text2); line-height:1.6; }
-  .inv-spinner { width:26px; height:26px; border:3px solid var(--iv-border); border-top-color:var(--iv-purple);
-    border-radius:50%; animation:invspin .7s linear infinite; margin:14px auto; }
+  /* No transform here — framer owns the lift on these cards. */
+  .inv-req { border:1px solid var(--iv-border); border-radius:var(--iv-r-md); padding:15px 17px; margin-bottom:12px;
+    background:var(--iv-inset); cursor:pointer;
+    transition:border-color .26s var(--iv-ease), box-shadow .26s var(--iv-ease), background .26s var(--iv-ease); }
+  .inv-req:hover { border-color:rgba(108,71,255,0.32); box-shadow:var(--iv-shadow-sm);
+    background:var(--iv-purple-soft); }
+  .inv-req:focus-visible { outline:none; box-shadow:var(--iv-ring); border-color:var(--iv-purple); }
+  /* Click affordance — appears on hover, so the resting row stays clean. */
+  .inv-req-view { display:block; margin-top:8px; font-size:11px; font-weight:800; letter-spacing:0.4px;
+    color:var(--iv-purple); opacity:0; transition:opacity .24s var(--iv-ease); }
+  .inv-req:hover .inv-req-view, .inv-req:focus-visible .inv-req-view { opacity:1; }
+  .inv-req-top { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:9px; }
+  .inv-req-id { font-size:13.5px; font-weight:800; letter-spacing:-0.1px; }
+  .inv-req-meta { font-size:11.5px; color:var(--iv-text3); font-weight:600; margin-top:3px; }
+  .inv-req-items { font-size:12.5px; color:var(--iv-text2); line-height:1.65; }
+  .inv-spinner { width:28px; height:28px; border:3px solid var(--iv-border); border-top-color:var(--iv-purple);
+    border-right-color:var(--iv-purple); border-radius:50%; animation:invspin .68s linear infinite; margin:18px auto; }
   @keyframes invspin { to { transform:rotate(360deg); } }
 
   /* Returning — obligation rows */
-  .inv-obl { border:1px solid var(--iv-border); border-radius:12px; padding:12px 14px; margin-bottom:10px; background:var(--iv-bg); }
+  .inv-obl { border:1px solid var(--iv-border); border-radius:12px; padding:13px 15px; margin-bottom:11px;
+    background:var(--iv-inset);
+    transition:border-color .24s var(--iv-ease), box-shadow .24s var(--iv-ease); }
+  .inv-obl:hover { border-color:rgba(108,71,255,0.3); box-shadow:var(--iv-shadow-sm); }
   .inv-obl-head { display:flex; align-items:flex-start; gap:11px; cursor:pointer; }
-  .inv-obl-head input { margin-top:3px; width:16px; height:16px; accent-color:var(--iv-purple); flex-shrink:0; }
+  .inv-obl-head input { margin-top:3px; width:16px; height:16px; accent-color:var(--iv-purple); flex-shrink:0;
+    cursor:pointer; }
   .inv-obl-name { font-size:13.5px; font-weight:800; display:block; }
-  .inv-obl-meta { font-size:11.5px; color:var(--iv-text3); font-weight:600; display:block; margin-top:2px; }
-  .inv-obl-body { margin-top:12px; padding-left:27px; }
+  .inv-obl-meta { font-size:11.5px; color:var(--iv-text3); font-weight:600; display:block; margin-top:3px; }
+  .inv-obl-body { margin-top:13px; padding-left:27px; }
   .inv-obl-actions { display:flex; gap:8px; }
-  .inv-seg { padding:8px 14px; border-radius:9px; border:1.5px solid var(--iv-border); background:var(--iv-white); color:var(--iv-text2);
-    font-size:12.5px; font-weight:800; cursor:pointer; font-family:inherit; transition:all .15s; }
-  .inv-seg.active { background:var(--iv-purple-dim); border-color:var(--iv-purple); color:var(--iv-purple); }
-  .inv-seg:disabled { opacity:0.4; cursor:not-allowed; }
+  .inv-seg { padding:8px 14px; border-radius:10px; border:1.5px solid var(--iv-border); background:var(--iv-card);
+    color:var(--iv-text2); font-size:12.5px; font-weight:800; cursor:pointer; font-family:inherit;
+    box-shadow:var(--iv-shadow-sm);
+    transition:color .18s var(--iv-ease), border-color .18s var(--iv-ease), background .18s var(--iv-ease),
+      box-shadow .18s var(--iv-ease), transform .18s var(--iv-ease); }
+  .inv-seg:hover:not(:disabled):not(.active) { border-color:rgba(108,71,255,0.4); color:var(--iv-purple); }
+  .inv-seg:active:not(:disabled) { transform:translateY(1px); }
+  .inv-seg.active { background:var(--iv-purple-dim); border-color:var(--iv-purple); color:var(--iv-purple);
+    box-shadow:0 3px 12px rgba(108,71,255,0.16); }
+  .inv-seg:disabled { opacity:0.4; cursor:not-allowed; box-shadow:none; }
+
+  /* ══ REQUEST PASS POPUP — ADDITIVE BLOCK (start) ══
+     The page had no overlay before this; these mirror the intern console's
+     .in-overlay / .in-modal-x so the popup matches the rest of the app. The pass
+     inside is plain .inv-pass — the same markup the post-create pass uses. */
+  .inv-overlay { position:fixed; inset:0; background:rgba(15,10,40,0.55);
+    backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px); z-index:1000;
+    display:flex; align-items:center; justify-content:center; padding:20px; }
+  /* Long item lists scroll inside the body; the gradient header stays put. */
+  .inv-pass-modal { width:100%; max-width:520px; max-height:86vh; display:flex; flex-direction:column; }
+  .inv-pass-modal .inv-pass-top { flex-shrink:0; }
+  .inv-pass-modal .inv-pass-body { overflow-y:auto;
+    scrollbar-width:thin; scrollbar-color:rgba(108,71,255,0.35) transparent; }
+  .inv-pass-modal .inv-pass-body::-webkit-scrollbar { width:9px; }
+  .inv-pass-modal .inv-pass-body::-webkit-scrollbar-track { background:transparent; }
+  .inv-pass-modal .inv-pass-body::-webkit-scrollbar-thumb { background:rgba(108,71,255,0.28);
+    border-radius:20px; border:3px solid transparent; background-clip:content-box; }
+  /* Sits on the purple header, so it is styled as glass rather than on --iv-inset. */
+  .inv-modal-x { position:absolute; top:14px; right:14px; z-index:3; width:32px; height:32px;
+    border-radius:10px; border:1px solid rgba(255,255,255,0.35); background:rgba(255,255,255,0.16);
+    color:#fff; font-size:18px; line-height:1; cursor:pointer; font-family:inherit;
+    display:flex; align-items:center; justify-content:center;
+    backdrop-filter:blur(4px); -webkit-backdrop-filter:blur(4px);
+    transition:background .18s var(--iv-ease), border-color .18s var(--iv-ease), transform .18s var(--iv-ease); }
+  .inv-modal-x:hover { background:rgba(255,255,255,0.3); border-color:rgba(255,255,255,0.62);
+    transform:rotate(90deg); }
+  .inv-modal-x:focus-visible { outline:none; box-shadow:0 0 0 3px rgba(255,255,255,0.45); }
+  /* ══ REQUEST PASS POPUP — ADDITIVE BLOCK (end) ══ */
 
   @media (max-width:820px) {
     .inv-grid { grid-template-columns:1fr; }
     .inv-hsub, .inv-uroll { display:none; }
-    .inv-wrap { padding:16px 14px 36px; }
+    .inv-wrap { padding:16px 14px 40px; }
+  }
+
+  /* Users who ask for less motion get the same layout, minus the movement.
+     MotionConfig reducedMotion="user" quiets the framer animations to match. */
+  @media (prefers-reduced-motion: reduce) {
+    .inv-root *, .inv-root *::before, .inv-root *::after {
+      animation-duration:.01ms !important; animation-iteration-count:1 !important;
+      transition-duration:.01ms !important;
+    }
   }
 `;
+
+// ── UI MOTION (presentation only) ──────────────────────────────
+// Same presets as the intern console. They animate opacity/transform and nothing
+// else — no handler, prop, condition or piece of state below changes because of
+// them. Entrance-only: exit animations would need AnimatePresence wrapped around
+// the tab/pass conditionals, which is exactly the restructuring this pass avoids.
+const EASE = [0.22, 0.61, 0.36, 1];
+
+// Index-based delay rather than a variants container: these lists render *after*
+// their fetch resolves, so the rows mount later than any parent would. A plain
+// per-row delay staggers them predictably regardless of when they appear.
+const rise = (i = 0) => ({
+  initial: { opacity: 0, y: 10 },
+  animate: { opacity: 1, y: 0 },
+  transition: { duration: 0.26, ease: EASE, delay: Math.min(i, 6) * 0.045 },
+});
+const passPop = {
+  initial: { opacity: 0, y: 12, scale: 0.97 },
+  animate: { opacity: 1, y: 0, scale: 1 },
+  transition: { duration: 0.28, ease: EASE },
+};
+const rowHover = { y: -2, transition: { duration: 0.18, ease: EASE } };
+// Overlay behind the request-pass popup — opacity only, so it writes no transform
+// and stays a clean containing block for the fixed overlay.
+const overlayFade = { initial: { opacity: 0 }, animate: { opacity: 1 }, transition: { duration: 0.16 } };
 
 const money = (n) => Number(n ?? 0).toLocaleString();
 
@@ -199,6 +393,13 @@ export default function InventoryRequest() {
   // My Requests
   const [myRequests, setMyRequests] = useState([]);
   const [mineLoading, setMineLoading] = useState(true);
+
+  // ── REQUEST PASS POPUP (additive) ──
+  // The request clicked in "My Requests", displayed read-only as its Inventory
+  // Pass. It holds an object straight out of myRequests — listRequestsForStudent
+  // already returns each request's line items, so opening it fetches nothing and
+  // mutates nothing. null = closed.
+  const [passRequest, setPassRequest] = useState(null);
 
   // Returning (Stage 5): open obligations → return cart
   const [obligations, setObligations] = useState([]);
@@ -417,6 +618,10 @@ export default function InventoryRequest() {
   };
 
   return (
+    // reducedMotion="user" makes framer honour the OS "reduce motion" setting,
+    // mirroring the @media (prefers-reduced-motion) block in CSS above.
+    // MotionConfig is a context provider — it renders no DOM of its own.
+    <MotionConfig reducedMotion="user">
     <div className="inv-root">
       {/* Header */}
       <div className="inv-header">
@@ -453,7 +658,7 @@ export default function InventoryRequest() {
         {tab === 'buying' && (pass ? (
           /* ── Inventory Pass ── */
           <div style={{ maxWidth: 520, margin: '0 auto' }}>
-            <div className="inv-pass">
+            <motion.div className="inv-pass" {...passPop}>
               <div className="inv-pass-top">
                 <div className="inv-pass-orb" style={{ width: 130, height: 130, top: -40, right: -30 }} />
                 <div className="inv-pass-orb" style={{ width: 80, height: 80, bottom: -34, left: 20 }} />
@@ -482,13 +687,13 @@ export default function InventoryRequest() {
                   + New Request
                 </button>
               </div>
-            </div>
+            </motion.div>
           </div>
         ) : (
           /* ── Buying builder ── */
           <div className="inv-grid">
             {/* LEFT: item picker + purpose */}
-            <div>
+            <motion.div {...rise(0)}>
               <div className="inv-card">
                 <div className="inv-card-title">Add items to your request</div>
                 <div className="inv-card-sub">Pick a category, choose an item, set the quantity, then add it to your cart.</div>
@@ -576,24 +781,24 @@ export default function InventoryRequest() {
                   {submitErr && <div className="inv-hint">{submitErr}</div>}
                 </div>
               )}
-            </div>
+            </motion.div>
 
             {/* RIGHT: cart */}
-            <div className="inv-card">
+            <motion.div className="inv-card" {...rise(1)}>
               <div className="inv-card-title">Your Cart <span style={{ color: 'var(--iv-purple)' }}>({cart.length})</span></div>
               <div className="inv-card-sub">Items to request this time.</div>
               {cart.length === 0 ? (
                 <div className="inv-empty">No items yet — add items from the left.</div>
               ) : (
-                cart.map((c) => (
-                  <div className="inv-cart-row" key={c.item_id}>
+                cart.map((c, i) => (
+                  <motion.div className="inv-cart-row" key={c.item_id} {...rise(i)}>
                     <div className="inv-cart-name">{c.item_name}</div>
                     <div className="inv-cart-qty">{money(c.quantity)} {c.unit}</div>
                     <button className="inv-cart-x" title="Remove" onClick={() => removeFromCart(c.item_id)}>×</button>
-                  </div>
+                  </motion.div>
                 ))
               )}
-            </div>
+            </motion.div>
           </div>
         ))}
 
@@ -601,7 +806,7 @@ export default function InventoryRequest() {
         {tab === 'returning' && (
           returnPass ? (
             <div style={{ maxWidth: 520, margin: '0 auto' }}>
-              <div className="inv-pass">
+              <motion.div className="inv-pass" {...passPop}>
                 <div className="inv-pass-top">
                   <div className="inv-pass-orb" style={{ width: 130, height: 130, top: -40, right: -30 }} />
                   <div className="inv-pass-orb" style={{ width: 80, height: 80, bottom: -34, left: 20 }} />
@@ -626,10 +831,10 @@ export default function InventoryRequest() {
                   </div>
                   <button className="inv-btn inv-btn-ghost" style={{ marginTop: 18 }} onClick={() => setReturnPass(null)}>Done</button>
                 </div>
-              </div>
+              </motion.div>
             </div>
           ) : (
-            <div className="inv-card">
+            <motion.div className="inv-card" {...rise(0)}>
               <div className="inv-card-title">Return / Complete taken items</div>
               <div className="inv-card-sub">Clear each item you took — return a quantity, or mark it fully completed (consumed). Returnable items (e.g. glassware) must be returned. Each goes to the Inventory Incharge for approval.</div>
               {oblLoading ? (
@@ -638,11 +843,11 @@ export default function InventoryRequest() {
                 <div className="inv-empty">No items to return — you're all cleared. ✓</div>
               ) : (
                 <>
-                  {obligations.map((o) => {
+                  {obligations.map((o, i) => {
                     const f = returnForm[o.obligation_id] || { include: false, action: 'RETURN', qty: '' };
                     const returnable = Number(o.is_returnable) === 1;
                     return (
-                      <div className="inv-obl" key={o.obligation_id}>
+                      <motion.div className="inv-obl" key={o.obligation_id} {...rise(i)}>
                         <label className="inv-obl-head">
                           <input type="checkbox" checked={!!f.include} onChange={(e) => setRF(o.obligation_id, { include: e.target.checked })} />
                           <span>
@@ -664,7 +869,7 @@ export default function InventoryRequest() {
                             )}
                           </div>
                         )}
-                      </div>
+                      </motion.div>
                     );
                   })}
                   <button className="inv-btn inv-btn-primary" style={{ marginTop: 16 }} disabled={!canSubmitReturn} onClick={submitReturn}>
@@ -673,7 +878,7 @@ export default function InventoryRequest() {
                   {returnErr && <div className="inv-hint">{returnErr}</div>}
                 </>
               )}
-            </div>
+            </motion.div>
           )
         )}
 
@@ -686,8 +891,13 @@ export default function InventoryRequest() {
           ) : myRequests.length === 0 ? (
             <div className="inv-empty">You haven't made any requests yet.</div>
           ) : (
-            myRequests.map((r) => (
-              <div className="inv-req" key={r.request_id}>
+            myRequests.map((r, i) => (
+              /* REQUEST PASS POPUP — the row opens a read-only pass for this
+                 request. Its existing content and entrance animation are unchanged. */
+              <motion.div className="inv-req" key={r.request_id} {...rise(i)} whileHover={rowHover}
+                role="button" tabIndex={0}
+                onClick={() => setPassRequest(r)}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setPassRequest(r); } }}>
                 <div className="inv-req-top">
                   <div>
                     <div className="inv-req-id">Request #{r.request_id}
@@ -708,11 +918,64 @@ export default function InventoryRequest() {
                   <div className="inv-req-meta" style={{ marginTop: 6 }}>Lab: {r.lab_name || '—'}</div>
                 )}
                 {r.purpose && <div className="inv-req-meta" style={{ marginTop: 6 }}>Purpose: {r.purpose}</div>}
-              </div>
+                <span className="inv-req-view">View pass →</span>
+              </motion.div>
             ))
           )}
         </div>
       </div>
+
+      {/* ══ REQUEST PASS POPUP (additive) ══
+          A read-only view of one row from "My Requests" — same .inv-pass design as
+          the pass shown after creating a request, in a centered overlay. It renders
+          data already held in state; nothing here fetches, submits or edits.
+          Closes on the × and on an overlay click; mousedown + the target check keeps
+          a click that starts inside the pass from closing it. */}
+      {passRequest && (
+        <motion.div className="inv-overlay" {...overlayFade}
+          onMouseDown={(e) => { if (e.target === e.currentTarget) setPassRequest(null); }}>
+          <motion.div className="inv-pass inv-pass-modal" role="dialog" aria-modal="true"
+            aria-label="Request pass" {...passPop}>
+            <div className="inv-pass-top">
+              <div className="inv-pass-orb" style={{ width: 130, height: 130, top: -40, right: -30 }} />
+              <div className="inv-pass-orb" style={{ width: 80, height: 80, bottom: -34, left: 20 }} />
+              <button className="inv-modal-x" title="Close" aria-label="Close"
+                onClick={() => setPassRequest(null)}>×</button>
+              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 2, textTransform: 'uppercase', opacity: 0.8 }}>
+                {passRequest.request_type === 'RETURN' ? 'Return Receipt' : 'Inventory Pass'}
+              </div>
+              <div style={{ fontSize: 22, fontWeight: 900, marginTop: 6 }}>{name}</div>
+              <div style={{ fontSize: 12.5, fontWeight: 700, opacity: 0.85, letterSpacing: 0.5 }}>{roll}</div>
+              <div style={{ marginTop: 12 }}><StatusPill status={passRequest.status} /></div>
+            </div>
+            <div className="inv-pass-body">
+              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.8, textTransform: 'uppercase', color: 'var(--iv-text2)', marginBottom: 8 }}>Items</div>
+              {(passRequest.items || []).length === 0 ? (
+                <div className="inv-empty">No items on this request.</div>
+              ) : (
+                (passRequest.items || []).map((it) => (
+                  <div className="inv-pass-item" key={it.line_id || it.item_id}>
+                    <span style={{ fontWeight: 700 }}>{it.item_name}</span>
+                    <span style={{ fontWeight: 800, color: 'var(--iv-purple)' }}>{money(it.quantity)} {it.unit || ''}</span>
+                  </div>
+                ))
+              )}
+              <div style={{ marginTop: 12 }}>
+                <div className="inv-pass-kv"><span className="inv-pass-k">Purpose</span><span className="inv-pass-v">{passRequest.purpose || '—'}</span></div>
+                <div className="inv-pass-kv"><span className="inv-pass-k">Type</span><span className="inv-pass-v">{passRequest.purpose_type || '—'}</span></div>
+                {/* SELECT LAB */}
+                <div className="inv-pass-kv"><span className="inv-pass-k">Lab</span><span className="inv-pass-v">{passRequest.lab_name || '—'}</span></div>
+                <div className="inv-pass-kv"><span className="inv-pass-k">Request #</span><span className="inv-pass-v">{passRequest.request_id}</span></div>
+                <div className="inv-pass-kv"><span className="inv-pass-k">Date</span><span className="inv-pass-v">{fmtDateTime(passRequest.created_at)}</span></div>
+              </div>
+              <button className="inv-btn inv-btn-ghost" style={{ marginTop: 18 }} onClick={() => setPassRequest(null)}>
+                Close
+              </button>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
     </div>
+    </MotionConfig>
   );
 }

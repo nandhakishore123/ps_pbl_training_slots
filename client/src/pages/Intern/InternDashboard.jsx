@@ -12,12 +12,53 @@
 // OUT_OF_STOCK back for the summary popup.
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { motion, MotionConfig } from 'framer-motion';
 import { useAuthStore } from '../../store/authStore';
 import { authService } from '../../services/features/authService';
 import { inventoryService } from '../../services/features/inventoryService';
 import './InternDashboard.css';
 
 const money = (n) => Number(n ?? 0).toLocaleString();
+
+// ── UI MOTION (presentation only) ──────────────────────────────
+// Shared framer-motion presets. They animate opacity/transform and nothing else:
+// no handler, prop, condition or piece of state below changes because of them.
+// The stylesheet deliberately leaves `transform` alone on every element listed
+// here — framer writes it inline, so a CSS hover transform would be dead code.
+const EASE = [0.22, 0.61, 0.36, 1];
+
+// Grid → children: fade+rise one after the other.
+const gridStagger = { hidden: {}, show: { transition: { staggerChildren: 0.055, delayChildren: 0.04 } } };
+const cardRise = {
+  hidden: { opacity: 0, y: 12 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.28, ease: EASE } },
+};
+const labHover = { y: -5, transition: { duration: 0.2, ease: EASE } };
+const retHover = { y: -3, transition: { duration: 0.2, ease: EASE } };
+
+// Index-based delay rather than a variants container, for rows that mount after
+// their data resolves (buy-view panels, cart rows) — the delay staggers them
+// predictably no matter when they appear. Same helper as the student page.
+const rise = (i = 0) => ({
+  initial: { opacity: 0, y: 10 },
+  animate: { opacity: 1, y: 0 },
+  transition: { duration: 0.26, ease: EASE, delay: Math.min(i, 6) * 0.045 },
+});
+
+// Whole-view swap (tab / labs↔buy). Entrance only — an exit animation would need
+// AnimatePresence around the conditionals, which is exactly the kind of
+// restructuring this pass avoids.
+const viewFade = {
+  initial: { opacity: 0, y: 6 },
+  animate: { opacity: 1, y: 0 },
+  transition: { duration: 0.22, ease: EASE },
+};
+const overlayFade = { initial: { opacity: 0 }, animate: { opacity: 1 }, transition: { duration: 0.16 } };
+const modalPop = {
+  initial: { opacity: 0, y: 10, scale: 0.97 },
+  animate: { opacity: 1, y: 0, scale: 1 },
+  transition: { duration: 0.24, ease: EASE },
+};
 
 function fmtDateTime(d) {
   const dt = d ? new Date(d) : new Date();
@@ -321,6 +362,10 @@ export default function InternDashboard() {
   };
 
   return (
+    // reducedMotion="user" makes framer honour the OS "reduce motion" setting,
+    // mirroring the @media (prefers-reduced-motion) block in the stylesheet.
+    // MotionConfig is a context provider — it renders no DOM of its own.
+    <MotionConfig reducedMotion="user">
     <div className="in-root">
       {/* Header */}
       <div className="in-header">
@@ -367,7 +412,7 @@ export default function InternDashboard() {
 
         {/* ══ LAB CARDS ══ */}
         {tab === 'purchases' && view === 'labs' && (
-          <>
+          <motion.div {...viewFade}>
             <div className="in-page-title">Select a lab</div>
             <div className="in-page-sub">Choose the lab you're buying for. Each card shows its most recent purchases.</div>
 
@@ -375,11 +420,11 @@ export default function InternDashboard() {
             {labsLoading ? <div className="in-spinner" /> : labs.length === 0 ? (
               <div className="in-empty">No active labs yet. Ask an admin to add one.</div>
             ) : (
-              <div className="in-labs">
+              <motion.div className="in-labs" variants={gridStagger} initial="hidden" animate="show">
                 {labs.map((lab) => {
                   const log = recent[lab.lab_id];
                   return (
-                    <div className="in-lab" key={lab.lab_id}>
+                    <motion.div className="in-lab" key={lab.lab_id} variants={cardRise} whileHover={labHover}>
                       <button type="button" className="in-lab-body" onClick={() => openBuy(lab)}>
                         {/* LAB PHOTO (removable) */}
                         <LabPhoto
@@ -419,17 +464,17 @@ export default function InternDashboard() {
                           ))
                         )}
                       </div>
-                    </div>
+                    </motion.div>
                   );
                 })}
-              </div>
+              </motion.div>
             )}
-          </>
+          </motion.div>
         )}
 
         {/* ══ BUY VIEW ══ */}
         {tab === 'purchases' && view === 'buy' && activeLab && (
-          <>
+          <motion.div {...viewFade}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 18 }}>
               {/* LAB PHOTO (removable) */}
               <LabPhoto
@@ -443,7 +488,7 @@ export default function InternDashboard() {
 
             <div className="in-grid">
               {/* LEFT: picker */}
-              <div>
+              <motion.div {...rise(0)}>
                 <div className="in-card">
                   <div className="in-card-title">Add items</div>
                   <div className="in-card-sub">Pick a category, choose an item, set the quantity, then add it to your cart.</div>
@@ -494,29 +539,29 @@ export default function InternDashboard() {
                   </div>
                   {addErr && <div className="in-hint">{addErr}</div>}
                 </div>
-              </div>
+              </motion.div>
 
               {/* RIGHT: cart + submit */}
-              <div className="in-card">
+              <motion.div className="in-card" {...rise(1)}>
                 <div className="in-card-title">Your Cart <span style={{ color: 'var(--in-purple)' }}>({cart.length})</span></div>
                 <div className="in-card-sub">Items to buy for {activeLab.lab_name}.</div>
                 {cart.length === 0 ? (
                   <div className="in-empty">No items yet — add items from the left.</div>
                 ) : (
                   <>
-                    {cart.map((c) => (
-                      <div className="in-cart-row" key={c.item_id}>
+                    {cart.map((c, i) => (
+                      <motion.div className="in-cart-row" key={c.item_id} {...rise(i)}>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div className="in-cart-name">{c.item_name}</div>
                           {Number(c.quantity) > Number(c.available) && (
-                            <div className="in-log-by" style={{ color: '#b45309' }}>
+                            <div className="in-log-by in-stockwarn">
                               only {money(c.available)} in stock
                             </div>
                           )}
                         </div>
                         <div className="in-cart-qty">{money(c.quantity)} {c.unit}</div>
                         <button className="in-cart-x" title="Remove" onClick={() => removeFromCart(c.item_id)}>×</button>
-                      </div>
+                      </motion.div>
                     ))}
                     {shortCart.length > 0 && (
                       <div className="in-warn">
@@ -529,13 +574,13 @@ export default function InternDashboard() {
                     {submitErr && <div className="in-hint">{submitErr}</div>}
                   </>
                 )}
-              </div>
+              </motion.div>
             </div>
-          </>
+          </motion.div>
         )}
         {/* ══ RETURNS VIEW (INTERN LAB RETURNS — removable) ══ */}
         {tab === 'returns' && (
-          <>
+          <motion.div {...viewFade}>
             <div className="in-page-title">Return items</div>
             <div className="in-page-sub">
               Your past purchases that still have something left to return. Returning puts the stock straight
@@ -546,14 +591,14 @@ export default function InternDashboard() {
             {retLoading ? <div className="in-spinner" /> : returnables.length === 0 ? (
               <div className="in-empty">You have no items to return.</div>
             ) : (
-              <div className="in-rets">
+              <motion.div className="in-rets" variants={gridStagger} initial="hidden" animate="show">
                 {returnables.map((p) => {
                   const remaining = Number(p.remaining_returnable);
                   const typed = Number(retQty[p.purchase_id]);
                   const over = typed > remaining;
                   const busy = retBusy === p.purchase_id;
                   return (
-                    <div className="in-card" key={p.purchase_id}>
+                    <motion.div className="in-card" key={p.purchase_id} variants={cardRise} whileHover={retHover}>
                       <div className="in-ret-hd">
                         <div style={{ minWidth: 0 }}>
                           <div className="in-card-title">{p.item_name}</div>
@@ -602,12 +647,12 @@ export default function InternDashboard() {
                         </div>
                       )}
                       {retErr[p.purchase_id] && <div className="in-hint">{retErr[p.purchase_id]}</div>}
-                    </div>
+                    </motion.div>
                   );
                 })}
-              </div>
+              </motion.div>
             )}
-          </>
+          </motion.div>
         )}
       </div>
 
@@ -616,8 +661,9 @@ export default function InternDashboard() {
 
       {/* ══ PURCHASE SUMMARY POPUP ══ */}
       {result && (
-        <div className="in-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) closeResult(); }}>
-          <div className="in-modal" role="dialog" aria-modal="true" aria-label="Purchase summary">
+        <motion.div className="in-overlay" {...overlayFade}
+          onMouseDown={(e) => { if (e.target === e.currentTarget) closeResult(); }}>
+          <motion.div className="in-modal" role="dialog" aria-modal="true" aria-label="Purchase summary" {...modalPop}>
             <div className="in-modal-hd">
               <div className="in-modal-title">Purchase Summary — {result.lab?.lab_name}</div>
               <button className="in-modal-x" onClick={closeResult}>×</button>
@@ -642,14 +688,15 @@ export default function InternDashboard() {
               ))}
               <button className="in-btn in-btn-primary" style={{ marginTop: 8 }} onClick={closeResult}>Done</button>
             </div>
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
       )}
 
       {/* ══ FULL PURCHASE LOG ══ */}
       {logModal && (
-        <div className="in-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) setLogModal(null); }}>
-          <div className="in-modal" role="dialog" aria-modal="true" aria-label="Full purchase log">
+        <motion.div className="in-overlay" {...overlayFade}
+          onMouseDown={(e) => { if (e.target === e.currentTarget) setLogModal(null); }}>
+          <motion.div className="in-modal" role="dialog" aria-modal="true" aria-label="Full purchase log" {...modalPop}>
             <div className="in-modal-hd">
               <div className="in-modal-title">Purchase Log — {logModal.lab.lab_name}</div>
               <button className="in-modal-x" onClick={() => setLogModal(null)}>×</button>
@@ -674,9 +721,10 @@ export default function InternDashboard() {
                 </>
               )}
             </div>
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
       )}
     </div>
+    </MotionConfig>
   );
 }
