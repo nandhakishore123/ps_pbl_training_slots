@@ -72,13 +72,17 @@ export const createRequest = async ({ studentId, requestType, purposeType, purpo
   return result?.insertId ?? null;
 };
 
+// requested_quantity is seeded from the same value as quantity: at creation they
+// are by definition equal. They only diverge later, if an approver reduces
+// `quantity` before approving — `requested_quantity` stays the student's
+// original ask and becomes the ceiling for every subsequent edit.
 export const addRequestItems = async (requestId, items, conn) => {
   const exec = conn || db;
   for (const it of items) {
     await exec.execute(
-      `INSERT INTO inventory_request_items (request_id, item_id, item_name, quantity, unit)
-       VALUES (?, ?, ?, ?, ?)`,
-      [Number(requestId), Number(it.item_id), it.item_name ?? null, it.quantity, it.unit ?? null]
+      `INSERT INTO inventory_request_items (request_id, item_id, item_name, quantity, unit, requested_quantity)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [Number(requestId), Number(it.item_id), it.item_name ?? null, it.quantity, it.unit ?? null, it.quantity]
     );
   }
 };
@@ -374,8 +378,12 @@ export const listBuyingForApprover = async (purposeType) => {
   if (!reqs.length) return [];
   const ids = reqs.map((r) => Number(r.request_id));
   const placeholders = ids.map(() => '?').join(',');
+  // requested_quantity rides along so the approval page can cap its quantity
+  // input at the student's ORIGINAL ask rather than at the current (possibly
+  // already reduced) value — otherwise a reduction is one-way in the UI until a
+  // refresh. NULL on rows predating the column; the page falls back to quantity.
   const [items] = await db.execute(
-    `SELECT line_id, request_id, item_id, item_name, quantity, unit
+    `SELECT line_id, request_id, item_id, item_name, quantity, requested_quantity, unit
      FROM inventory_request_items
      WHERE request_id IN (${placeholders})
      ORDER BY line_id ASC`,
@@ -403,6 +411,101 @@ export const getRequestWithItems = async (requestId, conn) => {
     [Number(requestId)]
   );
   return { ...header, items };
+};
+
+// Approver edit of a PENDING BUY request's line quantities. ADDITIVE, and
+// deliberately separate from approveBuyingRequest: because approval re-reads
+// `quantity` straight off inventory_request_items, writing the reduced value
+// here is all it takes for the stock decrement AND the obligation snapshot to
+// follow. approveBuyingRequest is not touched.
+//
+// Rules per line, all enforced inside the transaction against freshly read rows:
+//   • the line must belong to THIS request (the UPDATE re-guards on request_id),
+//   • new qty must be a finite number >= 1,
+//   • new qty <= requested_quantity — the student's ORIGINAL ask. Approvers may
+//     reduce, never increase. Rows predating that column have it NULL, so the
+//     current quantity stands in as the cap: still reduce-only, just anchored to
+//     the only figure we can actually prove.
+//   • new qty <= current stock, so a saved edit can never be one that approval
+//     would then turn around and reject.
+//
+// The header is read FOR UPDATE so a concurrent approve/reject cannot slip in
+// between the PENDING check and the write. requested_quantity is never written
+// here — preserving it across repeated edits is the entire point of the column.
+//
+// actorUserId is accepted for symmetry with the other approver writes; there is
+// no per-line audit table to record it in yet, and no stock moves here, so
+// nothing is logged.
+export const updatePendingRequestQuantities = async (requestId, edits, actorUserId) => {
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [hrows] = await conn.execute(
+      `SELECT request_id, student_id, request_type, status
+         FROM inventory_requests WHERE request_id = ? FOR UPDATE`,
+      [Number(requestId)]
+    );
+    const header = hrows?.[0];
+    if (!header) { const e = new Error('Request not found'); e.status = 404; throw e; }
+    if (header.request_type !== 'BUY') { const e = new Error('Not a buying request'); e.status = 400; throw e; }
+    if (header.status !== 'PENDING') { const e = new Error('Request is not pending'); e.status = 409; throw e; }
+
+    for (const ed of edits) {
+      const lineId = Number(ed.line_id);
+      const newQty = Number(ed.quantity);
+      if (!Number.isFinite(newQty) || newQty < 1) {
+        const e = new Error('Each quantity must be a number of at least 1'); e.status = 400; throw e;
+      }
+
+      const [lrows] = await conn.execute(
+        `SELECT line_id, item_id, item_name, quantity, requested_quantity
+           FROM inventory_request_items
+          WHERE line_id = ? AND request_id = ? LIMIT 1`,
+        [lineId, Number(requestId)]
+      );
+      const line = lrows?.[0];
+      if (!line) {
+        const e = new Error(`Line ${lineId} does not belong to request ${requestId}`); e.status = 400; throw e;
+      }
+
+      const cap = line.requested_quantity != null ? Number(line.requested_quantity) : Number(line.quantity);
+      if (newQty > cap) {
+        const e = new Error(`Cannot increase "${line.item_name}" above the requested ${cap}`);
+        e.status = 400; e.code = 'EXCEEDS_REQUESTED';
+        throw e;
+      }
+
+      const [srows] = await conn.execute(
+        `SELECT current_quantity FROM inventory_items WHERE item_id = ? LIMIT 1`,
+        [Number(line.item_id)]
+      );
+      const stock = srows?.[0];
+      if (!stock) { const e = new Error(`Item ${line.item_id} not found`); e.status = 400; throw e; }
+      if (Number(stock.current_quantity) < newQty) {
+        const e = new Error('INSUFFICIENT_STOCK');
+        e.code = 'INSUFFICIENT_STOCK'; e.status = 409; e.item = line.item_name;
+        throw e;
+      }
+
+      await conn.execute(
+        `UPDATE inventory_request_items SET quantity = ? WHERE line_id = ? AND request_id = ?`,
+        [newQty, lineId, Number(requestId)]
+      );
+    }
+
+    const [items] = await conn.execute(
+      `SELECT line_id, request_id, item_id, item_name, quantity, requested_quantity, unit
+         FROM inventory_request_items WHERE request_id = ? ORDER BY line_id ASC`,
+      [Number(requestId)]
+    );
+    await conn.commit();
+    return { request_id: Number(requestId), items };
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
 };
 
 // Approve a BUY request: reduce stock per item atomically. If ANY item lacks

@@ -357,6 +357,42 @@ export const approveBuying = async (userId, roleId, requestId) => {
   }
 };
 
+// Edit the line quantities of a PENDING buying request, before approving it.
+// Same authorization as approveBuying — an approver who may approve a request
+// may adjust it, nobody else. Reduce-only; the model holds the per-line rules.
+//
+// The PENDING guard is checked here for a fast, clear 409, and AGAIN inside the
+// model's transaction (with the header locked FOR UPDATE) — this one can go
+// stale between read and write, that one cannot.
+export const editPendingRequestQuantities = async (userId, roleId, requestId, edits) => {
+  const req = await model.getRequestWithItems(requestId);
+  if (!req) throw notFound('Request not found');
+  if (req.request_type !== 'BUY') throw badRequest('Not a buying request');
+  await authorizeApprover(userId, roleId, req.purpose_type);
+  if (String(req.status).toUpperCase() !== 'PENDING') throw conflict('Request is not pending');
+
+  if (!Array.isArray(edits) || edits.length === 0) throw badRequest('At least one item is required');
+  const cleaned = edits.map((ed) => ({
+    line_id: Number(ed?.line_id),
+    quantity: Number(ed?.quantity),
+  }));
+  for (const ed of cleaned) {
+    if (!ed.line_id || Number.isNaN(ed.line_id)) throw badRequest('Each item needs a valid line_id');
+    if (!Number.isFinite(ed.quantity)) throw badRequest('Each item needs a numeric quantity');
+  }
+
+  try {
+    return await model.updatePendingRequestQuantities(requestId, cleaned, userId);
+  } catch (err) {
+    if (err?.code === 'INSUFFICIENT_STOCK') {
+      const e = new Error(err.item ? `Insufficient stock for "${err.item}"` : 'Insufficient stock');
+      e.status = 409;
+      throw e;
+    }
+    throw err;
+  }
+};
+
 // Reject a buying request (authorize by purpose; no stock change).
 export const rejectBuying = async (userId, roleId, requestId, remarks) => {
   const req = await model.getRequestWithItems(requestId);

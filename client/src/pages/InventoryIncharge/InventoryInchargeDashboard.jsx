@@ -1,7 +1,7 @@
 // InventoryInchargeDashboard.jsx — Inventory Incharge (role_id = 4) console.
 // One function: stock management + a READ-ONLY view of buying requests.
 // (Return approvals = Stage 5; faculty buying approvals = Stage 4 — see TODOs.)
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { authService } from '../../services/features/authService';
@@ -318,6 +318,22 @@ export default function InventoryInchargeDashboard() {
     ? retItems.filter((it) => `${it.item_name || ''} ${it.category || ''} ${it.subcategory || ''}`.toLowerCase().includes(retQuery))
     : retItems;
   // ══ RETURNABLE ITEMS — REMOVABLE BLOCK (end) ══
+
+  // Unit suggestions for the Add/Edit form's datalist — the Category field offers
+  // the same affordance, so Unit shouldn't make you retype "ML" from memory.
+  // Read straight off the items already in state (no extra request); deduped
+  // case-insensitively so ML/ml collapse to whichever spelling the catalog used
+  // first. Still a free-type input: this is a hint list, never a constraint.
+  const units = useMemo(() => {
+    const seen = new Map();
+    for (const it of stock) {
+      const u = String(it.unit ?? '').trim();
+      if (!u) continue;
+      const key = u.toLowerCase();
+      if (!seen.has(key)) seen.set(key, u);
+    }
+    return [...seen.values()].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+  }, [stock]);
 
   const shown = stock.slice(0, RENDER_CAP);
 
@@ -670,7 +686,8 @@ export default function InventoryInchargeDashboard() {
                   <label className="ic-label">Sub name</label>
                   <input className="ic-input" value={newItem.sub_name} onChange={(e) => setNewItem((s) => ({ ...s, sub_name: e.target.value }))} placeholder="Optional" />
                   <label className="ic-label">Unit *</label>
-                  <input className="ic-input" value={newItem.unit} onChange={(e) => setNewItem((s) => ({ ...s, unit: e.target.value }))} placeholder="e.g. ML, G, Nos" />
+                  <input className="ic-input" list="ic-units" value={newItem.unit} onChange={(e) => setNewItem((s) => ({ ...s, unit: e.target.value }))} placeholder="e.g. ML, G, Nos" />
+                  <datalist id="ic-units">{units.map((u) => <option key={u} value={u} />)}</datalist>
                   <label className="ic-label">{modal.mode === 'editItem' ? 'Current quantity' : 'Initial quantity'}</label>
                   <input className="ic-input" type="number" min="0" step="any" value={newItem.current_quantity} onChange={(e) => setNewItem((s) => ({ ...s, current_quantity: e.target.value }))} placeholder="0" />
                   <label className="ic-label">Rack location</label>

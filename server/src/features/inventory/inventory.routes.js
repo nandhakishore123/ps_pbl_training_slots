@@ -15,6 +15,7 @@ import {
   getBuying,
   getPendingBuying,
   approveBuying,
+  editBuyingItems,
   rejectBuying,
   getMyObligations,
   createReturn,
@@ -69,6 +70,10 @@ router.get('/buying', authMiddleware, requireRole(3, 4), getBuying);           /
 router.get('/buying/pending', authMiddleware, requireRole(2, 3), getPendingBuying);       // routed by purpose in service
 router.post('/buying/:id/approve', authMiddleware, requireRole(2, 3), approveBuying);      // approve -> reduce stock
 router.post('/buying/:id/reject', authMiddleware, requireRole(2, 3), rejectBuying);        // reject ({ remarks })
+// Adjust line quantities before approving — PENDING only, reduce-only, same
+// approver authorization as approve/reject above. ADDITIVE: approve/reject are
+// unchanged, and simply read whatever quantities are stored when they run.
+router.patch('/buying/:id/items', authMiddleware, requireRole(2, 3), editBuyingItems);     // { items:[{ line_id, quantity }] }
 
 // ── Student return flow (role_id = 1) ────────────────────────
 router.get('/obligations/mine', authMiddleware, requireRole(1), getMyObligations);        // open obligations to clear
