@@ -71,6 +71,14 @@ export const inventoryService = {
     return api.post(`/inventory/buying/${requestId}/reject`, { remarks });
   },
 
+  // Approver reduces line quantities before approving. PENDING-only and
+  // reduce-only; the server caps each line at the student's original ask and at
+  // current stock. `items` = [{ line_id, quantity }] — only the changed lines
+  // need to be sent.
+  editBuyingItems(requestId, items) {
+    return api.patch(`/inventory/buying/${requestId}/items`, { items });
+  },
+
   // ── Student return flow (Stage 5) ──────────────────────────
   getMyObligations() {
     return api.get('/inventory/obligations/mine');

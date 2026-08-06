@@ -155,6 +155,24 @@ export const approveBuying = async (req, res) => {
   }
 };
 
+// Approver edits a PENDING request's line quantities before approving.
+// Body: { items: [{ line_id, quantity }] }. The service/model throw with a
+// .status already set (400 too-high / not-a-line, 403 wrong purpose, 404 missing,
+// 409 not-pending / insufficient stock), so the shared error branch below carries
+// the right code and message through unchanged.
+export const editBuyingItems = async (req, res) => {
+  try {
+    const data = await service.editPendingRequestQuantities(
+      req.user?.user_id, req.user?.role_id, req.params.id, req.body?.items
+    );
+    return successResponse(res, 'Quantities updated', data);
+  } catch (error) {
+    if (error?.status) return errorResponse(res, error.message, error.status);
+    console.error('Error in editBuyingItems:', error);
+    return internalServerErrorResponse(res, error.message || 'Failed to update quantities');
+  }
+};
+
 export const rejectBuying = async (req, res) => {
   try {
     const data = await service.rejectBuying(req.user?.user_id, req.user?.role_id, req.params.id, req.body?.remarks);

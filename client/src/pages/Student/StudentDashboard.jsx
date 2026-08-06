@@ -102,6 +102,13 @@ export default function FrontPage({ onSelectPoints, onSelectTraining }) {
   // Badge = surveys not yet submitted by this student.
   const pendingSurveyCount = surveys.filter((s) => !s.submitted).length
 
+  // ── MOBILE HEADER MENU (removable) ──
+  // Mobile folds the bell / surveys / dark / logout controls into one dropdown.
+  // The badge on the ☰ button sums both counters, so nothing that needed
+  // attention becomes invisible just because it moved inside the menu.
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuAlertCount = unreadCount + pendingSurveyCount
+
   // ── Feedback: modal + form ──
   const [feedbackOpen, setFeedbackOpen] = useState(false)
   const [feedbackText, setFeedbackText] = useState('')
@@ -361,55 +368,75 @@ export default function FrontPage({ onSelectPoints, onSelectTraining }) {
           </button>
         </div>
 
-        {/* Right: mobile (user pill + bell + dark toggle) */}
+        {/* Right: mobile (user pill + ☰ menu holding the four controls) */}
+        {/* ══ MOBILE HEADER MENU — REMOVABLE BLOCK (start) ══
+            The bell / surveys / dark / logout buttons moved into the dropdown
+            below; only the profile badge and ☰ stay on the row. The badge MUST
+            remain the first child — the 640px overlap fix targets it positionally
+            via `.pt-header-right-mobile > button:first-child`.
+            Everything here sits inside .pt-header-right-mobile, which the 641px
+            breakpoint already hides, so the desktop row is untouched by
+            construction — no new media query needed. */}
         <div className="pt-header-right-mobile">
           <UserProfileBadge user={user} variant="mobile" />
           <button
             type="button"
-            className="pt-icon-btn"
-            onClick={() => setBellOpen((o) => !o)}
-            aria-label="Announcements"
-            title="Announcements"
-            style={{ position:'relative' }}
+            className="pt-menu-btn"
+            onClick={() => setMenuOpen((o) => !o)}
+            aria-label="Menu"
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            title="Menu"
           >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
-              <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+              <path d="M3 6h18" /><path d="M3 12h18" /><path d="M3 18h18" />
             </svg>
-            {unreadCount > 0 && <span className="pt-bell-badge">{unreadCount > 9 ? '9+' : unreadCount}</span>}
+            {menuAlertCount > 0 && <span className="pt-bell-badge">{menuAlertCount > 9 ? '9+' : menuAlertCount}</span>}
           </button>
-          <button
-            type="button"
-            className="pt-icon-btn"
-            onClick={() => setSurveyBellOpen((o) => !o)}
-            aria-label="Surveys"
-            title="Surveys"
-            style={{ position:'relative' }}
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="M9 2h6a1 1 0 0 1 1 1v1h1a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h1V3a1 1 0 0 1 1-1z" />
-              <path d="M9 12h6" />
-              <path d="M9 16h6" />
-            </svg>
-            {pendingSurveyCount > 0 && <span className="pt-bell-badge">{pendingSurveyCount > 9 ? '9+' : pendingSurveyCount}</span>}
-          </button>
-          <button className="pt-dark-toggle" onClick={() => setDarkMode(d => !d)}>
-            {darkMode ? '☀ Light' : 'Dark'}
-          </button>
-          <button
-            type="button"
-            className="pt-icon-btn"
-            onClick={handleLogout}
-            aria-label="Logout"
-            title="Logout"
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-              <path d="M10 7V6a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-7a2 2 0 0 1-2-2v-1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              <path d="M15 12H3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              <path d="M6 9l-3 3 3 3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          </button>
+
+          {menuOpen && (
+            <>
+              <div className="pt-bell-backdrop" onClick={() => setMenuOpen(false)} />
+              <div className="pt-menu-panel" role="menu">
+                {/* Each item reuses its original handler verbatim. The menu closes
+                    first so the bell/survey panel (a fixed sibling at z-index 201)
+                    isn't stacked behind this panel's backdrop. */}
+                <button
+                  type="button" role="menuitem" className="pt-menu-item"
+                  onClick={() => { setMenuOpen(false); setBellOpen(true) }}
+                >
+                  <span className="pt-menu-ico" aria-hidden="true">🔔</span>
+                  <span className="pt-menu-label">Notifications</span>
+                  {unreadCount > 0 && <span className="pt-menu-count">{unreadCount > 9 ? '9+' : unreadCount}</span>}
+                </button>
+                <button
+                  type="button" role="menuitem" className="pt-menu-item"
+                  onClick={() => { setMenuOpen(false); setSurveyBellOpen(true) }}
+                >
+                  <span className="pt-menu-ico" aria-hidden="true">📄</span>
+                  <span className="pt-menu-label">Documents</span>
+                  {pendingSurveyCount > 0 && <span className="pt-menu-count">{pendingSurveyCount > 9 ? '9+' : pendingSurveyCount}</span>}
+                </button>
+                <button
+                  type="button" role="menuitem" className="pt-menu-item"
+                  onClick={() => { setDarkMode(d => !d); setMenuOpen(false) }}
+                >
+                  <span className="pt-menu-ico" aria-hidden="true">🌙</span>
+                  <span className="pt-menu-label">Dark mode</span>
+                  {darkMode && <span className="pt-menu-check" aria-hidden="true">✓</span>}
+                </button>
+                <button
+                  type="button" role="menuitem" className="pt-menu-item danger"
+                  onClick={() => { setMenuOpen(false); handleLogout() }}
+                >
+                  <span className="pt-menu-ico" aria-hidden="true">↩</span>
+                  <span className="pt-menu-label">Logout</span>
+                </button>
+              </div>
+            </>
+          )}
         </div>
+        {/* ══ MOBILE HEADER MENU — REMOVABLE BLOCK (end) ══ */}
 
       </div>
 

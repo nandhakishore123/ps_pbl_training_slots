@@ -2,7 +2,7 @@
 // Admin sees everything (all buying, all returns, all stock, overview counts) and
 // has full power: approve/reject any buying (both purposes) or return, and manage stock.
 // Reuses the shared inventory endpoints (role 3 is permitted / bypasses purpose routing).
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { useStore } from '../../store/useStore';
@@ -536,6 +536,22 @@ export default function AdminInventory() {
     : retItems;
   // ═══ RETURNABLE ITEMS — REMOVABLE BLOCK (end) ═══
 
+  // Unit suggestions for the Add/Edit form's datalist — the Category field offers
+  // the same affordance, so Unit shouldn't make you retype "ML" from memory.
+  // Read straight off the items already in state (no extra request); deduped
+  // case-insensitively so ML/ml collapse to whichever spelling the catalog used
+  // first. Still a free-type input: this is a hint list, never a constraint.
+  const units = useMemo(() => {
+    const seen = new Map();
+    for (const it of stock) {
+      const u = String(it.unit ?? '').trim();
+      if (!u) continue;
+      const key = u.toLowerCase();
+      if (!seen.has(key)) seen.set(key, u);
+    }
+    return [...seen.values()].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+  }, [stock]);
+
   const shownStock = stock.slice(0, RENDER_CAP);
 
   const renderBuying = (r) => {
@@ -851,7 +867,8 @@ export default function AdminInventory() {
                   <label className="ad-label">Sub name</label>
                   <input className="ad-input" value={newItem.sub_name} onChange={(e) => setNewItem((s) => ({ ...s, sub_name: e.target.value }))} placeholder="Optional" />
                   <label className="ad-label">Unit *</label>
-                  <input className="ad-input" value={newItem.unit} onChange={(e) => setNewItem((s) => ({ ...s, unit: e.target.value }))} placeholder="e.g. ML, G, Nos" />
+                  <input className="ad-input" list="ad-units" value={newItem.unit} onChange={(e) => setNewItem((s) => ({ ...s, unit: e.target.value }))} placeholder="e.g. ML, G, Nos" />
+                  <datalist id="ad-units">{units.map((u) => <option key={u} value={u} />)}</datalist>
                   <label className="ad-label">{stockModal.mode === 'editItem' ? 'Current quantity' : 'Initial quantity'}</label>
                   <input className="ad-input" type="number" min="0" step="any" value={newItem.current_quantity} onChange={(e) => setNewItem((s) => ({ ...s, current_quantity: e.target.value }))} placeholder="0" />
                   <label className="ad-label">Rack location</label>

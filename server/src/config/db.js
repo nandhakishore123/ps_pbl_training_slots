@@ -428,6 +428,18 @@ export const testConnection = async () => {
                 await connection.execute('ALTER TABLE inventory_request_items ADD COLUMN return_quantity decimal(12,2) DEFAULT NULL');
                 console.log(chalk.green('  Added inventory_request_items.return_quantity.'));
             }
+            // Additive: the student's ORIGINAL ask, frozen at creation. `quantity` is
+            // what will actually be taken, and an approver may now reduce it before
+            // approving — so `quantity` alone can no longer answer "how much was
+            // requested?". Keeping the original is what makes the reduce-only cap hold
+            // across repeated edits (without it, each edit would re-anchor the cap to
+            // the already-reduced value). NULLABLE by design: rows predating this
+            // column keep NULL and the edit path falls back to treating the current
+            // quantity as the cap. RETURN lines never set it.
+            if (!iriHas('requested_quantity')) {
+                await connection.execute('ALTER TABLE inventory_request_items ADD COLUMN requested_quantity decimal(12,2) DEFAULT NULL');
+                console.log(chalk.green('  Added inventory_request_items.requested_quantity.'));
+            }
             // Additive: the lab a student's BUY request is for. NULLABLE by design —
             // requests created before this column existed keep NULL, and RETURN
             // requests never set it. Required-ness is enforced in the service for

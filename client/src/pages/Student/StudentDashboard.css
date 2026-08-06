@@ -107,6 +107,71 @@
   }
   .pt-icon-btn:hover { border-color: var(--purple); color: var(--purple); background: var(--purple-dim); }
 
+  /* ══ MOBILE HEADER MENU — ADDITIVE, Student-Dashboard-only ══
+     On a phone the bell / surveys / dark / logout controls collapse into one
+     dropdown behind this ☰ button, so the right cluster stops competing with the
+     title for width. Every selector below is only ever rendered inside
+     .pt-header-right-mobile, which the 641px breakpoint hides outright — the
+     desktop row cannot be reached by any of this, so no extra media query is
+     needed. Colours come from the theme variables (body.dark-mode redefines
+     --white/--border/--text), matching how .pt-bell-panel handles dark mode. */
+  .pt-menu-btn {
+    position: relative;              /* anchors the .pt-bell-badge it reuses */
+    width: 34px; height: 34px;
+    border-radius: 10px;
+    background: none;
+    border: 1.5px solid var(--border);
+    color: var(--text2);
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    font-family: inherit;
+    transition: all 0.2s;
+  }
+  .pt-menu-btn:hover { border-color: var(--purple); color: var(--purple); background: var(--purple-dim); }
+  body.dark-mode .pt-menu-btn { background: #1f1f3a; border-color: #2d2d4e; color: #a89ec9; }
+
+  /* Fixed, like .pt-bell-panel — a sticky ancestor would otherwise clip an
+     absolutely positioned panel, and this keeps both dropdowns visually aligned. */
+  .pt-menu-panel {
+    position: fixed;
+    top: 60px; right: 16px;
+    width: 228px; max-width: calc(100vw - 32px);
+    background: var(--white);
+    border: 1.5px solid var(--border);
+    border-radius: 14px;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.18);
+    overflow: hidden;
+    z-index: 201;
+  }
+  .pt-menu-item {
+    width: 100%;
+    display: flex; align-items: center; gap: 11px;
+    padding: 12px 14px;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid var(--border);
+    font-family: inherit;
+    font-size: 13.5px; font-weight: 700;
+    color: var(--text);
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .pt-menu-item:last-child { border-bottom: none; }
+  .pt-menu-item:hover { background: var(--purple-dim); }
+  .pt-menu-item.danger { color: var(--red); }
+  .pt-menu-ico { font-size: 15px; line-height: 1; flex-shrink: 0; width: 18px; text-align: center; }
+  .pt-menu-label { flex: 1; min-width: 0; }
+  .pt-menu-count {
+    min-width: 18px; padding: 1px 6px;
+    background: var(--red); color: #fff;
+    border-radius: 9px;
+    font-size: 10.5px; font-weight: 800; line-height: 1.5;
+    text-align: center; flex-shrink: 0;
+  }
+  .pt-menu-check { font-size: 13px; font-weight: 900; color: var(--purple); flex-shrink: 0; }
+
   /* ── BOXES ── */
   .pt-boxes-col {
     display: flex;

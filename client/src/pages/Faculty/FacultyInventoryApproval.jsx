@@ -71,6 +71,20 @@ const CSS = `
   .fa-purpose { font-size:12.5px; color:var(--fa-text2); background:var(--fa-purple-dim); border:1px solid rgba(108,71,255,0.18);
     border-radius:10px; padding:9px 13px; margin-bottom:12px; line-height:1.5; }
 
+  /* ── EDITABLE QUANTITIES (pending requests only) — REMOVABLE BLOCK (start) ── */
+  .fa-qty-edit { display:flex; align-items:center; gap:8px; white-space:nowrap; }
+  .fa-qty-input { width:82px; padding:6px 9px; border:1.5px solid var(--fa-border); border-radius:8px;
+    background:var(--fa-white); color:var(--fa-text); font-size:13px; font-weight:800; font-family:inherit;
+    outline:none; text-align:right; box-sizing:border-box; }
+  .fa-qty-input:focus { border-color:var(--fa-purple); }
+  .fa-qty-input.changed { border-color:var(--fa-purple); background:var(--fa-purple-dim); }
+  .fa-qty-unit { font-weight:800; color:var(--fa-purple); font-size:12.5px; }
+  .fa-qty-orig { font-size:11px; color:var(--fa-text3); font-weight:700; }
+  .fa-save { flex:1; background:var(--fa-purple-dim); color:var(--fa-purple); border:1.5px solid rgba(108,71,255,0.35); }
+  .fa-save:hover:not(:disabled) { background:rgba(108,71,255,0.18); }
+  .fa-saved-note { font-size:12px; color:#047857; font-weight:800; margin-top:9px; }
+  /* ── EDITABLE QUANTITIES — REMOVABLE BLOCK (end) ── */
+
   .fa-pill { display:inline-flex; align-items:center; gap:6px; padding:4px 12px; border-radius:20px; font-size:11px;
     font-weight:800; letter-spacing:0.4px; text-transform:uppercase; white-space:nowrap; }
   .fa-pill.pending { background:rgba(245,158,11,0.12); color:#b45309; border:1px solid rgba(245,158,11,0.4); }
@@ -159,6 +173,12 @@ export default function FacultyInventoryApproval() {
   const [rejectFor, setRejectFor] = useState(null);      // request being rejected (modal)
   const [rejectRemarks, setRejectRemarks] = useState('');
 
+  // ── EDITABLE QUANTITIES (pending requests only) — REMOVABLE BLOCK (start) ──
+  const [qtyDraft, setQtyDraft] = useState({});         // { [line_id]: string } — what's in the inputs
+  const [savingId, setSavingId] = useState(null);       // request whose quantities are being saved
+  const [savedId, setSavedId] = useState(null);         // request that just saved, for the note
+  // ── EDITABLE QUANTITIES — REMOVABLE BLOCK (end) ──
+
   useEffect(() => {
     const el = document.createElement('style');
     el.id = 'fa-styles';
@@ -240,6 +260,80 @@ export default function FacultyInventoryApproval() {
     }
   };
 
+  // ── EDITABLE QUANTITIES (pending requests only) — REMOVABLE BLOCK (start) ──
+  // qtyDraft is an OVERLAY, not a copy: a line_id appears only once the approver
+  // has actually typed in it, and the server value shows through everywhere
+  // else. That means no seeding effect, and untouched lines pick up fresh server
+  // data on every reload for free. A saved line is dropped from the overlay so
+  // the reloaded quantity becomes the new baseline.
+  //
+  // The reduce-only ceiling. The approver list query does not (yet) return
+  // requested_quantity, so this falls back to the line's current quantity —
+  // meaning the UI won't let you undo a reduction, even though the server would
+  // allow it (its cap is the student's original ask). The server stays the
+  // authority; this is only the input's max.
+  const maxFor = (it) => Number(it.requested_quantity ?? it.quantity);
+
+  // Lines whose draft differs from what was loaded — the payload for a save,
+  // and what enables the button.
+  const changedLines = (r) => (r.items || []).filter((it) => {
+    if (it.line_id == null) return false;
+    const raw = qtyDraft[it.line_id];
+    if (raw === undefined || String(raw).trim() === '') return false;
+    return Number(raw) !== Number(it.quantity);
+  });
+
+  const onQtyChange = (lineId, v) => {
+    setSavedId(null);
+    setQtyDraft((d) => ({ ...d, [lineId]: v }));
+  };
+
+  // Clamp on blur rather than while typing, so intermediate states (an empty
+  // box, a leading "1" of "12") aren't fought. An unusable value falls back to
+  // the loaded quantity. The server re-validates regardless.
+  const onQtyBlur = (it) => {
+    setQtyDraft((d) => {
+      const raw = String(d[it.line_id] ?? '').trim();
+      const loaded = String(it.quantity ?? '');
+      if (raw === '') return { ...d, [it.line_id]: loaded };
+      const n = Number(raw);
+      if (!Number.isFinite(n)) return { ...d, [it.line_id]: loaded };
+      const clamped = Math.min(Math.max(n, 1), maxFor(it));
+      return { ...d, [it.line_id]: String(clamped) };
+    });
+  };
+
+  const saveQuantities = async (r) => {
+    const changed = changedLines(r);
+    if (!changed.length) return;
+    setSavingId(r.request_id);
+    setSavedId(null);
+    setRowErr((m) => ({ ...m, [r.request_id]: '' }));
+    try {
+      await inventoryService.editBuyingItems(
+        r.request_id,
+        changed.map((it) => ({ line_id: it.line_id, quantity: Number(qtyDraft[it.line_id]) })),
+      );
+      showToast('Quantities updated', false);
+      setSavedId(r.request_id);
+      // Drop the saved lines from the overlay so the reloaded server values
+      // become the new baseline (and the Save button goes quiet again).
+      setQtyDraft((d) => {
+        const next = { ...d };
+        for (const it of changed) delete next[it.line_id];
+        return next;
+      });
+      await load();
+    } catch (err) {
+      const msg = err?.response?.data?.message || 'Failed to update quantities.';
+      setRowErr((m) => ({ ...m, [r.request_id]: msg }));
+      showToast(msg, true);
+    } finally {
+      setSavingId(null);
+    }
+  };
+  // ── EDITABLE QUANTITIES — REMOVABLE BLOCK (end) ──
+
   const handleLogout = async () => {
     try { await authService.logout(); } finally { navigate('/auth/login', { replace: true }); }
   };
@@ -250,7 +344,10 @@ export default function FacultyInventoryApproval() {
   const pending = active.filter((r) => String(r.status).toUpperCase() === 'PENDING');
   const decided = active.filter((r) => String(r.status).toUpperCase() !== 'PENDING');
 
-  const renderReq = (r, isPending) => (
+  const renderReq = (r, isPending) => {
+    // EDITABLE QUANTITIES (removable): drives the Save button's enabled state.
+    const changedCount = isPending ? changedLines(r).length : 0;
+    return (
     <div className={`fa-req${isPending ? '' : ' decided'}`} key={r.request_id}>
       <div className="fa-req-top">
         <div style={{ minWidth: 0 }}>
@@ -264,25 +361,64 @@ export default function FacultyInventoryApproval() {
       </div>
 
       <div className="fa-items">
-        {(r.items || []).map((it) => (
-          <div className="fa-item" key={it.line_id || it.item_id}>
-            <span className="fa-item-name">{it.item_name}</span>
-            <span className="fa-item-qty">{money(it.quantity)} {it.unit || ''}</span>
-          </div>
-        ))}
+        {(r.items || []).map((it) => {
+          // EDITABLE QUANTITIES (removable): pending lines get an input; decided
+          // requests keep the original read-only text exactly as before.
+          const editable = isPending && it.line_id != null;
+          const draft = qtyDraft[it.line_id];
+          const changed = editable && draft !== undefined && Number(draft) !== Number(it.quantity);
+          return (
+            <div className="fa-item" key={it.line_id || it.item_id}>
+              <span className="fa-item-name">{it.item_name}</span>
+              {editable ? (
+                <span className="fa-qty-edit">
+                  {it.requested_quantity != null && Number(it.requested_quantity) !== Number(it.quantity) && (
+                    <span className="fa-qty-orig">of {money(it.requested_quantity)}</span>
+                  )}
+                  <input
+                    className={`fa-qty-input${changed ? ' changed' : ''}`}
+                    type="number" min="1" max={maxFor(it)} step="any"
+                    value={draft ?? String(it.quantity ?? '')}
+                    disabled={busyId === r.request_id || savingId === r.request_id}
+                    onChange={(e) => onQtyChange(it.line_id, e.target.value)}
+                    onBlur={() => onQtyBlur(it)}
+                    aria-label={`Quantity for ${it.item_name}`}
+                  />
+                  <span className="fa-qty-unit">{it.unit || ''}</span>
+                </span>
+              ) : (
+                <span className="fa-item-qty">{money(it.quantity)} {it.unit || ''}</span>
+              )}
+            </div>
+          );
+        })}
       </div>
 
       {r.purpose && <div className="fa-purpose"><strong>Purpose:</strong> {r.purpose}</div>}
 
       {isPending ? (
-        <div className="fa-actions">
-          <button className="fa-btn fa-approve" disabled={busyId === r.request_id} onClick={() => approve(r.request_id)}>
-            {busyId === r.request_id ? 'Working…' : '✓ Approve'}
-          </button>
-          <button className="fa-btn fa-reject" disabled={busyId === r.request_id} onClick={() => { setRejectFor(r.request_id); setRejectRemarks(''); }}>
-            ✕ Reject
-          </button>
-        </div>
+        <>
+          {/* EDITABLE QUANTITIES (removable) — saving is explicit; Approve never
+              auto-saves, it just uses whatever quantities are stored server-side. */}
+          <div className="fa-actions" style={{ marginBottom: 10 }}>
+            <button className="fa-btn fa-save"
+              disabled={changedCount === 0 || savingId === r.request_id || busyId === r.request_id}
+              onClick={() => saveQuantities(r)}>
+              {savingId === r.request_id ? 'Saving…' : changedCount > 0 ? `Save Changes (${changedCount})` : 'Save Changes'}
+            </button>
+          </div>
+          <div className="fa-actions">
+            <button className="fa-btn fa-approve" disabled={busyId === r.request_id} onClick={() => approve(r.request_id)}>
+              {busyId === r.request_id ? 'Working…' : '✓ Approve'}
+            </button>
+            <button className="fa-btn fa-reject" disabled={busyId === r.request_id} onClick={() => { setRejectFor(r.request_id); setRejectRemarks(''); }}>
+              ✕ Reject
+            </button>
+          </div>
+          {savedId === r.request_id && changedCount === 0 && (
+            <div className="fa-saved-note">✓ Quantities saved — approving will use these.</div>
+          )}
+        </>
       ) : (
         <div className="fa-decided-note">
           {String(r.status).toUpperCase() === 'APPROVED' ? 'Approved' : 'Rejected'}
@@ -293,7 +429,8 @@ export default function FacultyInventoryApproval() {
 
       {rowErr[r.request_id] && <div className="fa-err">{rowErr[r.request_id]}</div>}
     </div>
-  );
+    );
+  };
 
   return (
     <div className="fa-root">
