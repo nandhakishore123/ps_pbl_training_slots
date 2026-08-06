@@ -50,7 +50,9 @@ export const createUserWithProfile = async ({ email, name, role_id }) => {
 export const listManagedUsers = async () => {
   const placeholders = MANAGED_ROLE_IDS.map(() => '?').join(',');
   const [rows] = await db.execute(
-    `SELECT u.user_id, u.email, u.role_id, u.is_active, p.name, r.role_name
+    // ROLE-5 SUB-TYPE (removable): p.member_subtype is selected so the admin UI
+    // can show/edit the current value. NULL for everyone until an admin sets it.
+    `SELECT u.user_id, u.email, u.role_id, u.is_active, p.name, p.member_subtype, r.role_name
      FROM users u
      LEFT JOIN user_profiles p ON p.user_id = u.user_id
      LEFT JOIN role_entities r ON r.role_id = u.role_id
@@ -63,7 +65,8 @@ export const listManagedUsers = async () => {
 
 export const getManagedUserById = async (userId) => {
   const [rows] = await db.execute(
-    `SELECT u.user_id, u.email, u.role_id, u.is_active, p.name, r.role_name
+    // ROLE-5 SUB-TYPE (removable): p.member_subtype — see listManagedUsers.
+    `SELECT u.user_id, u.email, u.role_id, u.is_active, p.name, p.member_subtype, r.role_name
      FROM users u
      LEFT JOIN user_profiles p ON p.user_id = u.user_id
      LEFT JOIN role_entities r ON r.role_id = u.role_id
@@ -132,3 +135,39 @@ export const upsertUserName = async (userId, name) => {
   );
   return true;
 };
+
+// ── ROLE-5 SUB-TYPE — REMOVABLE BLOCK (start) ────────────────────────────────
+// Sets the label-only sub-type on the profile row. UPDATE-first rather than a
+// straight upsert on purpose: user_profiles.name is NOT NULL, so a plain
+// `INSERT ... ON DUPLICATE KEY UPDATE` would need a name in the VALUES list and
+// would risk clobbering the display name an admin already set. The UPDATE path
+// touches member_subtype only and never reads or writes `name`.
+//
+// The INSERT path runs only when the user has no profile row at all (created
+// before user_profiles existed, or never given a name). name is seeded from the
+// email local-part — not an invented display name — and 'Member' is the last
+// resort if the users row has vanished. The ON DUPLICATE clause covers the
+// harmless race where the row appears between the two statements, and also the
+// case where mysql2 reports affectedRows = 0 because the value was unchanged.
+// To remove: delete this block and its service/controller/route callers.
+export const upsertUserSubtype = async (userId, subtype) => {
+  const id = Number(userId);
+
+  const [res] = await db.execute(
+    `UPDATE user_profiles SET member_subtype = ? WHERE user_id = ?`,
+    [subtype, id]
+  );
+  if ((res?.affectedRows ?? 0) > 0) return true;
+
+  const [uRows] = await db.execute(`SELECT email FROM users WHERE user_id = ? LIMIT 1`, [id]);
+  const localPart = String(uRows?.[0]?.email ?? '').split('@')[0].trim();
+  const fallbackName = (localPart || 'Member').slice(0, 150);
+
+  await db.execute(
+    `INSERT INTO user_profiles (user_id, name, member_subtype) VALUES (?, ?, ?)
+     ON DUPLICATE KEY UPDATE member_subtype = VALUES(member_subtype)`,
+    [id, fallbackName, subtype]
+  );
+  return true;
+};
+// ── ROLE-5 SUB-TYPE — REMOVABLE BLOCK (end) ──────────────────────────────────

@@ -461,5 +461,12 @@ export const adminService = {
   setUserName(userId, name) {
     return api.put(`/admin/manage-users/${userId}/name`, { name });
   },
+
+  // ROLE-5 SUB-TYPE (removable): label-only member kind. Role 5 only — the
+  // backend rejects any other role with a 400. The body key is member_subtype
+  // to match the controller; subtype must be FACULTY | INTERN | TECHNICIAN.
+  setUserSubtype(userId, subtype) {
+    return api.put(`/admin/manage-users/${userId}/subtype`, { member_subtype: subtype });
+  },
   // ═══ USER MANAGEMENT — REMOVABLE BLOCK (end) ═══
 };

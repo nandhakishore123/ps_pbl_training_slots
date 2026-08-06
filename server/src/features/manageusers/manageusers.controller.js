@@ -66,3 +66,16 @@ export const updateManagedUserName = async (req, res) => {
     return internalServerErrorResponse(res, error.message || 'Failed to update name');
   }
 };
+
+// ── ROLE-5 SUB-TYPE — REMOVABLE BLOCK (start) ────────────────────────────────
+export const setManagedUserSubtype = async (req, res) => {
+  try {
+    const data = await service.setManagedUserSubtype(req.params.userId, req.body?.member_subtype);
+    return successResponse(res, 'Sub-type updated', data);
+  } catch (error) {
+    if (error?.status) return errorResponse(res, error.message, error.status);
+    console.error('Error in setManagedUserSubtype:', error);
+    return internalServerErrorResponse(res, error.message || 'Failed to update sub-type');
+  }
+};
+// ── ROLE-5 SUB-TYPE — REMOVABLE BLOCK (end) ──────────────────────────────────

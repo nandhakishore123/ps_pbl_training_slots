@@ -640,7 +640,8 @@ export default function FrontPage({ onSelectPoints, onSelectTraining }) {
           <span className="pt-box-arrow">›</span>
         </div>
 
-        {/* Training Slots box */}
+        {/* HIDDEN: Training Slots card - delete this comment line and the two comment markers below to restore. The /training-slots route still works if visited directly. */}
+        {/*
         <div
           className={`pt-box${activeBox === 'slots' ? ' active' : ''}`}
           onClick={() => {selectBox('/slots'), navigate("/training-slots")}}
@@ -659,6 +660,7 @@ export default function FrontPage({ onSelectPoints, onSelectTraining }) {
           </div>
           <span className="pt-box-arrow">›</span>
         </div>
+        */}
 
         {/* Feedback box */}
         <div

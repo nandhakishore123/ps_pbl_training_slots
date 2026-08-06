@@ -40,7 +40,34 @@ const fmtDateTime = (d) => {
   });
 };
 
-const typeLabel = (t) => (String(t).toUpperCase() === 'INTERN' ? 'Intern' : 'Student');
+// ── ROLE-5 SUB-TYPE — REMOVABLE BLOCK (start) ────────────────────────────────
+// member_type used to be STUDENT or INTERN only. Role-5 members now report
+// their sub-type, so it is one of STUDENT | FACULTY | INTERN | TECHNICIAN.
+// Unknown values title-case rather than silently reading as "Student", so a
+// future sub-type shows up as itself instead of being mislabelled.
+const TYPE_LABELS = {
+  STUDENT: 'Student',
+  FACULTY: 'Faculty',
+  INTERN: 'Intern',
+  TECHNICIAN: 'Technician',
+};
+const typeKey = (t) => String(t ?? '').trim().toUpperCase();
+const typeLabel = (t) => {
+  const key = typeKey(t);
+  if (TYPE_LABELS[key]) return TYPE_LABELS[key];
+  return key ? key.charAt(0) + key.slice(1).toLowerCase() : 'Intern';
+};
+// Badge class per type. Students keep the original purple and interns the
+// original amber, so existing reports look unchanged; faculty and technicians
+// get their own colours (see the .tag-* rules in the stylesheet below).
+const TYPE_CLASSES = {
+  STUDENT: 'tag-student',
+  FACULTY: 'tag-faculty',
+  INTERN: 'tag-intern',
+  TECHNICIAN: 'tag-technician',
+};
+const typeClass = (t) => TYPE_CLASSES[typeKey(t)] || 'tag-intern';
+// ── ROLE-5 SUB-TYPE — REMOVABLE BLOCK (end) ──────────────────────────────────
 
 // ── HTML document ────────────────────────────────────────────
 export function buildConsumptionReportHtml(report) {
@@ -56,7 +83,7 @@ export function buildConsumptionReportHtml(report) {
     ? summary.map((m, i) => `<tr>
         <td class="num">${i + 1}</td>
         <td><strong>${esc(m.member_name)}</strong></td>
-        <td><span class="tag ${String(m.member_type).toUpperCase() === 'INTERN' ? 'tag-intern' : 'tag-student'}">${esc(typeLabel(m.member_type))}</span></td>
+        <td><span class="tag ${typeClass(m.member_type)}">${esc(typeLabel(m.member_type))}</span></td>
         <td class="mono">${esc(m.reg || '—')}</td>
         <td class="num">${esc(m.total_purchases ?? 0)}</td>
         <td class="num">${esc(m.total_line_items ?? 0)}</td>
@@ -69,7 +96,7 @@ export function buildConsumptionReportHtml(report) {
         <td class="num">${i + 1}</td>
         <td class="nowrap">${esc(fmtDateTime(r.date))}</td>
         <td>${esc(r.member_name)}</td>
-        <td><span class="tag ${String(r.member_type).toUpperCase() === 'INTERN' ? 'tag-intern' : 'tag-student'}">${esc(typeLabel(r.member_type))}</span></td>
+        <td><span class="tag ${typeClass(r.member_type)}">${esc(typeLabel(r.member_type))}</span></td>
         <td>${esc(r.lab_name || '—')}</td>
         <td>${esc(r.item_name)}</td>
         <td class="num">${esc(r.quantity)}</td>
@@ -97,6 +124,10 @@ export function buildConsumptionReportHtml(report) {
     .tag{display:inline-block;padding:1px 8px;border-radius:20px;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.3px}
     .tag-student{background:rgba(108,71,255,0.1);color:#5a3de8;border:1px solid rgba(108,71,255,0.3)}
     .tag-intern{background:rgba(245,158,11,0.14);color:#b45309;border:1px solid rgba(245,158,11,0.4)}
+    /* ROLE-5 SUB-TYPE (removable): teal for faculty, rose for technicians —
+       print-safe contrast, distinct from the purple student / amber intern. */
+    .tag-faculty{background:rgba(13,148,136,0.12);color:#0f766e;border:1px solid rgba(13,148,136,0.38)}
+    .tag-technician{background:rgba(219,39,119,0.10);color:#be185d;border:1px solid rgba(219,39,119,0.34)}
     .totals{margin-top:22px;display:flex;gap:10px;flex-wrap:wrap;page-break-inside:avoid}
     .tot{flex:1;min-width:130px;background:#f8f7ff;border:1px solid #e5e4eb;border-radius:8px;padding:10px 14px}
     .tot-l{font-size:9px;font-weight:800;color:#6c47ff;text-transform:uppercase;letter-spacing:1px}
