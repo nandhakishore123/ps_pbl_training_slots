@@ -940,13 +940,21 @@ export const getConsumptionReport = async ({ from, to }) => {
   // back. Returns are never added as rows of their own, so nothing is
   // double-counted. Revert this subquery if lab_returns is dropped.
   const [internRows] = await db.execute(
+    // ROLE-5 SUB-TYPE (removable): up.member_subtype turns the flat "INTERN"
+    // label into FACULTY / INTERN / TECHNICIAN. LEFT JOIN, not INNER: there is
+    // no FK, buyer_user_id is nullable, and buyer_name is a snapshot — a
+    // purchase whose buyer was deleted must still be counted as consumption.
+    // The label is read live, so re-running an old range reflects the member's
+    // CURRENT sub-type.
     `SELECT lp.buyer_name AS member_name, lp.buyer_user_id, l.lab_name,
             lp.item_name, lp.quantity, lp.unit,
+            up.member_subtype AS member_subtype,
             COALESCE((SELECT SUM(lr.quantity) FROM lab_returns lr
                       WHERE lr.purchase_id = lp.purchase_id), 0) AS returned_qty,
             lp.lab_id, lp.created_at AS date
      FROM lab_purchases lp
      LEFT JOIN labs l ON l.lab_id = lp.lab_id
+     LEFT JOIN user_profiles up ON up.user_id = lp.buyer_user_id
      WHERE lp.created_at BETWEEN ? AND ?
      ORDER BY lp.created_at DESC`,
     [fromTs, toTs]
@@ -978,7 +986,10 @@ export const getConsumptionReport = async ({ from, to }) => {
     const stamp = r.date instanceof Date ? r.date.getTime() : String(r.date);
     details.push({
       member_name: r.member_name ?? 'Unknown',
-      member_type: 'INTERN',
+      // ROLE-5 SUB-TYPE (removable): was the literal 'INTERN'. NULL (never set,
+      // or buyer row gone) coalesces back to 'INTERN' — the pre-feature label —
+      // so no backfill is needed. Values: FACULTY | INTERN | TECHNICIAN.
+      member_type: String(r.member_subtype ?? '').trim().toUpperCase() || 'INTERN',
       reg: null,
       lab_name: r.lab_name ?? null,
       item_name: r.item_name,

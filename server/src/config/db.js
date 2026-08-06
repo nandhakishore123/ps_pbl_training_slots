@@ -642,6 +642,25 @@ export const testConnection = async () => {
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
             `);
             console.log(chalk.green('  ✓ user_profiles table ready.'));
+
+            // ── ROLE-5 SUB-TYPE — REMOVABLE SUB-BLOCK (start) ───────────────
+            // Role 5 is really three kinds of lab member (faculty / intern /
+            // technician) but everything labelled them "INTERN". This column
+            // stores which one, purely as a LABEL — it grants no permission and
+            // changes no routing or purchasing behaviour. Additive DESCRIBE-then
+            // -ALTER, same idiom as labs.image_url above, so re-runs are safe.
+            // NULL is left as-is rather than backfilled: reads coalesce NULL to
+            // 'INTERN', which is exactly the pre-feature behaviour.
+            // varchar, not ENUM: TiDB-friendly, and a 4th kind stays a code change.
+            // To remove: ALTER TABLE user_profiles DROP COLUMN member_subtype.
+            const [upCols] = await connection.execute('DESCRIBE user_profiles');
+            if (!upCols.some((c) => c.Field === 'member_subtype')) {
+                await connection.execute(
+                    `ALTER TABLE user_profiles ADD COLUMN member_subtype varchar(20) DEFAULT NULL`
+                );
+                console.log(chalk.green('  Added user_profiles.member_subtype.'));
+            }
+            // ── ROLE-5 SUB-TYPE — REMOVABLE SUB-BLOCK (end) ─────────────────
         } catch (migErr) {
             console.error(chalk.red('  ✗ Migration/Check for user_profiles failed:'), migErr.message);
         }

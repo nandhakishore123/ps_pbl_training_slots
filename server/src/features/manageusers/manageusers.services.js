@@ -104,3 +104,32 @@ export const updateManagedUserName = async (targetUserId, name) => {
   await model.upsertUserName(id, cleanName);
   return model.getManagedUserById(id);
 };
+
+// ── ROLE-5 SUB-TYPE — REMOVABLE BLOCK (start) ────────────────────────────────
+// Label-only: which kind of lab member a role-5 user is. It grants nothing and
+// is read purely for display (consumption report). Roles 2/3/4 are rejected so
+// this can never be mistaken for a faculty/admin attribute.
+export const MEMBER_SUBTYPES = ['FACULTY', 'INTERN', 'TECHNICIAN'];
+const LAB_MEMBER_ROLE_ID = 5;
+
+export const setManagedUserSubtype = async (targetUserId, subtype) => {
+  const id = Number(targetUserId);
+  if (!id) throw badRequest('Invalid user id');
+
+  const clean = String(subtype ?? '').trim().toUpperCase();
+  if (!clean) throw badRequest('Sub-type is required');
+  if (!MEMBER_SUBTYPES.includes(clean)) {
+    throw badRequest(`Sub-type must be one of ${MEMBER_SUBTYPES.join(', ')}`);
+  }
+
+  const user = await model.getManagedUserById(id);
+  if (!user) throw notFound('User not found');
+  // Guards role-2 faculty, admins and incharges — sub-type is a role-5 concept.
+  if (Number(user.role_id) !== LAB_MEMBER_ROLE_ID) {
+    throw badRequest('Sub-type only applies to lab members');
+  }
+
+  await model.upsertUserSubtype(id, clean);
+  return model.getManagedUserById(id);
+};
+// ── ROLE-5 SUB-TYPE — REMOVABLE BLOCK (end) ──────────────────────────────────

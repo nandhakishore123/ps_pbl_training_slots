@@ -21,6 +21,22 @@ const ROLES = [
 ]
 const roleLabel = (roleId) => ROLES.find((r) => r.id === Number(roleId))?.label || `Role ${roleId}`
 
+// ── ROLE-5 SUB-TYPE — REMOVABLE BLOCK (start) ────────────────────────────────
+// Role 5 covers three kinds of lab member. This is a LABEL only: it grants no
+// permission and changes no routing — it just makes the consumption report say
+// Faculty / Intern / Technician instead of always "Intern".
+const LAB_MEMBER_ROLE_ID = 5
+const SUBTYPES = [
+  { id: 'FACULTY', label: 'Faculty' },
+  { id: 'INTERN', label: 'Intern' },
+  { id: 'TECHNICIAN', label: 'Technician' },
+]
+// NULL means "never assigned", which the backend reads as INTERN — so the UI
+// shows INTERN too rather than a blank, matching what the report will print.
+const subtypeOf = (u) => String(u?.member_subtype || '').trim().toUpperCase() || 'INTERN'
+const subtypeLabel = (value) => SUBTYPES.find((s) => s.id === value)?.label || 'Intern'
+// ── ROLE-5 SUB-TYPE — REMOVABLE BLOCK (end) ──────────────────────────────────
+
 // ── Modal shell (same shape as FacultyManagement's) ──────────────────────────
 function Modal({ title, onClose, children, footer }) {
   return (
@@ -50,7 +66,8 @@ export default function UserManagement() {
   const [toast, setToast] = useState(null)
   const [busy, setBusy] = useState(false)
 
-  // modal: { type: 'create'|'role'|'name'|'deactivate', user? }
+  // modal: { type: 'create'|'role'|'name'|'deactivate'|'subtype', user? }
+  //         ('subtype' → ROLE-5 SUB-TYPE, removable)
   const [modal, setModal] = useState(null)
   const [form, setForm] = useState({})
 
@@ -94,6 +111,12 @@ export default function UserManagement() {
     setForm({ name: u.name || '' })
     setModal({ type: 'name', user: u })
   }
+  // ROLE-5 SUB-TYPE (removable): pre-selects the current value, defaulting to
+  // INTERN when it has never been set.
+  const openSubtype = (u) => {
+    setForm({ member_subtype: subtypeOf(u) })
+    setModal({ type: 'subtype', user: u })
+  }
   const openDeactivate = (u) => setModal({ type: 'deactivate', user: u })
   const closeModal = () => { if (!busy) { setModal(null); setForm({}) } }
 
@@ -135,6 +158,19 @@ export default function UserManagement() {
       await load()
     } catch (err) {
       showToast(errMsg(err, 'Failed to update name.'), 'error')
+    } finally { setBusy(false) }
+  }
+
+  // ROLE-5 SUB-TYPE (removable): mirrors submitName exactly.
+  const submitSubtype = async () => {
+    setBusy(true)
+    try {
+      await adminService.setUserSubtype(modal.user.user_id, form.member_subtype)
+      showToast('Type updated.')
+      closeModal()
+      await load()
+    } catch (err) {
+      showToast(errMsg(err, 'Failed to update type.'), 'error')
     } finally { setBusy(false) }
   }
 
@@ -223,7 +259,14 @@ export default function UserManagement() {
                         {isSelf && <span className={styles.selfTag}>You</span>}
                       </td>
                       <td className={styles.email}>{u.email}</td>
-                      <td><span className={styles.roleTag}>{roleLabel(u.role_id)}</span></td>
+                      <td>
+                        <span className={styles.roleTag}>{roleLabel(u.role_id)}</span>
+                        {/* ROLE-5 SUB-TYPE (removable): the member kind, shown
+                            only for role 5. Reuses .selfTag's pill styling. */}
+                        {Number(u.role_id) === LAB_MEMBER_ROLE_ID && (
+                          <span className={styles.selfTag}>{subtypeLabel(subtypeOf(u))}</span>
+                        )}
+                      </td>
                       <td>
                         <span className={`${styles.badge} ${active ? styles.badgeActive : styles.badgeInactive}`}>
                           {active ? 'Active' : 'Inactive'}
@@ -240,6 +283,16 @@ export default function UserManagement() {
                           <button className={styles.actionBtn} disabled={busy} onClick={() => openName(u)}>
                             {u.name ? 'Edit Name' : 'Set Name'}
                           </button>
+                          {/* ROLE-5 SUB-TYPE (removable): role 5 only — the
+                              backend rejects every other role with a 400. */}
+                          {Number(u.role_id) === LAB_MEMBER_ROLE_ID && (
+                            <button
+                              className={styles.actionBtn}
+                              disabled={busy}
+                              title="Set member type (Faculty / Intern / Technician)"
+                              onClick={() => openSubtype(u)}
+                            >Set Type</button>
+                          )}
                           {active ? (
                             <button
                               className={`${styles.actionBtn} ${styles.actionDanger}`}
@@ -358,6 +411,39 @@ export default function UserManagement() {
           </div>
         </Modal>
       )}
+
+      {/* ── SET MEMBER TYPE — ROLE-5 SUB-TYPE, REMOVABLE BLOCK (start) ── */}
+      {modal?.type === 'subtype' && (
+        <Modal
+          title="Set Member Type"
+          onClose={closeModal}
+          footer={
+            <>
+              <button className={styles.btnCancel} onClick={closeModal} disabled={busy}>Cancel</button>
+              <button className={styles.btnSubmit} onClick={submitSubtype} disabled={busy || !form.member_subtype}>
+                {busy ? 'Saving…' : 'Save Type'}
+              </button>
+            </>
+          }
+        >
+          <div className={styles.field}>
+            <label className={styles.label}>User</label>
+            <input className={styles.input} value={`${modal.user.name || '—'} · ${modal.user.email}`} disabled />
+          </div>
+          <div className={styles.field}>
+            <label className={styles.label}>Member Type</label>
+            <select className={styles.select} value={form.member_subtype || ''}
+              onChange={(e) => setForm({ ...form, member_subtype: e.target.value })}>
+              {SUBTYPES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+            </select>
+            <div className={styles.hint}>Shown as the member type on the consumption report.</div>
+          </div>
+          <div className={styles.note}>
+            This is a label only — it does not change their role, permissions, or what they can buy.
+          </div>
+        </Modal>
+      )}
+      {/* ── SET MEMBER TYPE — ROLE-5 SUB-TYPE, REMOVABLE BLOCK (end) ── */}
 
       {/* DEACTIVATE CONFIRM */}
       {modal?.type === 'deactivate' && (
