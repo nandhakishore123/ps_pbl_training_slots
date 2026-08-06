@@ -27,15 +27,16 @@ const conflict = (message) => {
   return err;
 };
 
-// ── Outstanding-returnable buying limit ──────────────────────
-// A student may hold at most this many BUY requests that still involve returnable
-// items they have not given back. Change the number here and the whole rule moves.
-export const MAX_OUTSTANDING_RETURNABLE_REQUESTS = 3;
+// ── Outstanding buying limit ─────────────────────────────────
+// A student may have at most this many BUY requests outstanding at once —
+// pending, or approved with an uncleared obligation — whatever those requests
+// contain. Change the number here and the whole rule moves.
+export const MAX_OUTSTANDING_REQUESTS = 3;
 
-// Shown when a student is blocked from buying MORE returnable items because they
-// are already at the limit above.
+// Shown when a student is blocked: they are at the ceiling above AND still
+// holding a returnable item they have not given back.
 const BLOCK_MESSAGE =
-  `You have reached the limit of ${MAX_OUTSTANDING_RETURNABLE_REQUESTS} unreturned requests. `
+  `You have reached the limit of ${MAX_OUTSTANDING_REQUESTS} unreturned requests. `
   + 'Please return items from a previous request before requesting more returnable items.';
 
 // ── Buying approver routing (Stage 4) ────────────────────────
@@ -165,17 +166,24 @@ export const createBuyingRequest = async (userId, { purpose_type, purpose, items
     };
   });
 
-  // Blocking gate: at most MAX_OUTSTANDING_RETURNABLE_REQUESTS BUY requests may be
-  // outstanding with returnable items not yet given back (see the model for how
-  // pending and approved requests are counted together, once each).
+  // Blocking gate — two conditions, both about the pile the student is ALREADY
+  // sitting on (see the model for how pending and approved requests are counted
+  // together, once each):
+  //   1. they are at/over MAX_OUTSTANDING_REQUESTS outstanding BUY requests,
+  //      counted whatever those requests contain; AND
+  //   2. they are still holding a returnable item they have not given back.
   //
-  // The gate only bites when THIS request would add to that pile — a
-  // consumables-only request is always allowed, however many returnables the
-  // student is sitting on, since it can never make the returnable debt worse.
-  const newHasReturnable = lineItems.some((li) => li.is_returnable === 1);
-  if (newHasReturnable) {
-    const outstanding = await model.countOutstandingReturnableRequests(studentId);
-    if (outstanding >= MAX_OUTSTANDING_RETURNABLE_REQUESTS) throw conflict(BLOCK_MESSAGE);
+  // Both are required. Three consumables-only requests hit the ceiling but leave
+  // nothing to give back, so they never block — the ceiling exists to force
+  // returns, and there is nothing to return. Equally, clearing the last
+  // returnable obligation unblocks the student even if three requests remain.
+  //
+  // What the NEW request contains is deliberately NOT part of the decision: the
+  // rule is about the debt already owed, not about what is being asked for.
+  const outstanding = await model.countOutstandingRequests(studentId);
+  if (outstanding >= MAX_OUTSTANDING_REQUESTS) {
+    const holdsReturnable = await model.hasOutstandingReturnable(studentId);
+    if (holdsReturnable) throw conflict(BLOCK_MESSAGE);
   }
 
   const requestId = await model.createRequestWithItems({

@@ -31,6 +31,11 @@ function StatusPill({ status }) {
 
 const RENDER_CAP = 250; // guard against rendering the whole 1455-item catalog at once
 
+// ══ RETURNABLE ITEMS (reference popup) — REMOVABLE ══
+// Returnable + still active. /inventory/stock returns inactive rows too, so the
+// popup filters them out — it is a "what can be borrowed" reference.
+const isReturnableItem = (it) => Number(it.is_returnable) === 1 && Number(it.is_active) !== 0;
+
 export default function InventoryInchargeDashboard() {
   const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
@@ -74,6 +79,14 @@ export default function InventoryInchargeDashboard() {
   const [retRowErr, setRetRowErr] = useState({});
   const [retRejectFor, setRetRejectFor] = useState(null);
   const [retRejectRemarks, setRetRejectRemarks] = useState('');
+
+  // ══ RETURNABLE ITEMS (reference popup) — REMOVABLE BLOCK (start) ══
+  const [retOpen, setRetOpen] = useState(false);
+  const [retItems, setRetItems] = useState([]);
+  const [retLoading, setRetLoading] = useState(false);
+  const [retError, setRetError] = useState('');
+  const [retSearch, setRetSearch] = useState('');   // in-popup filter, display only
+  // ══ RETURNABLE ITEMS — REMOVABLE BLOCK (end) ══
 
   // Action modal: { mode:'editItem'|'add'|'new', item? }
   const [modal, setModal] = useState(null);
@@ -278,6 +291,34 @@ export default function InventoryInchargeDashboard() {
     try { await authService.logout(); } finally { navigate('/auth/login', { replace: true }); }
   };
 
+  // ══ RETURNABLE ITEMS (reference popup) — REMOVABLE BLOCK (start) ══
+  // Read-only; touches no stock/edit/add state. `stock` already holds the FULL
+  // catalog (RENDER_CAP only caps what is *rendered*), so with no filter active
+  // it can be filtered in place. With a category/search filter on, `stock` is a
+  // subset — re-read the same /inventory/stock endpoint unfiltered so the popup
+  // is always the complete returnable list.
+  const openReturnable = async () => {
+    setRetOpen(true); setRetError(''); setRetSearch('');
+    if (!categoryFilter && !search && !stockLoading && stock.length > 0) {
+      setRetItems(stock.filter(isReturnableItem)); return;
+    }
+    setRetLoading(true);
+    try {
+      const res = await inventoryService.getStock({ category: '', search: '' });
+      setRetItems((res?.data?.items || []).filter(isReturnableItem));
+    } catch { setRetError('Failed to load returnable items.'); setRetItems([]); }
+    finally { setRetLoading(false); }
+  };
+  const closeReturnable = () => { setRetOpen(false); setRetSearch(''); };
+
+  // Display-only filter over the already-loaded returnable list — `retItems`
+  // (the complete set) is never mutated, so the count below can show both.
+  const retQuery = retSearch.trim().toLowerCase();
+  const retShown = retQuery
+    ? retItems.filter((it) => `${it.item_name || ''} ${it.category || ''} ${it.subcategory || ''}`.toLowerCase().includes(retQuery))
+    : retItems;
+  // ══ RETURNABLE ITEMS — REMOVABLE BLOCK (end) ══
+
   const shown = stock.slice(0, RENDER_CAP);
 
   return (
@@ -341,6 +382,13 @@ export default function InventoryInchargeDashboard() {
                 <option value="">All Categories</option>
                 {categories.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
+              {/* RETURNABLE ITEMS (reference popup) — removable */}
+              <button className="ic-btn ic-btn-outline ic-ret-btn" onClick={openReturnable} title="View all returnable items">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 7v6h6" /><path d="M21 17a9 9 0 0 0-15-6.7L3 13" />
+                </svg>
+                Returnable Items
+              </button>
               <button className="ic-btn ic-btn-primary" onClick={openNew}>+ Add New Item</button>
             </div>
 
@@ -504,6 +552,63 @@ export default function InventoryInchargeDashboard() {
         )}
         {/* ══ LAB PURCHASES — REMOVABLE (end) ══ */}
       </div>
+
+      {/* ══ RETURNABLE ITEMS (reference popup) — REMOVABLE BLOCK (start) ══ */}
+      {retOpen && (
+        <div className="ic-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) closeReturnable(); }}>
+          <div className="ic-modal ic-ret-modal" role="dialog" aria-modal="true" aria-label="Returnable items">
+            <div className="ic-modal-hd">
+              <div className="ic-modal-title">Returnable Items</div>
+              <button className="ic-modal-x" onClick={closeReturnable}>×</button>
+            </div>
+            <div className="ic-modal-bd ic-ret-bd">
+              {!retLoading && !retError && retItems.length > 0 && (
+                <div className="ic-ret-search-wrap">
+                  <input className="ic-input ic-ret-search" value={retSearch} autoFocus
+                    onChange={(e) => setRetSearch(e.target.value)}
+                    placeholder="Search returnable items…" />
+                </div>
+              )}
+              {retLoading ? <div className="ic-spinner" />
+                : retError ? <div className="ic-empty" style={{ color: 'var(--ic-red)' }}>{retError}</div>
+                : retItems.length === 0 ? <div className="ic-empty">No returnable items.</div>
+                : retShown.length === 0 ? <div className="ic-empty">No matching returnable items.</div> : (
+                  <div className="ic-ret-scroll">
+                    <div className="ic-ret-row head">
+                      <div>Item Name</div>
+                      <div className="ic-ret-hide">Category</div>
+                      <div>Stock</div>
+                      <div className="ic-ret-hide">Rack</div>
+                    </div>
+                    {retShown.map((it) => {
+                      const cat = `${it.category || '—'}${it.subcategory ? ` · ${it.subcategory}` : ''}`;
+                      return (
+                        <div className="ic-ret-row" key={it.item_id}>
+                          <div style={{ minWidth: 0 }}>
+                            <div className="ic-ret-name">{it.item_name}</div>
+                            <div className="ic-ret-meta">{cat}{it.rack_location ? ` · ${it.rack_location}` : ''}</div>
+                          </div>
+                          <div className="ic-ret-hide ic-ret-cat">{cat}</div>
+                          <div><span className="ic-qty">{money(it.current_quantity)}</span> <span className="ic-qty-unit">{it.unit || ''}</span></div>
+                          <div className="ic-ret-hide ic-rack">{it.rack_location || '—'}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              <div className="ic-ret-ft">
+                <div className="ic-count" style={{ marginBottom: 0 }}>
+                  {retLoading ? 'Loading…'
+                    : retQuery ? `${retShown.length} of ${retItems.length} returnable item${retItems.length !== 1 ? 's' : ''}`
+                    : `${retItems.length} returnable item${retItems.length !== 1 ? 's' : ''}`}
+                </div>
+                <button className="ic-btn ic-btn-outline" onClick={closeReturnable}>Close</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ══ RETURNABLE ITEMS — REMOVABLE BLOCK (end) ══ */}
 
       {/* Return reject modal */}
       {retRejectFor != null && (

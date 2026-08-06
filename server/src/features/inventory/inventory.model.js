@@ -509,8 +509,8 @@ export const rejectBuyingRequest = async (requestId, approverUserId, approverRol
 
 // Count of a student's uncleared obligations (OPEN or awaiting incharge = RETURN_PENDING).
 // NOTE: this no longer gates buying — it was the old "any uncleared obligation blocks
-// a new BUY" rule, superseded by countOutstandingReturnableRequests below. Kept as a
-// plain read for callers that just want the raw uncleared-line count.
+// a new BUY" rule, superseded by countOutstandingRequests below. Kept as a plain read
+// for callers that just want the raw uncleared-line count.
 export const countOpenObligations = async (studentId) => {
   const [rows] = await db.execute(
     `SELECT COUNT(*) AS n FROM inventory_obligations
@@ -520,46 +520,79 @@ export const countOpenObligations = async (studentId) => {
   return Number(rows?.[0]?.n || 0);
 };
 
-// How many of a student's BUY requests are still "outstanding returnable" — i.e.
-// they involve returnable items the student has not given back yet. This is the
-// basis of the max-3 buying limit (enforced in the service).
+// How many BUY requests a student currently has OUTSTANDING — whatever is in
+// them. This is the COUNT half of the buying limit (enforced in the service);
+// hasOutstandingReturnable below is the other half.
 //
-// Two sources, because a request's returnable-ness lives in different tables
-// depending on where it is in its life:
-//   (a) APPROVED  → approval created one inventory_obligations row per line, with
-//                   is_returnable snapshotted. Uncleared = OPEN or RETURN_PENDING.
-//                   RETURN_PENDING still counts: the incharge has not approved the
-//                   return yet, so the items are not actually back on the shelf.
-//   (b) PENDING   → no obligations exist yet, so returnable-ness has to be read
-//                   live off inventory_items via the request's line items.
+// Two sources, because "outstanding" means different things at different points
+// in a request's life:
+//   (a) PENDING   → not yet decided, so the request itself is the outstanding
+//                   thing. Counted regardless of contents (consumables included).
+//   (b) APPROVED  → approval created one inventory_obligations row per line; the
+//                   request stays outstanding while ANY of them is uncleared.
+//                   RETURN_PENDING still counts: the incharge has not approved
+//                   the return yet, so the items are not back on the shelf.
 //
 // A request is either PENDING or APPROVED, never both, and obligations only ever
 // exist for APPROVED requests (approveBuyingRequest is the sole writer, and no
 // path moves a request back to PENDING) — so the two sources are already disjoint.
 // UNION (not UNION ALL) over the request ids makes that structural, not assumed:
-// even if a row ever landed in both, the request is counted once.
-export const countOutstandingReturnableRequests = async (studentId) => {
+// even if a row ever landed in both, the request is counted once. It also folds
+// the many obligation rows of one approved request down to a single id.
+export const countOutstandingRequests = async (studentId) => {
   const id = Number(studentId);
   const [rows] = await db.execute(
     `SELECT COUNT(*) AS n FROM (
-       SELECT o.buy_request_id AS request_id
-         FROM inventory_obligations o
-        WHERE o.student_id = ?
-          AND o.is_returnable = 1
-          AND o.status IN ('OPEN','RETURN_PENDING')
-       UNION
        SELECT r.request_id
          FROM inventory_requests r
-         JOIN inventory_request_items ri ON ri.request_id = r.request_id
-         JOIN inventory_items it ON it.item_id = ri.item_id
         WHERE r.student_id = ?
           AND r.request_type = 'BUY'
           AND r.status = 'PENDING'
-          AND it.is_returnable = 1
+       UNION
+       SELECT DISTINCT o.buy_request_id AS request_id
+         FROM inventory_obligations o
+        WHERE o.student_id = ?
+          AND o.status IN ('OPEN','RETURN_PENDING')
      ) AS outstanding`,
     [id, id]
   );
   return Number(rows?.[0]?.n || 0);
+};
+
+// Is the student currently holding ANY returnable item they have not given back?
+// Same two sources as countOutstandingRequests, narrowed to returnables — the
+// returnable-ness of a request lives in a different table depending on its stage:
+//   (a) APPROVED  → the obligation row snapshotted is_returnable at approval;
+//                   uncleared = OPEN or RETURN_PENDING.
+//   (b) PENDING   → no obligations exist yet, so it is read live off
+//                   inventory_items through the request's line items.
+// An existence test, not a count: two EXISTS subqueries OR-ed together let the
+// engine stop at the first matching row on either side.
+export const hasOutstandingReturnable = async (studentId) => {
+  const id = Number(studentId);
+  const [rows] = await db.execute(
+    `SELECT (
+       EXISTS (
+         SELECT 1
+           FROM inventory_obligations o
+          WHERE o.student_id = ?
+            AND o.is_returnable = 1
+            AND o.status IN ('OPEN','RETURN_PENDING')
+       )
+       OR EXISTS (
+         SELECT 1
+           FROM inventory_requests r
+           JOIN inventory_request_items ri ON ri.request_id = r.request_id
+           JOIN inventory_items it ON it.item_id = ri.item_id
+          WHERE r.student_id = ?
+            AND r.request_type = 'BUY'
+            AND r.status = 'PENDING'
+            AND it.is_returnable = 1
+       )
+     ) AS held`,
+    [id, id]
+  );
+  return Number(rows?.[0]?.held || 0) === 1;
 };
 
 // A student's still-OPEN obligations (actionable in the Returning tab).

@@ -145,6 +145,37 @@ const LAB_CSS = `
 `;
 /* ═══ LABS (Stage 4) — REMOVABLE BLOCK (end) ═══ */
 
+/* ═══ RETURNABLE ITEMS (reference popup) — REMOVABLE BLOCK (start) ═══
+   Read-only listing of every returnable item. Additive classes only. */
+const RET_CSS = `
+  .ad-ret-btn { display:inline-flex; align-items:center; gap:7px; }
+  .ad-ret-modal { max-width:760px; }
+  .ad-ret-bd { padding:0; }
+  .ad-ret-search-wrap { padding:14px 20px; border-bottom:1px solid var(--ad-border); }
+  .ad-ret-search { margin-bottom:0; }
+  .ad-ret-scroll { max-height:min(58vh,520px); overflow-y:auto; }
+  .ad-ret-row { display:grid; grid-template-columns:1fr 190px 120px 110px; gap:14px; align-items:center;
+    padding:12px 20px; border-bottom:1px solid var(--ad-border); }
+  .ad-ret-row:last-child { border-bottom:none; }
+  .ad-ret-row.head { position:sticky; top:0; z-index:1; background:var(--ad-bg); padding:9px 20px;
+    font-size:10px; font-weight:800; letter-spacing:0.6px; text-transform:uppercase; color:var(--ad-text2); }
+  .ad-ret-row:not(.head):hover { background:var(--ad-purple-dim); }
+  .ad-ret-name { font-size:13px; font-weight:800; }
+  .ad-ret-cat { font-size:11.5px; color:var(--ad-text2); font-weight:700; }
+  .ad-ret-meta { display:none; }
+  .ad-ret-ft { padding:14px 20px; border-top:1px solid var(--ad-border); display:flex; align-items:center;
+    justify-content:space-between; gap:10px; }
+  @media (max-width:700px) {
+    .ad-ret-row { grid-template-columns:1fr 96px; }
+    .ad-ret-hide { display:none; }
+    .ad-ret-meta { display:block; font-size:11px; color:var(--ad-text3); font-weight:600; margin-top:2px; }
+  }
+`;
+// Returnable + still active. /inventory/stock returns inactive rows too, so the
+// popup filters them out — it is a "what can be borrowed" reference.
+const isReturnableItem = (it) => Number(it.is_returnable) === 1 && Number(it.is_active) !== 0;
+/* ═══ RETURNABLE ITEMS — REMOVABLE BLOCK (end) ═══ */
+
 const money = (n) => Number(n ?? 0).toLocaleString();
 function fmtDateTime(d) {
   const dt = d ? new Date(d) : new Date();
@@ -207,6 +238,14 @@ export default function AdminInventory() {
   const [labBusy, setLabBusy] = useState(false);
   // ═══ LABS (Stage 4) — REMOVABLE BLOCK (end) ═══
 
+  // ═══ RETURNABLE ITEMS (reference popup) — REMOVABLE BLOCK (start) ═══
+  const [retOpen, setRetOpen] = useState(false);
+  const [retItems, setRetItems] = useState([]);
+  const [retLoading, setRetLoading] = useState(false);
+  const [retError, setRetError] = useState('');
+  const [retSearch, setRetSearch] = useState('');   // in-popup filter, display only
+  // ═══ RETURNABLE ITEMS — REMOVABLE BLOCK (end) ═══
+
   const [busyId, setBusyId] = useState(null);
   const [rowErr, setRowErr] = useState({});
   const [rejectModal, setRejectModal] = useState(null); // { kind:'BUY'|'RETURN', id }
@@ -223,7 +262,7 @@ export default function AdminInventory() {
   useEffect(() => {
     const el = document.createElement('style');
     el.id = 'ad-styles';
-    el.innerHTML = CSS + LAB_CSS; // LAB_CSS: Stage 4 labs — removable
+    el.innerHTML = CSS + LAB_CSS + RET_CSS; // LAB_CSS: Stage 4 labs — removable. RET_CSS: returnable popup — removable
     if (!document.getElementById('ad-styles')) document.head.appendChild(el);
     return () => { const s = document.getElementById('ad-styles'); if (s) s.remove(); };
   }, []);
@@ -471,6 +510,32 @@ export default function AdminInventory() {
     finally { setSaving(false); }
   };
 
+  // ═══ RETURNABLE ITEMS (reference popup) — REMOVABLE BLOCK (start) ═══
+  // Read-only; touches no stock/edit/add state. `stock` already holds the FULL
+  // catalog (RENDER_CAP only caps what is *rendered*), so with no filter active
+  // it can be filtered in place. With a category/search filter on, `stock` is a
+  // subset — re-read the same /inventory/stock endpoint unfiltered so the popup
+  // is always the complete returnable list.
+  const openReturnable = async () => {
+    setRetOpen(true); setRetError(''); setRetSearch('');
+    if (!categoryFilter && !search && stockLoaded) { setRetItems(stock.filter(isReturnableItem)); return; }
+    setRetLoading(true);
+    try {
+      const res = await inventoryService.getStock({ category: '', search: '' });
+      setRetItems((res?.data?.items || []).filter(isReturnableItem));
+    } catch { setRetError('Failed to load returnable items.'); setRetItems([]); }
+    finally { setRetLoading(false); }
+  };
+  const closeReturnable = () => { setRetOpen(false); setRetSearch(''); };
+
+  // Display-only filter over the already-loaded returnable list — `retItems`
+  // (the complete set) is never mutated, so the count below can show both.
+  const retQuery = retSearch.trim().toLowerCase();
+  const retShown = retQuery
+    ? retItems.filter((it) => `${it.item_name || ''} ${it.category || ''} ${it.subcategory || ''}`.toLowerCase().includes(retQuery))
+    : retItems;
+  // ═══ RETURNABLE ITEMS — REMOVABLE BLOCK (end) ═══
+
   const shownStock = stock.slice(0, RENDER_CAP);
 
   const renderBuying = (r) => {
@@ -603,6 +668,13 @@ export default function AdminInventory() {
                 <option value="">All Categories</option>
                 {categories.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
+              {/* RETURNABLE ITEMS (reference popup) — removable */}
+              <button className="ad-btn ad-btn-outline ad-ret-btn" onClick={openReturnable} title="View all returnable items">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 7v6h6" /><path d="M21 17a9 9 0 0 0-15-6.7L3 13" />
+                </svg>
+                Returnable Items
+              </button>
               <button className="ad-btn ad-btn-primary" onClick={openNew}>+ Add New Item</button>
             </div>
             {stockError && <div className="ad-empty" style={{ color: 'var(--ad-red)' }}>{stockError}</div>}
@@ -795,6 +867,63 @@ export default function AdminInventory() {
           </div>
         </div>
       )}
+
+      {/* ═══ RETURNABLE ITEMS (reference popup) — REMOVABLE BLOCK (start) ═══ */}
+      {retOpen && (
+        <div className="ad-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) closeReturnable(); }}>
+          <div className="ad-modal ad-ret-modal" role="dialog" aria-modal="true" aria-label="Returnable items">
+            <div className="ad-modal-hd">
+              <div className="ad-modal-title">Returnable Items</div>
+              <button className="ad-modal-x" onClick={closeReturnable}>×</button>
+            </div>
+            <div className="ad-modal-bd ad-ret-bd">
+              {!retLoading && !retError && retItems.length > 0 && (
+                <div className="ad-ret-search-wrap">
+                  <input className="ad-input ad-ret-search" value={retSearch} autoFocus
+                    onChange={(e) => setRetSearch(e.target.value)}
+                    placeholder="Search returnable items…" />
+                </div>
+              )}
+              {retLoading ? <div className="ad-spinner" />
+                : retError ? <div className="ad-empty" style={{ color: 'var(--ad-red)' }}>{retError}</div>
+                : retItems.length === 0 ? <div className="ad-empty">No returnable items.</div>
+                : retShown.length === 0 ? <div className="ad-empty">No matching returnable items.</div> : (
+                  <div className="ad-ret-scroll">
+                    <div className="ad-ret-row head">
+                      <div>Item Name</div>
+                      <div className="ad-ret-hide">Category</div>
+                      <div>Stock</div>
+                      <div className="ad-ret-hide">Rack</div>
+                    </div>
+                    {retShown.map((it) => {
+                      const cat = `${it.category || '—'}${it.subcategory ? ` · ${it.subcategory}` : ''}`;
+                      return (
+                        <div className="ad-ret-row" key={it.item_id}>
+                          <div style={{ minWidth: 0 }}>
+                            <div className="ad-ret-name">{it.item_name}</div>
+                            <div className="ad-ret-meta">{cat}{it.rack_location ? ` · ${it.rack_location}` : ''}</div>
+                          </div>
+                          <div className="ad-ret-hide ad-ret-cat">{cat}</div>
+                          <div><span className="ad-qty">{money(it.current_quantity)}</span> <span className="ad-qty-unit">{it.unit || ''}</span></div>
+                          <div className="ad-ret-hide ad-rack">{it.rack_location || '—'}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              <div className="ad-ret-ft">
+                <div className="ad-count" style={{ marginBottom: 0 }}>
+                  {retLoading ? 'Loading…'
+                    : retQuery ? `${retShown.length} of ${retItems.length} returnable item${retItems.length !== 1 ? 's' : ''}`
+                    : `${retItems.length} returnable item${retItems.length !== 1 ? 's' : ''}`}
+                </div>
+                <button className="ad-btn ad-btn-outline" onClick={closeReturnable}>Close</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ═══ RETURNABLE ITEMS — REMOVABLE BLOCK (end) ═══ */}
 
       {/* ═══ LABS (Stage 4) — REMOVABLE BLOCK (start) ═══ */}
       {/* Add / edit lab */}
