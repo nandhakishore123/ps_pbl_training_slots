@@ -2,9 +2,9 @@
 // Browse categories/items → build a cart → purpose + Project/Training → submit
 // a PENDING buying request → Inventory Pass + "My Requests" list.
 // Returning + approvals + stock changes come in later stages (see TODOs).
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion, MotionConfig } from 'framer-motion';
+import { motion, MotionConfig, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '../../store/authStore';
 import { inventoryService } from '../../services/features/inventoryService';
 
@@ -76,7 +76,15 @@ const CSS = `
     border-bottom:1px solid var(--iv-hairline); padding:14px 24px;
     display:flex; align-items:center; justify-content:space-between; gap:12px; position:sticky; top:0; z-index:50;
     box-shadow:0 1px 0 var(--iv-hairline), 0 10px 30px rgba(26,16,64,0.05); }
-  .inv-back { display:flex; align-items:center; gap:7px; background:var(--iv-card); border:1px solid var(--iv-border);
+  /* Header groups — named so the mobile rules can reach them (they were unclassed
+     inline styles). Base values match what was inline; min-width:0 and flex-shrink
+     only license shrinking, which desktop never reaches because there is room. */
+  .inv-hleft { display:flex; align-items:center; gap:14px; min-width:0; }
+  .inv-hright { display:flex; align-items:center; gap:10px; flex-shrink:0; }
+  .inv-htitle-wrap { min-width:0; }
+  /* gap was previously inert (the label was one text node); 4px reproduces the
+     space character it replaced, so the desktop button keeps its width. */
+  .inv-back { display:flex; align-items:center; gap:4px; background:var(--iv-card); border:1px solid var(--iv-border);
     color:var(--iv-text2); padding:8px 14px; border-radius:10px; font-size:13px; font-weight:700; cursor:pointer;
     font-family:inherit; white-space:nowrap; box-shadow:var(--iv-shadow-sm);
     transition:color .2s var(--iv-ease), border-color .2s var(--iv-ease), background .2s var(--iv-ease),
@@ -303,10 +311,108 @@ const CSS = `
   .inv-modal-x:focus-visible { outline:none; box-shadow:0 0 0 3px rgba(255,255,255,0.45); }
   /* ══ REQUEST PASS POPUP — ADDITIVE BLOCK (end) ══ */
 
+  /* ══ SUCCESS ANIMATION — ADDITIVE BLOCK (start) ══
+     A full-screen purple cover held for ~2.5s after a request is created, before
+     the Inventory Pass mounts. Presentation only. Motion split as everywhere else
+     on this page: framer-motion owns transform on the badge, tick and copy; CSS
+     keyframes own the glow rings (throwaway elements, no state). The cover is
+     opaque by design — nothing behind it shows through, so the page theme
+     underneath is irrelevant while it is up. */
+  .inv-succ-ov { position:fixed; inset:0; width:100vw; height:100vh; height:100dvh;
+    z-index:9999; overflow:hidden; isolation:isolate;
+    display:flex; align-items:center; justify-content:center; padding:24px;
+    background:
+      radial-gradient(120% 92% at 50% 6%, #8b6bff 0%, rgba(139,107,255,0) 58%),
+      radial-gradient(96% 84% at 10% 104%, #5a37e0 0%, rgba(90,55,224,0) 62%),
+      linear-gradient(158deg, #7d5cff 0%, #6c47ff 46%, #4b2fd6 100%); }
+  /* Vignette — lifts the centre and settles the edges. Sits below the copy, which
+     carries a z-index. */
+  .inv-succ-ov::after { content:''; position:absolute; inset:0; pointer-events:none;
+    background:radial-gradient(78% 64% at 50% 45%, rgba(255,255,255,0.13), rgba(18,6,66,0.28) 100%); }
+  .inv-succ-inner { position:relative; z-index:2; text-align:center; max-width:560px; }
+
+  /* Stage: badge centred, glow rings expanding from the same centre.
+     --bsz drives the badge and the rings together so one value resizes both. */
+  .inv-succ-stage { --bsz:132px; position:relative; width:calc(var(--bsz) * 1.45);
+    height:calc(var(--bsz) * 1.45); margin:0 auto 30px;
+    display:flex; align-items:center; justify-content:center; }
+
+  /* White 3D disc: off-centre radial for the light source, a bright inner top
+     highlight and a purple inner bottom shade for volume, a deep drop shadow to
+     lift it off the cover, and a wide soft halo. */
+  .inv-succ-badge { position:relative; width:var(--bsz); height:var(--bsz); border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    background:radial-gradient(116% 116% at 32% 20%, #fff 0%, #fdfbff 46%, #ebe4ff 100%);
+    box-shadow:0 28px 62px rgba(18,5,70,0.4), 0 10px 24px rgba(18,5,70,0.26),
+      inset 0 3px 4px rgba(255,255,255,0.95), inset 0 -14px 28px rgba(108,71,255,0.2),
+      0 0 0 12px rgba(255,255,255,0.09), 0 0 72px rgba(255,255,255,0.42); }
+  /* Glossy top sheen */
+  .inv-succ-badge::after { content:''; position:absolute; top:11px; left:50%; transform:translateX(-50%);
+    width:calc(var(--bsz) * 0.58); height:calc(var(--bsz) * 0.28); border-radius:50%; pointer-events:none;
+    background:linear-gradient(180deg, rgba(255,255,255,0.95), rgba(255,255,255,0)); filter:blur(2px); }
+
+  /* Three concentric rings, staggered by --gd, each pulsing twice across the hold. */
+  .inv-succ-glow { position:absolute; top:50%; left:50%; width:var(--bsz); height:var(--bsz);
+    margin:calc(var(--bsz) / -2) 0 0 calc(var(--bsz) / -2); border-radius:50%;
+    border:2px solid rgba(255,255,255,0.85); opacity:0; pointer-events:none;
+    animation:inv-succ-glow 1.6s cubic-bezier(.2,.6,.3,1) var(--gd,0s) 2 both; }
+  @keyframes inv-succ-glow {
+    0%   { transform:scale(.86); opacity:.7; }
+    70%  { opacity:.1; }
+    100% { transform:scale(2.55); opacity:0; }
+  }
+
+  .inv-succ-title { font-family:var(--iv-font-head); color:#fff; font-weight:900;
+    font-size:clamp(21px, 4.6vw, 33px); letter-spacing:-0.5px; line-height:1.2;
+    text-shadow:0 4px 20px rgba(20,6,70,0.38); }
+  .inv-succ-sub { margin-top:12px; color:rgba(255,255,255,0.9); font-weight:600;
+    font-size:clamp(13.5px, 2.6vw, 17px); line-height:1.5;
+    text-shadow:0 2px 12px rgba(20,6,70,0.32); }
+
+  @media (max-width:520px) {
+    .inv-succ-stage { --bsz:104px; margin-bottom:24px; }
+  }
+
+  /* Reduced motion: keep the cover, the badge and the message — drop the pulses
+     entirely. (The global block below flattens what remains, and MotionConfig
+     reducedMotion="user" quiets the framer transforms to match.) */
+  @media (prefers-reduced-motion: reduce) {
+    .inv-succ-glow { display:none; }
+  }
+  /* ══ SUCCESS ANIMATION — ADDITIVE BLOCK (end) ══ */
+
   @media (max-width:820px) {
     .inv-grid { grid-template-columns:1fr; }
     .inv-hsub, .inv-uroll { display:none; }
     .inv-wrap { padding:16px 14px 40px; }
+  }
+
+  /* ── Mobile header: give the title room ──────────────────────────
+     The back button collapses to its arrow, the user pill and Dark toggle tighten
+     up, and the title is allowed to shrink and wrap so it can never be clipped.
+     Layout only — no handler, route or piece of state is involved. */
+  @media (max-width:640px) {
+    .inv-header { padding:11px 13px; gap:10px; }
+    .inv-hleft { gap:10px; }
+    .inv-hright { gap:7px; }
+    /* Arrow only — the label is hidden, the button itself is untouched. */
+    .inv-back-text { display:none; }
+    .inv-back { flex-shrink:0; gap:0; padding:8px 11px; font-size:16px; line-height:1; }
+    .inv-htitle { font-size:15px; letter-spacing:-0.2px; line-height:1.25;
+      white-space:normal; overflow-wrap:anywhere; }
+    .inv-userpill { padding:3px 9px 3px 3px; gap:7px; }
+    .inv-avatar { width:28px; height:28px; font-size:12.5px; }
+    .inv-uname { font-size:12px; max-width:84px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .inv-dark { padding:6px 9px; font-size:11.5px; }
+  }
+  @media (max-width:380px) {
+    .inv-header { padding:10px 10px; gap:8px; }
+    .inv-hleft { gap:8px; }
+    .inv-back { padding:7px 9px; }
+    .inv-htitle { font-size:14px; }
+    .inv-avatar { width:26px; height:26px; font-size:11.5px; }
+    .inv-uname { max-width:58px; }
+    .inv-dark { padding:5px 8px; font-size:11px; }
   }
 
   /* Users who ask for less motion get the same layout, minus the movement.
@@ -340,6 +446,44 @@ const passPop = {
   transition: { duration: 0.28, ease: EASE },
 };
 const rowHover = { y: -2, transition: { duration: 0.18, ease: EASE } };
+
+// ── SUCCESS ANIMATION (presentation only) ──────────────────────
+// How long the celebration holds the screen before the Inventory Pass takes over.
+const SUCCESS_MS = 2500;
+
+// Beat sheet, all inside SUCCESS_MS: cover fades in (0.00–0.24) → badge pops (0.12)
+// → glow rings pulse (0.30 on, twice) → tick draws (0.46–0.86) → copy slides up
+// (0.88–1.20) → hold → cover fades out.
+const succBadgePop = {
+  initial: { scale: 0.25, opacity: 0 },
+  animate: { scale: 1, opacity: 1 },
+  transition: { type: 'spring', stiffness: 380, damping: 14, mass: 0.8, delay: 0.12 },
+};
+// Tick: framer draws the stroke (pathLength 0 → 1) once the disc has landed.
+const succCheckDraw = {
+  initial: { pathLength: 0, opacity: 0 },
+  animate: { pathLength: 1, opacity: 1 },
+  transition: { pathLength: { duration: 0.4, ease: EASE, delay: 0.46 }, opacity: { duration: 0.01, delay: 0.46 } },
+};
+// Reduced-motion counterpart: the tick is simply already drawn. pathLength runs in
+// JS, so neither the CSS media block nor MotionConfig would flatten it on its own.
+const succCheckStatic = { initial: { pathLength: 1, opacity: 1 }, animate: { pathLength: 1, opacity: 1 } };
+// Copy: slides up and fades in a beat after the tick finishes.
+const succCopyRise = (delay) => ({
+  initial: { opacity: 0, y: 18 },
+  animate: { opacity: 1, y: 0 },
+  transition: { duration: 0.42, ease: EASE, delay },
+});
+
+// Read the OS preference at mount. The CSS media block covers the keyframe layers;
+// this is only for the framer animations it cannot reach.
+const prefersReducedMotion = () =>
+  typeof window !== 'undefined' &&
+  typeof window.matchMedia === 'function' &&
+  window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+// Three glow rings, staggered behind the badge.
+const GLOW_DELAYS = ['0.30s', '0.52s', '0.74s'];
 // Overlay behind the request-pass popup — opacity only, so it writes no transform
 // and stays a clean containing block for the fixed overlay.
 const overlayFade = { initial: { opacity: 0 }, animate: { opacity: 1 }, transition: { duration: 0.16 } };
@@ -389,6 +533,13 @@ export default function InventoryRequest() {
   const [submitting, setSubmitting] = useState(false);
   const [submitErr, setSubmitErr] = useState('');
   const [pass, setPass] = useState(null); // created request → Inventory Pass
+  // Success celebration: sits between "create succeeded" and the pass appearing.
+  // The created request waits in the ref for SUCCESS_MS, then goes into `pass`.
+  const [showSuccess, setShowSuccess] = useState(false);
+  const pendingPassRef = useRef(null);
+  const successTimerRef = useRef(null);
+  // Read once on mount — only the tick draw needs it (see succCheckStatic).
+  const [reducedMotion] = useState(prefersReducedMotion);
 
   // My Requests
   const [myRequests, setMyRequests] = useState([]);
@@ -423,6 +574,9 @@ export default function InventoryRequest() {
     document.body.classList.toggle('dark-mode', darkMode);
     localStorage.setItem('pt-dark', darkMode ? '1' : '0');
   }, [darkMode]);
+
+  // Drop the celebration timer if the page unmounts mid-animation.
+  useEffect(() => () => clearTimeout(successTimerRef.current), []);
 
   const loadMine = useCallback(async () => {
     setMineLoading(true);
@@ -543,9 +697,19 @@ export default function InventoryRequest() {
       // The pass modal needs the lab name; the create response carries it, but
       // fall back to the picked option so the modal is never blank.
       const created = res?.data || null;
-      setPass(created && !created.lab_name
+      const resolved = created && !created.lab_name
         ? { ...created, lab_name: labs.find((l) => String(l.lab_id) === String(labId))?.lab_name ?? null }
-        : created);
+        : created;
+      // Celebrate first, then hand the (unchanged) pass its data. Only reached on
+      // success — a failed create throws straight to the catch below.
+      pendingPassRef.current = resolved;
+      setShowSuccess(true);
+      clearTimeout(successTimerRef.current);
+      successTimerRef.current = setTimeout(() => {
+        setShowSuccess(false);
+        setPass(pendingPassRef.current);
+        pendingPassRef.current = null;
+      }, SUCCESS_MS);
       setCart([]);
       setPurpose('');
       setPurposeType('');
@@ -625,14 +789,18 @@ export default function InventoryRequest() {
     <div className="inv-root">
       {/* Header */}
       <div className="inv-header">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14, minWidth: 0 }}>
-          <button className="inv-back" onClick={() => navigate('/student-dashboard')}>← Dashboard</button>
-          <div style={{ minWidth: 0 }}>
+        <div className="inv-hleft">
+          {/* The label is a separate span purely so the mobile CSS can hide it and
+              leave the arrow — the button, its handler and its route are unchanged. */}
+          <button className="inv-back" onClick={() => navigate('/student-dashboard')} aria-label="Back to dashboard">
+            <span aria-hidden="true">←</span><span className="inv-back-text">Dashboard</span>
+          </button>
+          <div className="inv-htitle-wrap">
             <div className="inv-htitle">Inventory Request</div>
             <div className="inv-hsub">Request lab items & track approvals</div>
           </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div className="inv-hright">
           <div className="inv-userpill">
             <div className="inv-avatar">{initials}</div>
             <div>
@@ -975,6 +1143,46 @@ export default function InventoryRequest() {
           </motion.div>
         </motion.div>
       )}
+
+      {/* ══ SUCCESS ANIMATION (additive) ══
+          Shown for SUCCESS_MS right after a request is created, then it fades out
+          and the Inventory Pass above renders exactly as it always has. Purely a
+          curtain over the existing flow — it submits, validates and changes
+          nothing. AnimatePresence is only here so the overlay can fade on exit. */}
+      <AnimatePresence>
+        {showSuccess && (
+          <motion.div className="inv-succ-ov" role="status" aria-live="polite"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            transition={{ opacity: { duration: 0.24, ease: EASE } }}>
+
+            <div className="inv-succ-inner">
+              <div className="inv-succ-stage">
+                {/* Glow pulses expand from behind the disc, staggered. */}
+                {GLOW_DELAYS.map((gd) => (
+                  <span key={gd} className="inv-succ-glow" aria-hidden="true" style={{ '--gd': gd }} />
+                ))}
+
+                <motion.div className="inv-succ-badge" {...succBadgePop}>
+                  <svg width="58%" height="58%" viewBox="0 0 52 52" fill="none" aria-hidden="true">
+                    <motion.path
+                      d="M14 27.5 L22.5 36 L38 17"
+                      stroke="#6c47ff" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round"
+                      {...(reducedMotion ? succCheckStatic : succCheckDraw)}
+                    />
+                  </svg>
+                </motion.div>
+              </div>
+
+              <motion.div className="inv-succ-title" {...succCopyRise(0.88)}>
+                Successfully requested from inventory!
+              </motion.div>
+              <motion.div className="inv-succ-sub" {...succCopyRise(1.0)}>
+                All the best for your project
+              </motion.div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
     </MotionConfig>
   );
