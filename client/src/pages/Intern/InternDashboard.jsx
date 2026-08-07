@@ -10,12 +10,14 @@
 // no request and no approval. Submitting POSTs /inventory/lab-purchase, which
 // takes min(requested, available) per item and reports FULL / PARTIAL /
 // OUT_OF_STOCK back for the summary popup.
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion, MotionConfig } from 'framer-motion';
+import { motion, MotionConfig, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '../../store/authStore';
 import { authService } from '../../services/features/authService';
 import { inventoryService } from '../../services/features/inventoryService';
+// ===== WELCOME INTRO (removable: delete this import + the showIntro state + the render block) =====
+import WelcomeIntro from '../../components/WelcomeIntro';
 import './InternDashboard.css';
 
 const money = (n) => Number(n ?? 0).toLocaleString();
@@ -59,6 +61,45 @@ const modalPop = {
   animate: { opacity: 1, y: 0, scale: 1 },
   transition: { duration: 0.24, ease: EASE },
 };
+
+// ── PURCHASE SUCCESS ANIMATION (presentation only) ─────────────
+// Mirrors the student page's cover (InventoryRequest.jsx) so both flows
+// celebrate identically. How long it holds before the summary popup takes over.
+const SUCCESS_MS = 2500;
+
+// Beat sheet, all inside SUCCESS_MS: cover fades in (0.00–0.24) → badge pops (0.12)
+// → glow rings pulse (0.30 on, twice) → tick draws (0.46–0.86) → copy slides up
+// (0.88–1.20) → hold → cover fades out.
+const succBadgePop = {
+  initial: { scale: 0.25, opacity: 0 },
+  animate: { scale: 1, opacity: 1 },
+  transition: { type: 'spring', stiffness: 380, damping: 14, mass: 0.8, delay: 0.12 },
+};
+// Tick: framer draws the stroke (pathLength 0 → 1) once the disc has landed.
+const succCheckDraw = {
+  initial: { pathLength: 0, opacity: 0 },
+  animate: { pathLength: 1, opacity: 1 },
+  transition: { pathLength: { duration: 0.4, ease: EASE, delay: 0.46 }, opacity: { duration: 0.01, delay: 0.46 } },
+};
+// Reduced-motion counterpart: the tick is simply already drawn. pathLength runs in
+// JS, so neither the CSS media block nor MotionConfig would flatten it on its own.
+const succCheckStatic = { initial: { pathLength: 1, opacity: 1 }, animate: { pathLength: 1, opacity: 1 } };
+// Copy: slides up and fades in a beat after the tick finishes.
+const succCopyRise = (delay) => ({
+  initial: { opacity: 0, y: 18 },
+  animate: { opacity: 1, y: 0 },
+  transition: { duration: 0.42, ease: EASE, delay },
+});
+
+// Read the OS preference at mount. The CSS media block covers the keyframe layers;
+// this is only for the framer animations it cannot reach.
+const prefersReducedMotion = () =>
+  typeof window !== 'undefined' &&
+  typeof window.matchMedia === 'function' &&
+  window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+// Three glow rings, staggered behind the badge.
+const GLOW_DELAYS = ['0.30s', '0.52s', '0.74s'];
 
 function fmtDateTime(d) {
   const dt = d ? new Date(d) : new Date();
@@ -116,6 +157,16 @@ export default function InternDashboard() {
   const name = user?.name || 'Intern';
   const initials = String(name).trim().charAt(0).toUpperCase() || 'I';
 
+  // ===== WELCOME INTRO (removable: delete this block + the WelcomeIntro import + the render block) =====
+  // Show the intro ONLY right after a real login. Login.jsx sets 'pt_show_intro'
+  // on a successful sign-in; we read it once, then clear it immediately so a
+  // refresh / re-navigation / fresh tab never replays it (until the next login).
+  const [showIntro, setShowIntro] = useState(() => sessionStorage.getItem('pt_show_intro') === '1');
+  const introFirstName = String(user?.name || '').trim().split(/\s+/)[0] || '';
+  useEffect(() => { sessionStorage.removeItem('pt_show_intro'); }, []);
+  const handleIntroDone = () => { sessionStorage.removeItem('pt_show_intro'); setShowIntro(false); };
+  // ===== END WELCOME INTRO =====
+
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('pt-dark') === '1');
   const [tab, setTab] = useState('purchases');     // 'purchases' | 'returns'  (INTERN LAB RETURNS — removable)
   const [view, setView] = useState('labs');        // 'labs' | 'buy'  (within the 'purchases' tab)
@@ -143,6 +194,13 @@ export default function InternDashboard() {
   const [submitting, setSubmitting] = useState(false);
   const [submitErr, setSubmitErr] = useState('');
   const [result, setResult] = useState(null);       // purchase response → summary popup
+  // Success celebration: sits between "purchase succeeded" and the summary popup.
+  // The response waits in the ref for SUCCESS_MS, then goes into `result`.
+  const [showPurchaseSuccess, setShowPurchaseSuccess] = useState(false);
+  const pendingResultRef = useRef(null);
+  const successTimerRef = useRef(null);
+  // Read once on mount — only the tick draw needs it (see succCheckStatic).
+  const [reducedMotion] = useState(prefersReducedMotion);
 
   // ── INTERN LAB RETURNS (removable): Returns tab state ──
   const [returnables, setReturnables] = useState([]);      // returnable past purchases
@@ -157,6 +215,9 @@ export default function InternDashboard() {
     document.body.classList.toggle('dark-mode', darkMode);
     localStorage.setItem('pt-dark', darkMode ? '1' : '0');
   }, [darkMode]);
+
+  // Drop the celebration timer if the page unmounts mid-animation.
+  useEffect(() => () => clearTimeout(successTimerRef.current), []);
 
   // ── INTERN LAB RETURNS (removable) ──
   useEffect(() => {
@@ -323,7 +384,16 @@ export default function InternDashboard() {
         lab_id: activeLab.lab_id,
         items: cart.map((c) => ({ item_id: c.item_id, quantity: c.quantity })),
       });
-      setResult(res?.data || null);
+      // Celebrate first, then hand the (unchanged) summary popup its data. Only
+      // reached on success — a failed purchase throws straight to the catch below.
+      pendingResultRef.current = res?.data || null;
+      setShowPurchaseSuccess(true);
+      clearTimeout(successTimerRef.current);
+      successTimerRef.current = setTimeout(() => {
+        setShowPurchaseSuccess(false);
+        setResult(pendingResultRef.current);
+        pendingResultRef.current = null;
+      }, SUCCESS_MS);
     } catch (err) {
       setSubmitErr(err?.response?.data?.message || 'Failed to record the purchase. Please try again.');
     } finally { setSubmitting(false); }
@@ -367,6 +437,10 @@ export default function InternDashboard() {
     // MotionConfig is a context provider — it renders no DOM of its own.
     <MotionConfig reducedMotion="user">
     <div className="in-root">
+      {/* ===== WELCOME INTRO (removable: delete this block + the WelcomeIntro import + the state block) ===== */}
+      {showIntro && <WelcomeIntro name={introFirstName} onDone={handleIntroDone} />}
+      {/* ===== END WELCOME INTRO ===== */}
+
       {/* Header */}
       <div className="in-header">
         <div className="in-brand">
@@ -724,6 +798,46 @@ export default function InternDashboard() {
           </motion.div>
         </motion.div>
       )}
+
+      {/* ══ PURCHASE SUCCESS ANIMATION (additive) ══
+          Shown for SUCCESS_MS right after a purchase is recorded, then it fades
+          out and the summary popup above renders exactly as it always has. Purely
+          a curtain over the existing flow — it purchases, validates and changes
+          nothing. AnimatePresence is only here so the overlay can fade on exit. */}
+      <AnimatePresence>
+        {showPurchaseSuccess && (
+          <motion.div className="in-succ-ov" role="status" aria-live="polite"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            transition={{ opacity: { duration: 0.24, ease: EASE } }}>
+
+            <div className="in-succ-inner">
+              <div className="in-succ-stage">
+                {/* Glow pulses expand from behind the disc, staggered. */}
+                {GLOW_DELAYS.map((gd) => (
+                  <span key={gd} className="in-succ-glow" aria-hidden="true" style={{ '--gd': gd }} />
+                ))}
+
+                <motion.div className="in-succ-badge" {...succBadgePop}>
+                  <svg width="58%" height="58%" viewBox="0 0 52 52" fill="none" aria-hidden="true">
+                    <motion.path
+                      d="M14 27.5 L22.5 36 L38 17"
+                      stroke="#6c47ff" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round"
+                      {...(reducedMotion ? succCheckStatic : succCheckDraw)}
+                    />
+                  </svg>
+                </motion.div>
+              </div>
+
+              <motion.div className="in-succ-title" {...succCopyRise(0.88)}>
+                Successfully purchased from inventory!
+              </motion.div>
+              <motion.div className="in-succ-sub" {...succCopyRise(1.0)}>
+                All the best for your work
+              </motion.div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
     </MotionConfig>
   );

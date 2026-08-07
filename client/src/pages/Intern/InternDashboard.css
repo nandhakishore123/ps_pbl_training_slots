@@ -368,3 +368,73 @@ body.dark-mode .in-root .in-badge.out { color:#f87171; background:rgba(239,68,68
   }
   .in-lab:hover .in-lab-photo, .in-lab:hover .in-lab-cta { transform:none; }
 }
+
+/* ══ PURCHASE SUCCESS ANIMATION — ADDITIVE BLOCK (start) ══
+   A full-screen purple cover held for ~2.5s after a lab purchase is recorded,
+   before the summary popup mounts. Mirrors the student page's .inv-succ-* cover.
+   Presentation only. Motion split as everywhere else on this page: framer-motion
+   owns transform on the badge, tick and copy; CSS keyframes own the glow rings
+   (throwaway elements, no state). The cover is opaque by design — nothing behind
+   it shows through, so the page theme underneath is irrelevant while it is up. */
+.in-succ-ov { position:fixed; inset:0; width:100vw; height:100vh; height:100dvh;
+  z-index:9999; overflow:hidden; isolation:isolate;
+  display:flex; align-items:center; justify-content:center; padding:24px;
+  background:
+    radial-gradient(120% 92% at 50% 6%, #8b6bff 0%, rgba(139,107,255,0) 58%),
+    radial-gradient(96% 84% at 10% 104%, #5a37e0 0%, rgba(90,55,224,0) 62%),
+    linear-gradient(158deg, #7d5cff 0%, #6c47ff 46%, #4b2fd6 100%); }
+/* Vignette — lifts the centre and settles the edges. Sits below the copy, which
+   carries a z-index. */
+.in-succ-ov::after { content:''; position:absolute; inset:0; pointer-events:none;
+  background:radial-gradient(78% 64% at 50% 45%, rgba(255,255,255,0.13), rgba(18,6,66,0.28) 100%); }
+.in-succ-inner { position:relative; z-index:2; text-align:center; max-width:560px; }
+
+/* Stage: badge centred, glow rings expanding from the same centre.
+   --bsz drives the badge and the rings together so one value resizes both. */
+.in-succ-stage { --bsz:132px; position:relative; width:calc(var(--bsz) * 1.45);
+  height:calc(var(--bsz) * 1.45); margin:0 auto 30px;
+  display:flex; align-items:center; justify-content:center; }
+
+/* White 3D disc: off-centre radial for the light source, a bright inner top
+   highlight and a purple inner bottom shade for volume, a deep drop shadow to
+   lift it off the cover, and a wide soft halo. */
+.in-succ-badge { position:relative; width:var(--bsz); height:var(--bsz); border-radius:50%;
+  display:flex; align-items:center; justify-content:center;
+  background:radial-gradient(116% 116% at 32% 20%, #fff 0%, #fdfbff 46%, #ebe4ff 100%);
+  box-shadow:0 28px 62px rgba(18,5,70,0.4), 0 10px 24px rgba(18,5,70,0.26),
+    inset 0 3px 4px rgba(255,255,255,0.95), inset 0 -14px 28px rgba(108,71,255,0.2),
+    0 0 0 12px rgba(255,255,255,0.09), 0 0 72px rgba(255,255,255,0.42); }
+/* Glossy top sheen */
+.in-succ-badge::after { content:''; position:absolute; top:11px; left:50%; transform:translateX(-50%);
+  width:calc(var(--bsz) * 0.58); height:calc(var(--bsz) * 0.28); border-radius:50%; pointer-events:none;
+  background:linear-gradient(180deg, rgba(255,255,255,0.95), rgba(255,255,255,0)); filter:blur(2px); }
+
+/* Three concentric rings, staggered by --gd, each pulsing twice across the hold. */
+.in-succ-glow { position:absolute; top:50%; left:50%; width:var(--bsz); height:var(--bsz);
+  margin:calc(var(--bsz) / -2) 0 0 calc(var(--bsz) / -2); border-radius:50%;
+  border:2px solid rgba(255,255,255,0.85); opacity:0; pointer-events:none;
+  animation:in-succ-glow 1.6s cubic-bezier(.2,.6,.3,1) var(--gd,0s) 2 both; }
+@keyframes in-succ-glow {
+  0%   { transform:scale(.86); opacity:.7; }
+  70%  { opacity:.1; }
+  100% { transform:scale(2.55); opacity:0; }
+}
+
+.in-succ-title { font-family:var(--in-font-head); color:#fff; font-weight:900;
+  font-size:clamp(21px, 4.6vw, 33px); letter-spacing:-0.5px; line-height:1.2;
+  text-shadow:0 4px 20px rgba(20,6,70,0.38); }
+.in-succ-sub { margin-top:12px; color:rgba(255,255,255,0.9); font-weight:600;
+  font-size:clamp(13.5px, 2.6vw, 17px); line-height:1.5;
+  text-shadow:0 2px 12px rgba(20,6,70,0.32); }
+
+@media (max-width:520px) {
+  .in-succ-stage { --bsz:104px; margin-bottom:24px; }
+}
+
+/* Reduced motion: keep the cover, the badge and the message — drop the pulses
+   entirely. (The global block above flattens what remains, and MotionConfig
+   reducedMotion="user" quiets the framer transforms to match.) */
+@media (prefers-reduced-motion: reduce) {
+  .in-succ-glow { display:none; }
+}
+/* ══ PURCHASE SUCCESS ANIMATION — ADDITIVE BLOCK (end) ══ */

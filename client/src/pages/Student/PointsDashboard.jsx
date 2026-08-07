@@ -73,7 +73,8 @@ const CSS = `
   /* HEADER */
   .pt-header { background:var(--white); border-bottom:1px solid var(--border); padding:16px 24px; display:flex; align-items:center; justify-content:space-between; gap:12px; position:sticky; top:0; z-index:100; box-shadow:0 1px 8px rgba(0,0,0,0.05); }
   .pt-header-icon { width:36px; height:36px; border-radius:10px; background:var(--purple-dim); display:flex; align-items:center; justify-content:center; font-size:18px; flex-shrink:0; }
-  .pt-header-title { font-size:18px; font-weight:800; color:var(--text); font-family:var(--font-head); }
+  /* min-width:0 only licenses shrinking; desktop has room and is unaffected. */
+  .pt-header-title { font-size:18px; font-weight:800; color:var(--text); font-family:var(--font-head); min-width:0; }
   .pt-header-sub { font-size:12px; color:var(--text3); margin-top:1px; }
   .pt-dark-toggle { background:none; border:1.5px solid var(--border); border-radius:20px; padding:5px 11px; cursor:pointer; font-size:13px; color:var(--text2); display:flex; align-items:center; gap:5px; transition:all 0.2s; font-family:var(--font-body); font-weight:600; white-space:nowrap; }
   .pt-dark-toggle:hover { border-color:var(--purple); color:var(--purple); }
@@ -254,15 +255,20 @@ const CSS = `
 
   /* ── RESPONSIVE ── */
   @media (max-width: 640px) {
-    .pt-header { padding: 12px 16px; gap: 8px; }
+    /* Header: the title was being squeezed between the fixed-width icon and the
+       profile + Dark cluster. Shrink both flanks and let the title wrap. */
+    .pt-header { padding: 12px 13px; gap: 10px; }
+    .pt-header-icon { width: 30px; height: 30px; font-size: 15px; border-radius: 9px; }
+    .pt-header-title { font-size: 15px; line-height: 1.25; white-space: normal; overflow-wrap: anywhere; }
     .pt-header-sub { font-size: 11px; white-space: normal; line-height: 1.3; }
     .pt-hdr-right-desktop { display: none !important; }
     .pt-hdr-right-mobile {
       display: flex !important;
       align-items: center;
-      gap: 8px;
+      gap: 6px;
       flex-shrink: 0;
     }
+    .pt-hdr-right-mobile .pt-dark-toggle { padding: 5px 9px; font-size: 11.5px; }
     .pt-content { padding: 14px 14px 24px; }
     .pt-section-back-mobile-only { display: flex !important; }
     .pt-section-back { margin-bottom: 14px; padding: 8px 14px; font-size: 13px; }
@@ -316,6 +322,15 @@ const CSS = `
     .pt-details-body { padding: 14px; gap: 10px; }
     .pt-details-header { padding: 16px 18px; }
     .pt-details-name { font-size: 15px; }
+  }
+
+  /* Tightest phones — keep the header title readable rather than clipped. */
+  @media (max-width: 380px) {
+    .pt-header { padding: 11px 10px; gap: 8px; }
+    .pt-header-icon { width: 27px; height: 27px; font-size: 14px; }
+    .pt-header-title { font-size: 14px; }
+    .pt-hdr-right-mobile { gap: 5px; }
+    .pt-hdr-right-mobile .pt-dark-toggle { padding: 5px 8px; font-size: 11px; }
   }
 `
 
