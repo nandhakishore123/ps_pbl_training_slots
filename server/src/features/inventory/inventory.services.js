@@ -116,7 +116,7 @@ export const getItem = async (itemId) => {
 // Create a PENDING buying request with multiple items. Stock is NOT changed
 // here — only on faculty approval (Stage 4). Item name/unit are resolved from
 // inventory_items server-side (never trust client-supplied snapshots).
-export const createBuyingRequest = async (userId, { purpose_type, purpose, items, lab_id }) => {
+export const createBuyingRequest = async (userId, { purpose_type, purpose, items, lab_id, project_guide_id }) => {
   const studentId = await getStudentIdByUserId(userId);
   if (!studentId) throw notFound('Student not found');
 
@@ -134,6 +134,20 @@ export const createBuyingRequest = async (userId, { purpose_type, purpose, items
   const lab = await model.getLabById(labId);
   if (!lab) throw badRequest('Selected lab not found');
   if (Number(lab.is_active) !== 1) throw badRequest('Selected lab is no longer active');
+
+  // The project guide is REQUIRED on a new buying request and is resolved
+  // server-side, the same way the lab is: the client sends only an id, and the
+  // NAME is read from `faculties` and snapshotted onto the request. A
+  // client-supplied name is never trusted — accepting one would let a student
+  // put any string in front of the approver.
+  // (Existing rows predating the column keep both fields NULL; only new requests
+  // are held to this.)
+  const projectGuideId = Number(project_guide_id);
+  if (!projectGuideId || Number.isNaN(projectGuideId)) throw badRequest('Please select a project guide');
+  const guide = await model.getFacultyById(projectGuideId);
+  if (!guide) throw badRequest('Selected project guide not found');
+  const projectGuideName = guide.name;
+
   const purposeText = String(purpose ?? '').trim();
   if (!purposeText) throw badRequest('purpose is required');
   if (!Array.isArray(items) || items.length === 0) {
@@ -192,6 +206,8 @@ export const createBuyingRequest = async (userId, { purpose_type, purpose, items
     purposeType,
     purpose: purposeText,
     labId,
+    projectGuideId,
+    projectGuideName,
     items: lineItems,
   });
 
@@ -200,7 +216,9 @@ export const createBuyingRequest = async (userId, { purpose_type, purpose, items
   return all.find((r) => Number(r.request_id) === Number(requestId))
     || {
       request_id: requestId, status: 'PENDING', purpose_type: purposeType, purpose: purposeText,
-      lab_id: labId, lab_name: lab.lab_name, items: lineItems,
+      lab_id: labId, lab_name: lab.lab_name,
+      project_guide_id: projectGuideId, project_guide_name: projectGuideName,
+      items: lineItems,
     };
 };
 
@@ -522,6 +540,12 @@ export const setApprovers = async (userId, payload = {}) => {
 // Admin dropdown source: active faculty (user_id, name, email).
 export const listFacultyForApprover = async () => model.listApproverFaculty();
 
+// PROJECT GUIDE dropdown source: EVERY faculty (user_id, name, department).
+// Separate from listFacultyForApprover above on purpose — this one is reachable
+// by students, so it must never carry email addresses, and it is not limited to
+// the role-2 approver pool.
+export const listAllFaculty = async () => model.listAllFaculty();
+
 // ═══════════════════════════════════════════════════════════════════════════
 // LAB / INTERN PURCHASE (Stage 3) — REMOVABLE BLOCK (start)
 // ═══════════════════════════════════════════════════════════════════════════
@@ -652,11 +676,27 @@ export const getConsumptionReport = async ({ from, to } = {}) => {
 // Validates the cart, then hands the whole thing to one model transaction.
 // Partial fulfilment is a SUCCESS, not an error: the response tells the intern
 // exactly what was taken vs short vs skipped.
-export const createLabPurchase = async (userId, userName, { lab_id, items } = {}) => {
+export const createLabPurchase = async (userId, userName, { lab_id, items, lab_guide_id, purpose } = {}) => {
   const labId = Number(lab_id);
   if (!labId) throw badRequest('lab_id is required');
 
   if (!Array.isArray(items) || items.length === 0) throw badRequest('At least one item is required');
+
+  // The lab guide is REQUIRED and resolved server-side, exactly like the
+  // student's project guide: the client sends only an id, and the NAME is read
+  // from `faculties` and snapshotted onto every row of the cart. A
+  // client-supplied name is never trusted.
+  const labGuideId = Number(lab_guide_id);
+  if (!labGuideId || Number.isNaN(labGuideId)) throw badRequest('Please select a lab guide');
+  const guide = await model.getFacultyById(labGuideId);
+  if (!guide) throw badRequest('Selected lab guide not found');
+  const labGuideName = guide.name;
+
+  // Purpose is REQUIRED. Capped at 255 to match the column rather than letting
+  // MySQL truncate silently.
+  const purposeText = String(purpose ?? '').trim();
+  if (!purposeText) throw badRequest('Please enter a purpose');
+  const cleanPurpose = purposeText.slice(0, 255);
 
   const cleaned = items.map((it) => ({
     item_id: Number(it?.item_id),
@@ -672,6 +712,9 @@ export const createLabPurchase = async (userId, userName, { lab_id, items } = {}
     items: cleaned,
     buyerUserId: userId,
     buyerName: userName,
+    labGuideId,
+    labGuideName,
+    purpose: cleanPurpose,
   });
 };
 // ═══ LAB / INTERN PURCHASE (Stage 3) — REMOVABLE BLOCK (end) ═══

@@ -62,12 +62,16 @@ export const getItemsByIds = async (ids) => {
 // optional `conn` so they can enlist in the caller's transaction.
 // `labId` is set for student BUY requests (validated in the service) and stays
 // NULL everywhere else — the RETURN flow writes its own INSERT and never passes it.
-export const createRequest = async ({ studentId, requestType, purposeType, purpose, labId }, conn) => {
+// `projectGuideId` / `projectGuideName` behave identically: both are resolved and
+// validated in the service (the name is read from `faculties`, never from the
+// client) and both stay NULL on RETURN requests, which have no project guide.
+export const createRequest = async ({ studentId, requestType, purposeType, purpose, labId, projectGuideId, projectGuideName }, conn) => {
   const exec = conn || db;
   const [result] = await exec.execute(
-    `INSERT INTO inventory_requests (student_id, request_type, purpose_type, purpose, lab_id, status)
-     VALUES (?, ?, ?, ?, ?, 'PENDING')`,
-    [Number(studentId), requestType, purposeType ?? null, purpose ?? null, labId != null ? Number(labId) : null]
+    `INSERT INTO inventory_requests (student_id, request_type, purpose_type, purpose, lab_id, project_guide_id, project_guide_name, status)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 'PENDING')`,
+    [Number(studentId), requestType, purposeType ?? null, purpose ?? null, labId != null ? Number(labId) : null,
+     projectGuideId != null ? Number(projectGuideId) : null, projectGuideName ?? null]
   );
   return result?.insertId ?? null;
 };
@@ -88,11 +92,11 @@ export const addRequestItems = async (requestId, items, conn) => {
 };
 
 // Header + its line items, created atomically (a request always has its items).
-export const createRequestWithItems = async ({ studentId, requestType, purposeType, purpose, labId, items }) => {
+export const createRequestWithItems = async ({ studentId, requestType, purposeType, purpose, labId, projectGuideId, projectGuideName, items }) => {
   const conn = await db.getConnection();
   try {
     await conn.beginTransaction();
-    const requestId = await createRequest({ studentId, requestType, purposeType, purpose, labId }, conn);
+    const requestId = await createRequest({ studentId, requestType, purposeType, purpose, labId, projectGuideId, projectGuideName }, conn);
     await addRequestItems(requestId, items, conn);
     await conn.commit();
     return requestId;
@@ -109,9 +113,11 @@ export const createRequestWithItems = async ({ studentId, requestType, purposeTy
 export const listRequestsForStudent = async (studentId) => {
   // LEFT JOIN labs: lab_id is NULL on RETURN requests and on BUY rows created
   // before the column existed — those must still be listed, with lab_name null.
+  // project_guide_name needs no join at all: it is a snapshot column on
+  // inventory_requests itself, and is NULL on those same RETURN/legacy rows.
   const [reqs] = await db.execute(
     `SELECT r.request_id, r.student_id, r.request_type, r.purpose_type, r.purpose, r.status,
-            r.lab_id, l.lab_name,
+            r.lab_id, l.lab_name, r.project_guide_id, r.project_guide_name,
             r.approver_user_id, r.approver_role, r.decided_at, r.remarks, r.created_at, r.updated_at
      FROM inventory_requests r
      LEFT JOIN labs l ON l.lab_id = r.lab_id
@@ -317,6 +323,7 @@ export const listAllBuyingRequests = async () => {
   const [reqs] = await db.execute(
     `SELECT r.request_id, r.student_id, s.name AS student_name, s.reg_num AS student_reg,
             r.request_type, r.purpose_type, r.purpose, r.status, r.lab_id, l.lab_name,
+            r.project_guide_id, r.project_guide_name,
             r.approver_user_id, r.approver_role, r.decided_at, r.remarks, r.created_at, r.updated_at
      FROM inventory_requests r
      JOIN students s ON s.student_id = r.student_id
@@ -367,6 +374,7 @@ export const listBuyingForApprover = async (purposeType) => {
   const [reqs] = await db.execute(
     `SELECT r.request_id, r.student_id, s.name AS student_name, s.reg_num AS student_reg,
             r.request_type, r.purpose_type, r.purpose, r.status, r.lab_id, l.lab_name,
+            r.project_guide_id, r.project_guide_name,
             r.approver_user_id, r.approver_role, r.decided_at, r.remarks, r.created_at, r.updated_at
      FROM inventory_requests r
      JOIN students s ON s.student_id = r.student_id
@@ -941,6 +949,49 @@ export const setInventorySetting = async (key, value, userId) => {
   return true;
 };
 
+// ── PROJECT GUIDE (student BUY requests) ─────────────────────
+// Every real faculty, for the student's REQUIRED "Project Guide" dropdown.
+// Deliberately NOT listApproverFaculty below: that one filters to role_id = 2
+// (the approver pool, which is now a single person) and selects the email.
+// `faculties` is the master list of named faculty regardless of what role their
+// login carries, and a student must never receive faculty email addresses — so
+// this returns id + name + department ONLY.
+// `faculties` has picked up a few rows whose linked login is not a faculty at
+// all — a student and an admin — and neither belongs in a project-guide picker.
+// The filter EXCLUDES those two roles rather than requiring role 2, because
+// faculty are being migrated to role 5: an allow-list on role 2 would empty this
+// dropdown as that migration proceeds, while the deny-list keeps every genuine
+// faculty whichever of the two roles they currently hold.
+// Live: 26 rows → 24, dropping exactly the role-1 and role-3 strays.
+export const listAllFaculty = async () => {
+  const [rows] = await db.execute(
+    `SELECT f.user_id, f.name, f.department
+     FROM faculties f
+     JOIN users u ON u.user_id = f.user_id
+     WHERE u.is_active = 1 AND u.role_id NOT IN (1, 3)
+     ORDER BY f.name ASC`
+  );
+  return rows ?? [];
+};
+
+// One faculty by users.user_id — the server-side resolve behind the project-guide
+// snapshot, so the stored name is never a client-supplied string. Mirrors
+// getLabById: returns the row or null, and the caller decides what a miss means.
+// The role filter MUST match listAllFaculty above: the dropdown and the create
+// -time check have to agree on who is a faculty, or a hand-crafted request could
+// name someone the picker deliberately hides.
+export const getFacultyById = async (userId) => {
+  const [rows] = await db.execute(
+    `SELECT f.user_id, f.name, f.department
+     FROM faculties f
+     JOIN users u ON u.user_id = f.user_id
+     WHERE f.user_id = ? AND u.is_active = 1 AND u.role_id NOT IN (1, 3)
+     LIMIT 1`,
+    [Number(userId)]
+  );
+  return rows?.[0] ?? null;
+};
+
 // Active faculty (role 2) for the approver dropdown: user_id + name + email.
 export const listApproverFaculty = async () => {
   const [rows] = await db.execute(
@@ -1039,7 +1090,8 @@ export const listLabPurchases = async (labId, limit) => {
 export const listAllLabPurchases = async () => {
   const [rows] = await db.execute(
     `SELECT lp.purchase_id, lp.lab_id, l.lab_name, lp.item_id, lp.item_name,
-            lp.quantity, lp.unit, lp.buyer_user_id, lp.buyer_name, lp.created_at
+            lp.quantity, lp.unit, lp.buyer_user_id, lp.buyer_name, lp.created_at,
+            lp.lab_guide_id, lp.lab_guide_name, lp.purpose
      FROM lab_purchases lp
      LEFT JOIN labs l ON l.lab_id = lp.lab_id
      ORDER BY lp.created_at DESC, lp.purchase_id DESC`
@@ -1060,6 +1112,12 @@ export const listAllLabPurchases = async () => {
         lab_name: r.lab_name ?? null,
         buyer_user_id: r.buyer_user_id,
         buyer_name: r.buyer_name ?? null,
+        // Cart-level, not item-level: every row of one cart carries identical
+        // values, so taking the first row's is correct and they render once per
+        // card. Deliberately NOT pushed into items[] below.
+        lab_guide_id: r.lab_guide_id ?? null,
+        lab_guide_name: r.lab_guide_name ?? null,
+        purpose: r.purpose ?? null,
         created_at: r.created_at,
         items: [],
       };
@@ -1101,6 +1159,7 @@ export const getConsumptionReport = async ({ from, to }) => {
   const [studentRows] = await db.execute(
     `SELECT s.name AS member_name, s.reg_num AS reg,
             i.item_name, i.quantity, i.unit, l.lab_name,
+            r.project_guide_id, r.project_guide_name,
             r.request_id AS cart_id, r.decided_at AS date
      FROM inventory_requests r
      JOIN students s ON s.student_id = r.student_id
@@ -1130,6 +1189,7 @@ export const getConsumptionReport = async ({ from, to }) => {
     // CURRENT sub-type.
     `SELECT lp.buyer_name AS member_name, lp.buyer_user_id, l.lab_name,
             lp.item_name, lp.quantity, lp.unit,
+            lp.lab_guide_id, lp.lab_guide_name, lp.purpose,
             up.member_subtype AS member_subtype,
             COALESCE((SELECT SUM(lr.quantity) FROM lab_returns lr
                       WHERE lr.purchase_id = lp.purchase_id), 0) AS returned_qty,
@@ -1149,6 +1209,10 @@ export const getConsumptionReport = async ({ from, to }) => {
       member_type: 'STUDENT',
       reg: r.reg ?? null,
       lab_name: r.lab_name ?? null,
+      // Snapshot taken when the request was created; NULL on rows predating the
+      // column, exactly like lab_name above.
+      project_guide_id: r.project_guide_id ?? null,
+      project_guide_name: r.project_guide_name ?? null,
       item_name: r.item_name,
       quantity: r.quantity,
       unit: r.unit ?? null,
@@ -1174,6 +1238,14 @@ export const getConsumptionReport = async ({ from, to }) => {
       member_type: String(r.member_subtype ?? '').trim().toUpperCase() || 'INTERN',
       reg: null,
       lab_name: r.lab_name ?? null,
+      // A lab purchase has no PROJECT guide, but it does now carry a LAB guide —
+      // the same faculty list under a different label. Both flows feed the
+      // report's single guide column, so the lab guide is surfaced through
+      // project_guide_* here rather than adding a parallel column to the PDF.
+      project_guide_id: r.lab_guide_id ?? null,
+      project_guide_name: r.lab_guide_name ?? null,
+      // Carried for completeness; the PDF does not render purpose for either flow.
+      purpose: r.purpose ?? null,
       item_name: r.item_name,
       quantity: netQty,
       unit: r.unit ?? null,
@@ -1242,7 +1314,10 @@ export const getConsumptionReport = async ({ from, to }) => {
 // summary as OUT_OF_STOCK. Unlike approveBuyingRequest (which pre-checks then
 // writes, leaving a TOCTOU window), the row lock here makes the read and the
 // write atomic, so concurrent carts cannot drive stock negative.
-export const purchaseForLab = async ({ labId, items, buyerUserId, buyerName }) => {
+// `labGuideId` / `labGuideName` / `purpose` are validated and resolved in the
+// service and written onto EVERY row of the cart — lab_purchases has no cart id,
+// so this denormalisation is what lets the grouped reads surface them once.
+export const purchaseForLab = async ({ labId, items, buyerUserId, buyerName, labGuideId, labGuideName, purpose }) => {
   const conn = await db.getConnection();
   try {
     await conn.beginTransaction();
@@ -1298,10 +1373,12 @@ export const purchaseForLab = async ({ labId, items, buyerUserId, buyerName }) =
           [itemId, -taken, buyerUserId != null ? Number(buyerUserId) : null]
         );
         await conn.execute(
-          `INSERT INTO lab_purchases (lab_id, item_id, item_name, quantity, unit, buyer_user_id, buyer_name)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO lab_purchases (lab_id, item_id, item_name, quantity, unit, buyer_user_id, buyer_name,
+                                      lab_guide_id, lab_guide_name, purpose)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [Number(labId), itemId, stock.item_name ?? null, taken, stock.unit ?? null,
-            buyerUserId != null ? Number(buyerUserId) : null, resolvedBuyer || null]
+            buyerUserId != null ? Number(buyerUserId) : null, resolvedBuyer || null,
+            labGuideId != null ? Number(labGuideId) : null, labGuideName ?? null, purpose ?? null]
         );
       }
 
@@ -1319,6 +1396,11 @@ export const purchaseForLab = async ({ labId, items, buyerUserId, buyerName }) =
     await conn.commit();
     return {
       lab: { lab_id: Number(lab.lab_id), lab_name: lab.lab_name },
+      // Echoed back so the summary popup can show them without a re-fetch. These
+      // are the resolved/validated values, not whatever the client sent.
+      lab_guide_id: labGuideId != null ? Number(labGuideId) : null,
+      lab_guide_name: labGuideName ?? null,
+      purpose: purpose ?? null,
       results,
       summary: {
         total_items: results.length,

@@ -114,6 +114,11 @@ const CSS = `
   .ad-spinner { width:28px; height:28px; border:3px solid var(--ad-border); border-top-color:var(--ad-purple); border-radius:50%; animation:adspin .7s linear infinite; margin:28px auto; }
   @keyframes adspin { to { transform:rotate(360deg); } }
 
+  /* LAB PURCHASES (removable) — read-only banner. Mirrors .ic-note on the
+     incharge dashboard so both pages carry the same amber "view only" cue. */
+  .ad-note { display:flex; align-items:center; gap:8px; background:rgba(245,158,11,0.09); border:1px solid rgba(245,158,11,0.35);
+    border-radius:12px; padding:10px 14px; font-size:12.5px; font-weight:700; color:#b45309; margin-bottom:16px; }
+
   .ad-overlay { position:fixed; inset:0; background:rgba(15,10,40,0.55); backdrop-filter:blur(5px); -webkit-backdrop-filter:blur(5px); z-index:1000; display:flex; align-items:center; justify-content:center; padding:20px; }
   .ad-modal { background:var(--ad-white); border:1px solid var(--ad-border); border-radius:16px; width:100%; max-width:460px; box-shadow:0 30px 80px rgba(15,10,40,0.4); overflow:hidden; }
   .ad-modal-hd { padding:16px 20px; border-bottom:1px solid var(--ad-border); display:flex; align-items:center; justify-content:space-between; }
@@ -212,6 +217,11 @@ export default function AdminInventory() {
   const [stock, setStock] = useState([]);
   const [stockLoading, setStockLoading] = useState(false);
   const [stockLoaded, setStockLoaded] = useState(false);
+
+  // ── LAB PURCHASES (read-only feed) — REMOVABLE ──
+  const [labPurchases, setLabPurchases] = useState([]);
+  const [labPurchasesLoading, setLabPurchasesLoading] = useState(false);
+  const [labPurchasesLoaded, setLabPurchasesLoaded] = useState(false);
   const [stockError, setStockError] = useState('');
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
@@ -414,6 +424,24 @@ export default function AdminInventory() {
   };
   // ═══ LABS (Stage 4) — REMOVABLE BLOCK (end) ═══
 
+  // ── LAB PURCHASES — read-only view, REMOVABLE ──
+  // Same cross-lab feed the incharge dashboard shows; the endpoint already
+  // allows role 3, so this is a view-only mirror with no backend change.
+  const loadLabPurchases = useCallback(async () => {
+    setLabPurchasesLoading(true);
+    try {
+      const res = await inventoryService.getLabPurchasesFeed();
+      setLabPurchases(res?.data?.items || []);
+      setLabPurchasesLoaded(true);
+    } catch {
+      setLabPurchases([]);
+      setLabPurchasesLoaded(true);
+    } finally {
+      setLabPurchasesLoading(false);
+    }
+  }, []);
+  // ── END LAB PURCHASES ──
+
   useEffect(() => { loadOverview(); }, [loadOverview]);
 
   useEffect(() => {
@@ -427,6 +455,7 @@ export default function AdminInventory() {
     }
     if (tab === 'settings' && !approverLoaded) loadApprovers();
     if (tab === 'labs' && !labsLoaded) loadLabs();   // Stage 4 labs — removable
+    if (tab === 'labpurchases' && !labPurchasesLoaded) loadLabPurchases();   // removable
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
 
@@ -568,6 +597,11 @@ export default function AdminInventory() {
           <StatusPill status={r.status} />
         </div>
         <div className="ad-req-items">{(r.items || []).map((it) => `${it.item_name} (${money(it.quantity)} ${it.unit || ''})`).join(' · ') || '—'}</div>
+        {/* SELECT LAB + PROJECT GUIDE — listAllBuyingRequests already returns both;
+            '—' covers rows predating the columns. */}
+        <div className="ad-req-meta" style={{ marginTop: 6 }}>
+          Lab: {r.lab_name || '—'} · Project Guide: {r.project_guide_name || '—'}
+        </div>
         {r.purpose && <div className="ad-req-meta" style={{ marginTop: 6 }}>Purpose: {r.purpose}</div>}
         {isPending ? (
           <div className="ad-two">
@@ -635,6 +669,8 @@ export default function AdminInventory() {
           <button className={`ad-tab${tab === 'settings' ? ' active' : ''}`} onClick={() => setTab('settings')}>Approvers</button>
           {/* LABS (Stage 4) — removable */}
           <button className={`ad-tab${tab === 'labs' ? ' active' : ''}`} onClick={() => setTab('labs')}>Labs</button>
+          {/* LAB PURCHASES — removable */}
+          <button className={`ad-tab${tab === 'labpurchases' ? ' active' : ''}`} onClick={() => setTab('labpurchases')}>Lab Purchases</button>
         </div>
 
         {/* OVERVIEW */}
@@ -815,6 +851,49 @@ export default function AdminInventory() {
           </>
         )}
         {/* ═══ LABS (Stage 4) — REMOVABLE BLOCK (end) ═══ */}
+
+        {/* ══ LAB PURCHASES — read-only, REMOVABLE (start) ══ */}
+        {tab === 'labpurchases' && (
+          <>
+            <div className="ad-note">
+              <span>ⓘ</span> Read-only — lab purchases are direct and already final. This is a view only.
+            </div>
+            {labPurchasesLoading ? (
+              <div className="ad-spinner" />
+            ) : labPurchases.length === 0 ? (
+              <div className="ad-empty">No lab purchases yet.</div>
+            ) : (
+              <>
+                <div className="ad-count">
+                  {labPurchases.length} purchase{labPurchases.length !== 1 ? 's' : ''} (all labs)
+                </div>
+                {labPurchases.map((p) => (
+                  <div className="ad-req" key={p.purchase_key || p.purchase_id}>
+                    <div className="ad-req-top">
+                      <div style={{ minWidth: 0 }}>
+                        <div className="ad-req-name">{p.buyer_name || 'Intern'}
+                          <span className="ad-req-reg">{p.lab_name || 'Unknown lab'}</span>
+                        </div>
+                        <div className="ad-req-meta">
+                          {fmtDateTime(p.created_at)} · <span className="ad-pill type" style={{ padding: '1px 8px' }}>Direct purchase</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="ad-req-items">
+                      {(p.items || []).map((it) => `${it.item_name} (${money(it.quantity)} ${it.unit || ''})`).join(' · ') || '—'}
+                    </div>
+                    {/* LAB GUIDE + PURPOSE — cart-level on the grouped feed, so once
+                        per card. '—' covers purchases predating the columns. */}
+                    <div className="ad-req-meta" style={{ marginTop: 6 }}>
+                      Lab Guide: {p.lab_guide_name || '—'} · Purpose: {p.purpose || '—'}
+                    </div>
+                  </div>
+                ))}
+              </>
+            )}
+          </>
+        )}
+        {/* ══ LAB PURCHASES — REMOVABLE (end) ══ */}
       </div>
 
       {/* Reject modal (buying or return) */}

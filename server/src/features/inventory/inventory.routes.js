@@ -30,6 +30,7 @@ import {
   getApprovers,
   setApprovers,
   getApproverFaculty,
+  getFacultyList,
   // ── LAB / INTERN PURCHASE (Stage 3) — REMOVABLE ──
   getLabs,
   createLab,
@@ -100,6 +101,15 @@ router.get('/admin/returns', authMiddleware, requireRole(3), getAdminReturns);  
 router.get('/approvers', authMiddleware, getApprovers);                              // effective approver user_ids
 router.get('/faculty', authMiddleware, requireRole(3), getApproverFaculty);          // admin dropdown source
 router.put('/approvers', authMiddleware, requireRole(3), setApprovers);              // admin set both approvers
+
+// ── PROJECT GUIDE dropdown source ────────────────────────────
+// EVERY faculty (user_id, name, department) — the student picks their project
+// guide from this on a buying request. Distinct literal path, so it never
+// collides with the admin-only /faculty above; kept separate rather than
+// widening that route because this one must not leak emails to students.
+// Role 5 included so a lab member can pick their LAB GUIDE on a lab purchase —
+// the same list, under a different label.
+router.get('/faculty-list', authMiddleware, requireRole(1, 2, 3, 4, 5), getFacultyList);
 
 // ═══ LAB / INTERN PURCHASE (Stage 3) — REMOVABLE BLOCK (start) ═══
 // Labs master: admin (3) manages; incharge (4) and interns (5) read the list

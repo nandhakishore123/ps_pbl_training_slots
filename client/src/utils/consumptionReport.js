@@ -98,11 +98,12 @@ export function buildConsumptionReportHtml(report) {
         <td>${esc(r.member_name)}</td>
         <td><span class="tag ${typeClass(r.member_type)}">${esc(typeLabel(r.member_type))}</span></td>
         <td>${esc(r.lab_name || '—')}</td>
+        <td>${esc(r.project_guide_name || '—')}</td>
         <td>${esc(r.item_name)}</td>
         <td class="num">${esc(r.quantity)}</td>
         <td>${esc(r.unit || '—')}</td>
       </tr>`).join('')
-    : `<tr><td colspan="8" class="empty">No records in this range</td></tr>`;
+    : `<tr><td colspan="9" class="empty">No records in this range</td></tr>`;
 
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/>
   <title>Consumables Consumption Report — ${esc(report?.from)} to ${esc(report?.to)}</title>
@@ -178,7 +179,7 @@ export function buildConsumptionReportHtml(report) {
     <table>
       <thead><tr>
         <th style="width:28px">#</th><th style="width:120px">Date</th><th>Member</th><th style="width:70px">Type</th>
-        <th>Lab</th><th>Item</th><th style="width:60px">Qty</th><th style="width:50px">Unit</th>
+        <th>Lab</th><th>Project Guide</th><th>Item</th><th style="width:60px">Qty</th><th style="width:50px">Unit</th>
       </tr></thead>
       <tbody>${detailRows}</tbody>
     </table>
