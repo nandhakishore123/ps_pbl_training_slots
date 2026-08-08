@@ -475,6 +475,11 @@ export default function InventoryInchargeDashboard() {
                   <div className="ic-req-items">
                     {(r.items || []).map((it) => `${it.item_name} (${money(it.quantity)} ${it.unit || ''})`).join(' · ') || '—'}
                   </div>
+                  {/* SELECT LAB + PROJECT GUIDE — both already returned by
+                      listAllBuyingRequests; '—' covers rows predating the columns. */}
+                  <div className="ic-req-meta" style={{ marginTop: 6 }}>
+                    Lab: {r.lab_name || '—'} · Project Guide: {r.project_guide_name || '—'}
+                  </div>
                   {r.purpose && <div className="ic-req-meta" style={{ marginTop: 6 }}>Purpose: {r.purpose}</div>}
                 </div>
               ))
@@ -560,6 +565,11 @@ export default function InventoryInchargeDashboard() {
                   </div>
                   <div className="ic-req-items">
                     {(p.items || []).map((it) => `${it.item_name} (${money(it.quantity)} ${it.unit || ''})`).join(' · ') || '—'}
+                  </div>
+                  {/* LAB GUIDE + PURPOSE — cart-level on the grouped feed, so once
+                      per card. '—' covers purchases predating the columns. */}
+                  <div className="ic-req-meta" style={{ marginTop: 6 }}>
+                    Lab Guide: {p.lab_guide_name || '—'} · Purpose: {p.purpose || '—'}
                   </div>
                 </div>
               ))

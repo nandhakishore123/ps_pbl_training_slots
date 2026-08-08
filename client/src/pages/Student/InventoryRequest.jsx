@@ -530,6 +530,10 @@ export default function InventoryRequest() {
   const [labs, setLabs] = useState([]);
   const [labsErr, setLabsErr] = useState('');
   const [labId, setLabId] = useState('');
+  // ── PROJECT GUIDE (required on a buying request) ──
+  const [faculties, setFaculties] = useState([]);
+  const [facultiesErr, setFacultiesErr] = useState('');
+  const [projectGuideId, setProjectGuideId] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitErr, setSubmitErr] = useState('');
   const [pass, setPass] = useState(null); // created request → Inventory Pass
@@ -681,7 +685,25 @@ export default function InventoryRequest() {
     return () => { ignore = true; };
   }, []);
 
-  const canSubmit = cart.length > 0 && purpose.trim() !== '' && ['PROJECT', 'TRAINING'].includes(purposeType) && labId && !submitting;
+  // ── PROJECT GUIDE ──
+  // Every faculty, for the required dropdown. Loaded once on mount and handled
+  // exactly like the labs fetch above: a failure is non-fatal to the rest of the
+  // page — the picker reports it and submit stays blocked (the server requires
+  // project_guide_id regardless).
+  useEffect(() => {
+    let ignore = false;
+    (async () => {
+      try {
+        const res = await inventoryService.getFacultyList();
+        if (!ignore) setFaculties(res?.data?.items || []);
+      } catch {
+        if (!ignore) { setFaculties([]); setFacultiesErr('Could not load the faculty list. Please refresh and try again.'); }
+      }
+    })();
+    return () => { ignore = true; };
+  }, []);
+
+  const canSubmit = cart.length > 0 && purpose.trim() !== '' && ['PROJECT', 'TRAINING'].includes(purposeType) && labId && projectGuideId && !submitting;
 
   const submit = async () => {
     if (!canSubmit) return;
@@ -693,12 +715,19 @@ export default function InventoryRequest() {
         purpose: purpose.trim(),
         items: cart.map((c) => ({ item_id: c.item_id, quantity: c.quantity })),
         lab_id: Number(labId),          // SELECT LAB — required server-side
+        project_guide_id: Number(projectGuideId),   // PROJECT GUIDE — required server-side
       });
-      // The pass modal needs the lab name; the create response carries it, but
-      // fall back to the picked option so the modal is never blank.
+      // The pass modal needs the lab + guide names; the create response carries
+      // both, but fall back to the picked options so the modal is never blank.
       const created = res?.data || null;
-      const resolved = created && !created.lab_name
-        ? { ...created, lab_name: labs.find((l) => String(l.lab_id) === String(labId))?.lab_name ?? null }
+      const resolved = created
+        ? {
+          ...created,
+          lab_name: created.lab_name
+            ?? labs.find((l) => String(l.lab_id) === String(labId))?.lab_name ?? null,
+          project_guide_name: created.project_guide_name
+            ?? faculties.find((f) => String(f.user_id) === String(projectGuideId))?.name ?? null,
+        }
         : created;
       // Celebrate first, then hand the (unchanged) pass its data. Only reached on
       // success — a failed create throws straight to the catch below.
@@ -714,6 +743,7 @@ export default function InventoryRequest() {
       setPurpose('');
       setPurposeType('');
       setLabId('');
+      setProjectGuideId('');
       setSelectedCategory('');
       setSelectedItemId('');
       setQuantity('');
@@ -848,6 +878,8 @@ export default function InventoryRequest() {
                   <div className="inv-pass-kv"><span className="inv-pass-k">Type</span><span className="inv-pass-v">{pass.purpose_type || purposeType || '—'}</span></div>
                   {/* SELECT LAB */}
                   <div className="inv-pass-kv"><span className="inv-pass-k">Lab</span><span className="inv-pass-v">{pass.lab_name || '—'}</span></div>
+                  {/* PROJECT GUIDE */}
+                  <div className="inv-pass-kv"><span className="inv-pass-k">Project Guide</span><span className="inv-pass-v">{pass.project_guide_name || '—'}</span></div>
                   <div className="inv-pass-kv"><span className="inv-pass-k">Request #</span><span className="inv-pass-v">{pass.request_id}</span></div>
                   <div className="inv-pass-kv"><span className="inv-pass-k">Date</span><span className="inv-pass-v">{fmtDateTime(pass.created_at)}</span></div>
                 </div>
@@ -943,6 +975,23 @@ export default function InventoryRequest() {
                     {labs.map((l) => <option key={l.lab_id} value={l.lab_id}>{l.lab_name}</option>)}
                   </select>
                   {labsErr && <div className="inv-hint" style={{ marginBottom: 14 }}>{labsErr}</div>}
+
+                  {/* ── PROJECT GUIDE (required) ── */}
+                  <label className="inv-field-label">Project Guide</label>
+                  <select className="inv-select" value={projectGuideId} onChange={(e) => setProjectGuideId(e.target.value)}
+                    disabled={faculties.length === 0} style={{ marginBottom: facultiesErr ? 8 : 18 }}>
+                    <option value="" disabled>-- Select Project Guide --</option>
+                    {/* "Prof." is a DISPLAY prefix only — the value stays the raw
+                        user_id, and the name snapshotted on the request is the
+                        plain one the server reads from `faculties`. */}
+                    {faculties.map((f) => (
+                      <option key={f.user_id} value={f.user_id}>
+                        Prof. {f.name}
+                      </option>
+                    ))}
+                  </select>
+                  {facultiesErr && <div className="inv-hint" style={{ marginBottom: 14 }}>{facultiesErr}</div>}
+
                   <button className="inv-btn inv-btn-primary" disabled={!canSubmit} onClick={submit}>
                     {submitting ? 'Submitting…' : 'Submit Request'}
                   </button>
@@ -1085,6 +1134,10 @@ export default function InventoryRequest() {
                 {r.request_type !== 'RETURN' && (
                   <div className="inv-req-meta" style={{ marginTop: 6 }}>Lab: {r.lab_name || '—'}</div>
                 )}
+                {/* PROJECT GUIDE — BUY only, for the same reason as the Lab line above. */}
+                {r.request_type !== 'RETURN' && (
+                  <div className="inv-req-meta" style={{ marginTop: 6 }}>Project Guide: {r.project_guide_name || '—'}</div>
+                )}
                 {r.purpose && <div className="inv-req-meta" style={{ marginTop: 6 }}>Purpose: {r.purpose}</div>}
                 <span className="inv-req-view">View pass →</span>
               </motion.div>
@@ -1133,6 +1186,8 @@ export default function InventoryRequest() {
                 <div className="inv-pass-kv"><span className="inv-pass-k">Type</span><span className="inv-pass-v">{passRequest.purpose_type || '—'}</span></div>
                 {/* SELECT LAB */}
                 <div className="inv-pass-kv"><span className="inv-pass-k">Lab</span><span className="inv-pass-v">{passRequest.lab_name || '—'}</span></div>
+                {/* PROJECT GUIDE */}
+                <div className="inv-pass-kv"><span className="inv-pass-k">Project Guide</span><span className="inv-pass-v">{passRequest.project_guide_name || '—'}</span></div>
                 <div className="inv-pass-kv"><span className="inv-pass-k">Request #</span><span className="inv-pass-v">{passRequest.request_id}</span></div>
                 <div className="inv-pass-kv"><span className="inv-pass-k">Date</span><span className="inv-pass-v">{fmtDateTime(passRequest.created_at)}</span></div>
               </div>

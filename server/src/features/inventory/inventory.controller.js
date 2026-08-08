@@ -43,8 +43,8 @@ export const getItem = async (req, res) => {
 // ── Student BUYING flow ──────────────────────────────────────
 export const createRequest = async (req, res) => {
   try {
-    const { purpose_type, purpose, items, lab_id } = req.body;
-    const data = await service.createBuyingRequest(req.user?.user_id, { purpose_type, purpose, items, lab_id });
+    const { purpose_type, purpose, items, lab_id, project_guide_id } = req.body;
+    const data = await service.createBuyingRequest(req.user?.user_id, { purpose_type, purpose, items, lab_id, project_guide_id });
     return createdResponse(res, 'Request submitted', data);
   } catch (error) {
     if (error?.status) return errorResponse(res, error.message, error.status);
@@ -332,6 +332,20 @@ export const getApproverFaculty = async (req, res) => {
     if (error?.status) return errorResponse(res, error.message, error.status);
     console.error('Error in getApproverFaculty:', error);
     return internalServerErrorResponse(res, error.message || 'Failed to fetch faculty');
+  }
+};
+
+// GET every faculty for the student's project-guide dropdown. Open to students —
+// hence id + name + department only, never emails (see getApproverFaculty above,
+// which is admin-only precisely because it exposes them).
+export const getFacultyList = async (req, res) => {
+  try {
+    const data = await service.listAllFaculty();
+    return successResponse(res, 'Faculty list fetched', { items: data });
+  } catch (error) {
+    if (error?.status) return errorResponse(res, error.message, error.status);
+    console.error('Error in getFacultyList:', error);
+    return internalServerErrorResponse(res, error.message || 'Failed to fetch faculty list');
   }
 };
 

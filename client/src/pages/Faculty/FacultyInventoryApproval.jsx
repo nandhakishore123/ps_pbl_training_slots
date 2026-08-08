@@ -356,6 +356,12 @@ export default function FacultyInventoryApproval() {
             Request #{r.request_id} · {fmtDateTime(r.created_at)}
             {r.purpose_type ? <>  ·  <span className="fa-pill type" style={{ padding: '1px 8px' }}>{r.purpose_type}</span></> : null}
           </div>
+          {/* SELECT LAB + PROJECT GUIDE — both already ride along on every buying
+              row; surfacing them here gives the approver the context the student
+              filled in. '—' covers requests created before the columns existed. */}
+          <div className="fa-req-meta">
+            Lab: {r.lab_name || '—'} · Project Guide: {r.project_guide_name || '—'}
+          </div>
         </div>
         <StatusPill status={r.status} />
       </div>

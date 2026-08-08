@@ -139,6 +139,13 @@ export const inventoryService = {
     return api.put('/inventory/approvers', payload);
   },
 
+  // Student's project-guide dropdown: every real faculty (user_id, name,
+  // department). Distinct from listApproverFaculty above — this one is
+  // student-reachable and deliberately carries no email addresses.
+  getFacultyList() {
+    return api.get('/inventory/faculty-list');
+  },
+
   // ═══ LABS (Stage 4) — REMOVABLE BLOCK (start) ═══
   // Labs master. Admin (3) manages; incharge (4) and interns (5) may read.
   // Omit `active` for all labs; pass 1 for only active ones.

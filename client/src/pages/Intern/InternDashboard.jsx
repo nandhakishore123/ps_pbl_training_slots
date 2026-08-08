@@ -191,6 +191,11 @@ export default function InternDashboard() {
   const [quantity, setQuantity] = useState('');
   const [addErr, setAddErr] = useState('');
   const [cart, setCart] = useState([]);
+  // ── LAB GUIDE + PURPOSE (both required on a purchase) ──
+  const [faculties, setFaculties] = useState([]);
+  const [facultiesErr, setFacultiesErr] = useState('');
+  const [labGuideId, setLabGuideId] = useState('');
+  const [purpose, setPurpose] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitErr, setSubmitErr] = useState('');
   const [result, setResult] = useState(null);       // purchase response → summary popup
@@ -296,6 +301,24 @@ export default function InternDashboard() {
 
   useEffect(() => { loadLabs(); }, [loadLabs]);
 
+  // ── LAB GUIDE ──
+  // Every faculty, for the required dropdown — the same list the student page
+  // uses for its Project Guide, just labelled differently here. Loaded once on
+  // mount; a failure is non-fatal to the rest of the page (the picker reports it
+  // and Confirm stays blocked, since the server requires lab_guide_id anyway).
+  useEffect(() => {
+    let ignore = false;
+    (async () => {
+      try {
+        const res = await inventoryService.getFacultyList();
+        if (!ignore) setFaculties(res?.data?.items || []);
+      } catch {
+        if (!ignore) { setFaculties([]); setFacultiesErr('Could not load the faculty list. Please refresh and try again.'); }
+      }
+    })();
+    return () => { ignore = true; };
+  }, []);
+
   // Categories load once, on first entry to the buy view.
   useEffect(() => {
     if (view !== 'buy' || categories.length) return;
@@ -374,7 +397,7 @@ export default function InternDashboard() {
   const removeFromCart = (itemId) => setCart((prev) => prev.filter((c) => c.item_id !== itemId));
 
   const shortCart = cart.filter((c) => Number(c.quantity) > Number(c.available));
-  const canSubmit = cart.length > 0 && !submitting;
+  const canSubmit = cart.length > 0 && labGuideId && purpose.trim() !== '' && !submitting;
 
   const submit = async () => {
     if (!canSubmit) return;
@@ -383,6 +406,8 @@ export default function InternDashboard() {
       const res = await inventoryService.createLabPurchase({
         lab_id: activeLab.lab_id,
         items: cart.map((c) => ({ item_id: c.item_id, quantity: c.quantity })),
+        lab_guide_id: Number(labGuideId),   // LAB GUIDE — required server-side
+        purpose: purpose.trim(),            // required server-side
       });
       // Celebrate first, then hand the (unchanged) summary popup its data. Only
       // reached on success — a failed purchase throws straight to the catch below.
@@ -404,6 +429,7 @@ export default function InternDashboard() {
     const labId = activeLab?.lab_id;
     setResult(null);
     setCart([]);
+    setLabGuideId(''); setPurpose('');
     setSelectedItemId(''); setQuantity('');
     if (labId) {
       await loadRecent(labId);
@@ -642,6 +668,25 @@ export default function InternDashboard() {
                         {shortCart.length} item{shortCart.length !== 1 ? 's' : ''} exceed{shortCart.length === 1 ? 's' : ''} current stock — you'll receive what's available.
                       </div>
                     )}
+                    {/* ── LAB GUIDE (required) ── */}
+                    <label className="in-field-label" style={{ marginTop: 16 }}>Lab Guide</label>
+                    <select className="in-select" value={labGuideId} onChange={(e) => setLabGuideId(e.target.value)}
+                      disabled={faculties.length === 0}>
+                      <option value="" disabled>-- Select Lab Guide --</option>
+                      {/* "Prof." is a DISPLAY prefix only — the value is the raw
+                          user_id and the stored snapshot name stays plain. */}
+                      {faculties.map((f) => (
+                        <option key={f.user_id} value={f.user_id}>Prof. {f.name}</option>
+                      ))}
+                    </select>
+                    {facultiesErr && <div className="in-hint">{facultiesErr}</div>}
+
+                    {/* ── PURPOSE (required) ── */}
+                    <label className="in-field-label" style={{ marginTop: 14 }}>Purpose</label>
+                    <input className="in-input" type="text" maxLength={255}
+                      placeholder="Purpose of this purchase"
+                      value={purpose} onChange={(e) => setPurpose(e.target.value)} />
+
                     <button className="in-btn in-btn-primary" style={{ marginTop: 14 }} disabled={!canSubmit} onClick={submit}>
                       {submitting ? 'Purchasing…' : `Confirm Purchase (${cart.length})`}
                     </button>
@@ -747,6 +792,11 @@ export default function InternDashboard() {
                 <span className="in-badge full">{result.summary?.fully ?? 0} full</span>
                 <span className="in-badge partial">{result.summary?.partial ?? 0} partial</span>
                 <span className="in-badge out">{result.summary?.out_of_stock ?? 0} out of stock</span>
+              </div>
+              {/* LAB GUIDE + PURPOSE — cart-level, so shown once above the items.
+                  The plain stored name, matching the student pass. */}
+              <div className="in-sum-meta" style={{ marginBottom: 10 }}>
+                Lab Guide: {result.lab_guide_name || '—'} · Purpose: {result.purpose || '—'}
               </div>
               {(result.results || []).map((r) => (
                 <div className="in-sum-row" key={r.item_id}>

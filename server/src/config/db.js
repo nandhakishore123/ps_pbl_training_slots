@@ -455,6 +455,25 @@ export const testConnection = async () => {
                 await connection.execute('ALTER TABLE inventory_requests ADD INDEX idx_invreq_lab (lab_id)');
                 console.log(chalk.green('  Added inventory_requests.idx_invreq_lab.'));
             }
+            // Additive: the faculty a student names as the project guide for a BUY
+            // request. Two columns, the same id + snapshot-name idiom as
+            // lab_purchases.buyer_user_id/buyer_name — the id is faculties.user_id
+            // (an FK by convention; TiDB-safe, no FKs), and the name is frozen at
+            // creation so a later rename or a deleted faculty cannot rewrite the
+            // history a request was approved against.
+            // NULLABLE by design, exactly like lab_id: requests created before these
+            // columns existed keep NULL, and RETURN requests never set them.
+            // Required-ness is enforced in the service for NEW buying requests only.
+            // varchar(255) matches faculties.name's width so a long name cannot
+            // silently truncate on the way in.
+            if (!invReqCols.some((c) => c.Field === 'project_guide_id')) {
+                await connection.execute('ALTER TABLE inventory_requests ADD COLUMN project_guide_id bigint DEFAULT NULL');
+                console.log(chalk.green('  Added inventory_requests.project_guide_id.'));
+            }
+            if (!invReqCols.some((c) => c.Field === 'project_guide_name')) {
+                await connection.execute('ALTER TABLE inventory_requests ADD COLUMN project_guide_name varchar(255) DEFAULT NULL');
+                console.log(chalk.green('  Added inventory_requests.project_guide_name.'));
+            }
             // Admin-configurable inventory settings (key/value). Currently holds the two
             // buying approver user_ids ('project_approver_user_id', 'training_approver_user_id').
             // TiDB-safe: no FKs, PK on setting_key so writes use ON DUPLICATE KEY UPDATE.
@@ -591,6 +610,33 @@ export const testConnection = async () => {
             if (!labCols.some((c) => c.Field === 'image_url')) {
                 await connection.execute('ALTER TABLE labs ADD COLUMN image_url varchar(512) DEFAULT NULL');
                 console.log(chalk.green('  Added labs.image_url.'));
+            }
+
+            // Additive: the faculty a lab member names as the LAB GUIDE for a
+            // purchase, plus the purpose they give for it. Same id + snapshot-name
+            // idiom as buyer_user_id/buyer_name on this very table — the id is
+            // faculties.user_id (FK by convention; TiDB-safe, no FKs) and the name
+            // is frozen at purchase time so a later rename cannot rewrite history.
+            // DENORMALISED PER ROW by design: lab_purchases stores one row per
+            // item with no cart id, so every row of one cart carries the SAME
+            // three values — exactly how buyer_name already behaves. Reads group
+            // on (buyer_user_id, lab_id, created_at) and surface them once.
+            // NULLABLE by design: purchases predating these columns keep NULL.
+            // Required-ness is enforced in the service for NEW purchases only.
+            // Named lab_guide_* (not project_guide_*) to match the role-5 label and
+            // to keep this block independently removable from the student feature.
+            const [labPurCols] = await connection.execute('DESCRIBE lab_purchases');
+            if (!labPurCols.some((c) => c.Field === 'lab_guide_id')) {
+                await connection.execute('ALTER TABLE lab_purchases ADD COLUMN lab_guide_id bigint DEFAULT NULL');
+                console.log(chalk.green('  Added lab_purchases.lab_guide_id.'));
+            }
+            if (!labPurCols.some((c) => c.Field === 'lab_guide_name')) {
+                await connection.execute('ALTER TABLE lab_purchases ADD COLUMN lab_guide_name varchar(255) DEFAULT NULL');
+                console.log(chalk.green('  Added lab_purchases.lab_guide_name.'));
+            }
+            if (!labPurCols.some((c) => c.Field === 'purpose')) {
+                await connection.execute('ALTER TABLE lab_purchases ADD COLUMN purpose varchar(255) DEFAULT NULL');
+                console.log(chalk.green('  Added lab_purchases.purpose.'));
             }
 
             // ── INTERN LAB RETURNS — REMOVABLE SUB-BLOCK (start) ────────────
