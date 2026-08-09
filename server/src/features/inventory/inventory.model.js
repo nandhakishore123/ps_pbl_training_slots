@@ -707,29 +707,49 @@ export const hasOutstandingReturnable = async (studentId) => {
 };
 
 // A student's still-OPEN obligations (actionable in the Returning tab).
+// PARTIAL RETURNS: an obligation reopens after a partly-approved return, so it
+// can come back here with returned_quantity already > 0. `remaining` is what is
+// still owed — that, not taken_quantity, is what the tab shows and what caps a
+// further return. decimal(12,2) arrives from mysql2 as a string, so the three
+// numbers callers do arithmetic on are normalised here.
 export const listOpenObligations = async (studentId) => {
   const [rows] = await db.execute(
     `SELECT obligation_id, buy_request_id, item_id, item_name, category, unit,
-            taken_quantity, is_returnable, status
+            taken_quantity, returned_quantity, is_returnable, status,
+            (taken_quantity - COALESCE(returned_quantity, 0)) AS remaining
      FROM inventory_obligations
      WHERE student_id = ? AND status = 'OPEN'
      ORDER BY created_at ASC`,
     [Number(studentId)]
   );
-  return rows ?? [];
+  return (rows ?? []).map((r) => ({
+    ...r,
+    taken_quantity: Number(r.taken_quantity),
+    returned_quantity: Number(r.returned_quantity ?? 0),
+    remaining: Number(r.remaining),
+  }));
 };
 
 // Fetch a set of obligations by id for a student (validation before creating a return).
+// returned_quantity + remaining are selected so the service can cap a new return
+// at what is STILL owed rather than at the original taken quantity.
 export const getObligationsByIds = async (studentId, ids) => {
   if (!Array.isArray(ids) || ids.length === 0) return [];
   const placeholders = ids.map(() => '?').join(',');
   const [rows] = await db.execute(
-    `SELECT obligation_id, student_id, item_id, item_name, unit, taken_quantity, is_returnable, status
+    `SELECT obligation_id, student_id, item_id, item_name, unit, taken_quantity,
+            returned_quantity, is_returnable, status,
+            (taken_quantity - COALESCE(returned_quantity, 0)) AS remaining
      FROM inventory_obligations
      WHERE student_id = ? AND obligation_id IN (${placeholders})`,
     [Number(studentId), ...ids.map(Number)]
   );
-  return rows ?? [];
+  return (rows ?? []).map((r) => ({
+    ...r,
+    taken_quantity: Number(r.taken_quantity),
+    returned_quantity: Number(r.returned_quantity ?? 0),
+    remaining: Number(r.remaining),
+  }));
 };
 
 // Create a RETURN request (PENDING) + its lines, and flip the obligations to
@@ -820,7 +840,18 @@ export const getReturnHeader = async (requestId, conn) => {
   return rows?.[0] ?? null;
 };
 
-// Approve a RETURN: for each RETURN line add stock back (+txn), and CLEAR its obligation.
+// Approve a RETURN: for each RETURN line add stock back (+txn), then settle its
+// obligation — CLEARED when everything taken has now come back, otherwise
+// reopened for the remainder.
+//
+// PARTIAL RETURNS (behaviour change): this used to CLEAR the obligation for any
+// approved return, whatever the quantity. Returning 2 of 5 therefore discharged
+// all 5 — the other 3 could never be returned and were silently written off.
+// returned_quantity is now ACCUMULATED and the obligation only clears once the
+// running total reaches taken_quantity; short of that it goes back to OPEN so
+// the student can return the rest in instalments. Same shape as the intern flow,
+// which already capped at purchased − already_returned.
+//
 // FULLY_COMPLETED lines change no stock — the obligation is still cleared.
 export const approveReturnRequest = async (requestId, actorUserId, actorRole) => {
   const conn = await db.getConnection();
@@ -843,6 +874,7 @@ export const approveReturnRequest = async (requestId, actorUserId, actorRole) =>
     for (const ln of lines) {
       if (ln.action === 'RETURN') {
         const qty = Number(ln.return_quantity ?? ln.quantity);
+        // Stock always gets back exactly what was returned — unchanged.
         await conn.execute(
           `UPDATE inventory_items SET current_quantity = current_quantity + ? WHERE item_id = ?`,
           [qty, Number(ln.item_id)]
@@ -852,17 +884,48 @@ export const approveReturnRequest = async (requestId, actorUserId, actorRole) =>
            VALUES (?, ?, 'RETURN_APPROVED', ?, ?)`,
           [Number(ln.item_id), qty, Number(requestId), actorUserId != null ? Number(actorUserId) : null]
         );
-        await conn.execute(
-          `UPDATE inventory_obligations
-           SET status = 'CLEARED', returned_quantity = ?, cleared_at = NOW()
-           WHERE obligation_id = ?`,
-          [qty, Number(ln.obligation_id)]
+
+        // Read the obligation under a row lock BEFORE computing the new total,
+        // so two approvals racing on the same obligation serialise here rather
+        // than both reading the same stale returned_quantity (the idiom
+        // returnLabPurchase uses for its cap check).
+        const [orows] = await conn.execute(
+          `SELECT taken_quantity, returned_quantity FROM inventory_obligations
+           WHERE obligation_id = ? LIMIT 1 FOR UPDATE`,
+          [Number(ln.obligation_id)]
         );
+        const obl = orows?.[0];
+        if (obl) {
+          const taken = Number(obl.taken_quantity);
+          // ACCUMULATE, never overwrite — instalments have to sum.
+          const newReturned = Number((Number(obl.returned_quantity ?? 0) + qty).toFixed(2));
+          if (newReturned >= taken) {
+            await conn.execute(
+              `UPDATE inventory_obligations
+               SET status = 'CLEARED', returned_quantity = ?, cleared_at = NOW()
+               WHERE obligation_id = ?`,
+              [newReturned, Number(ln.obligation_id)]
+            );
+          } else {
+            // Still short — reopen so the remainder stays owed and visible.
+            // return_request_id/cleared_at are wiped: this return is settled,
+            // and any future one gets its own request id.
+            await conn.execute(
+              `UPDATE inventory_obligations
+               SET status = 'OPEN', returned_quantity = ?, return_request_id = NULL, cleared_at = NULL
+               WHERE obligation_id = ?`,
+              [newReturned, Number(ln.obligation_id)]
+            );
+          }
+        }
       } else {
-        // FULLY_COMPLETED — no stock change; obligation cleared with 0 returned.
+        // FULLY_COMPLETED — no stock change; the obligation is discharged.
+        // COALESCE rather than a literal 0 so an earlier instalment's
+        // returned_quantity is preserved instead of being erased. For the
+        // ordinary case (nothing returned yet) this still resolves to 0.
         await conn.execute(
           `UPDATE inventory_obligations
-           SET status = 'CLEARED', returned_quantity = 0, cleared_at = NOW()
+           SET status = 'CLEARED', returned_quantity = COALESCE(returned_quantity, 0), cleared_at = NOW()
            WHERE obligation_id = ?`,
           [Number(ln.obligation_id)]
         );
@@ -1559,3 +1622,175 @@ export const returnLabPurchase = async ({ purchase_id, quantity, returnerUserId,
   }
 };
 // ═══ INTERN LAB RETURNS — REMOVABLE BLOCK (end) ═════════════════════════════
+
+// ═══ RETURNABLE FEED — REMOVABLE BLOCK (start) ══════════════════════════════
+// Read-only, admin + incharge. ONE flat list of every returnable item currently
+// or previously taken out, from BOTH flows, one row per item taken:
+//   STUDENT — inventory_obligations WHERE is_returnable = 1
+//   INTERN  — lab_purchases whose catalog item has is_returnable = 1
+// Nothing here writes; no existing query or flow is touched.
+//
+// The two sides differ in one way worth knowing: a student obligation SNAPSHOTS
+// is_returnable at approval time (see approveBuyingRequest), whereas a lab
+// purchase stores no such flag, so intern rows must read it live from
+// inventory_items. Flipping an item's flag therefore rewrites which intern rows
+// appear, but never which student rows do. That is a property of the existing
+// schema, not of this query.
+//
+// To remove: delete this block, the service/controller/route entries, and the
+// client's getReturnableFeed().
+
+// STUDENT rows. status is authoritative on the obligation itself; the request
+// is joined only for its lab (nullable — lab_id is an additive column, so older
+// requests have none).
+const returnableFeedStudentRows = async () => {
+  const [rows] = await db.execute(
+    `SELECT o.obligation_id AS id,
+            'STUDENT' AS source,
+            s.name AS person_name,
+            s.reg_num AS person_ref,
+            s.user_id AS person_user_id,
+            u.email AS person_email,
+            o.item_name,
+            o.taken_quantity AS quantity,
+            o.unit,
+            o.created_at AS date,
+            o.status,
+            o.returned_quantity,
+            o.taken_quantity,
+            l.lab_name,
+            o.buy_request_id AS ref_id
+     FROM inventory_obligations o
+     JOIN students s ON s.student_id = o.student_id
+     LEFT JOIN users u ON u.user_id = s.user_id
+     LEFT JOIN inventory_requests r ON r.request_id = o.buy_request_id
+     LEFT JOIN labs l ON l.lab_id = r.lab_id
+     WHERE o.is_returnable = 1`
+  );
+  return rows ?? [];
+};
+
+// INTERN rows. is_returnable is not on lab_purchases, so the catalog join both
+// filters and qualifies (INNER by design: item_id is NOT NULL and always points
+// at a real catalog row). already_returned uses the same correlated-SUM idiom as
+// listMyReturnablePurchases — lab_returns is many-to-one per purchase, so a
+// single lookup would miss instalment returns.
+const returnableFeedInternRows = async () => {
+  const [rows] = await db.execute(
+    `SELECT lp.purchase_id AS id,
+            'INTERN' AS source,
+            lp.buyer_name AS person_name,
+            COALESCE(up.member_subtype, 'INTERN') AS person_ref,
+            lp.buyer_user_id AS person_user_id,
+            u.email AS person_email,
+            lp.item_name,
+            lp.quantity,
+            lp.unit,
+            lp.created_at AS date,
+            lp.quantity AS purchased_qty,
+            COALESCE((SELECT SUM(lr.quantity) FROM lab_returns lr
+                      WHERE lr.purchase_id = lp.purchase_id), 0) AS already_returned,
+            l.lab_name,
+            lp.purchase_id AS ref_id
+     FROM lab_purchases lp
+     JOIN inventory_items i ON i.item_id = lp.item_id AND i.is_returnable = 1
+     LEFT JOIN labs l ON l.lab_id = lp.lab_id
+     LEFT JOIN user_profiles up ON up.user_id = lp.buyer_user_id
+     LEFT JOIN users u ON u.user_id = lp.buyer_user_id`
+  );
+  return rows ?? [];
+};
+
+// STUDENT status → one label + whether it is still out.
+// OPEN splits two ways now that partial returns reopen an obligation: nothing
+// back yet ("Out") versus some already returned with a balance still owed
+// ("Partly returned") — the same distinction the intern side draws.
+// CLEARED likewise covers two different real-world outcomes: an actual return
+// (returned_quantity > 0, set by approveReturnRequest) and a FULLY_COMPLETED
+// disposal (returned_quantity = 0 — the item never came back but the obligation
+// was discharged). Labelling both "Returned" would misreport the second, so
+// they are split here.
+const studentStatusLabel = (status, returnedQuantity) => {
+  const st = String(status ?? '').toUpperCase();
+  const returned = Number(returnedQuantity ?? 0);
+  if (st === 'OPEN') {
+    return returned > 0
+      ? { status_label: 'Partly returned', outstanding: true }
+      : { status_label: 'Out', outstanding: true };
+  }
+  if (st === 'RETURN_PENDING') return { status_label: 'Return pending', outstanding: true };
+  if (st === 'CLEARED') {
+    return returned > 0
+      ? { status_label: 'Returned', outstanding: false }
+      : { status_label: 'Consumed', outstanding: false };
+  }
+  // Defensive: status is a free varchar(20), so an unrecognised value is
+  // surfaced rather than silently mislabelled as returned.
+  return { status_label: st || 'Unknown', outstanding: true };
+};
+
+// INTERN status → derived by comparing quantities. A lab return is direct and
+// final (no approval step), so there is no "pending" equivalent here; unlike the
+// student side, a partial return leaves the purchase genuinely still outstanding.
+const internStatusLabel = (purchasedQty, alreadyReturned) => {
+  const purchased = Number(purchasedQty ?? 0);
+  const returned = Number(alreadyReturned ?? 0);
+  if (returned <= 0) return { status_label: 'Out', outstanding: true };
+  if (returned >= purchased) return { status_label: 'Returned', outstanding: false };
+  return { status_label: 'Partly returned', outstanding: true };
+};
+
+export const listReturnableFeed = async () => {
+  // Independent reads — no shared state, so they can overlap.
+  const [studentRows, internRows] = await Promise.all([
+    returnableFeedStudentRows(),
+    returnableFeedInternRows(),
+  ]);
+
+  // decimal(12,2) arrives from mysql2 as a STRING. Number() on the way out so
+  // the client never does string arithmetic on a quantity (same normalisation
+  // listMyReturnablePurchases applies).
+  const students = studentRows.map((r) => ({
+    id: Number(r.id),
+    source: r.source,
+    person_name: r.person_name ?? null,
+    person_ref: r.person_ref ?? null,
+    // person_user_id is the stable key to group a person's rows on —
+    // person_name/person_ref are display strings and person_ref means different
+    // things per source. person_email drives the reminder link; both are null
+    // when the underlying user row is gone (no FKs, so orphans are possible).
+    person_user_id: r.person_user_id != null ? Number(r.person_user_id) : null,
+    person_email: r.person_email ?? null,
+    item_name: r.item_name ?? null,
+    quantity: Number(r.quantity ?? 0),
+    unit: r.unit ?? null,
+    date: r.date,
+    ...studentStatusLabel(r.status, r.returned_quantity),
+    lab_name: r.lab_name ?? null,
+    ref_id: r.ref_id != null ? Number(r.ref_id) : null,
+  }));
+
+  const interns = internRows.map((r) => ({
+    id: Number(r.id),
+    source: r.source,
+    person_name: r.person_name ?? null,
+    person_ref: r.person_ref ?? null,
+    // Same two fields as the student rows. lab_purchases.buyer_user_id is
+    // nullable, so a purchase whose buyer was deleted keeps its buyer_name
+    // snapshot but yields null here — the caller has to handle that.
+    person_user_id: r.person_user_id != null ? Number(r.person_user_id) : null,
+    person_email: r.person_email ?? null,
+    item_name: r.item_name ?? null,
+    quantity: Number(r.quantity ?? 0),
+    unit: r.unit ?? null,
+    date: r.date,
+    ...internStatusLabel(r.purchased_qty, r.already_returned),
+    lab_name: r.lab_name ?? null,
+    ref_id: r.ref_id != null ? Number(r.ref_id) : null,
+  }));
+
+  // Merge both sources into one chronological list, newest first — same
+  // comparator the consumption report uses for its mixed detail rows.
+  return [...students, ...interns].sort((a, b) => new Date(b.date) - new Date(a.date));
+};
+// ═══ RETURNABLE FEED — REMOVABLE BLOCK (end) ════════════════════════════════

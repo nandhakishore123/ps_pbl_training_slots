@@ -43,6 +43,8 @@ import {
   // ── INTERN LAB RETURNS — REMOVABLE ──
   getMyReturnablePurchases,
   createLabReturn,
+  // ── RETURNABLE FEED — REMOVABLE ──
+  getReturnableFeed,
 } from './inventory.controller.js';
 
 const router = express.Router();
@@ -147,5 +149,13 @@ router.post('/lab-purchase', authMiddleware, requireRole(5, 3), createLabPurchas
 router.get('/my-returnable-purchases', authMiddleware, requireRole(5, 3), getMyReturnablePurchases);
 router.post('/lab-return', authMiddleware, requireRole(5, 3), createLabReturn);      // { purchase_id, quantity }
 // ═══ INTERN LAB RETURNS — REMOVABLE BLOCK (end) ═══
+
+// ═══ RETURNABLE FEED — REMOVABLE BLOCK (start) ═══
+// Merged student + lab-member returnable items, read-only. Admin + incharge
+// only: this exposes who across the whole institution is holding what, which
+// neither a student (role 1) nor a lab member (role 5) has any business seeing —
+// hence 3,4 rather than the 3,4,5 used by /lab-purchases-feed.
+router.get('/returnable-feed', authMiddleware, requireRole(3, 4), getReturnableFeed);
+// ═══ RETURNABLE FEED — REMOVABLE BLOCK (end) ═══
 
 export default router;

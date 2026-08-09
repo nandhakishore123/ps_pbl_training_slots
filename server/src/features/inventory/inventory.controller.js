@@ -475,3 +475,18 @@ export const createLabReturn = async (req, res) => {
   }
 };
 // ═══ INTERN LAB RETURNS — REMOVABLE BLOCK (end) ═══
+
+// ═══ RETURNABLE FEED — REMOVABLE BLOCK (start) ═══
+// GET → every returnable item taken by a student or a lab member, merged.
+// Read-only; the route restricts it to admin + incharge.
+export const getReturnableFeed = async (req, res) => {
+  try {
+    const data = await service.listReturnableFeedReadOnly();
+    return successResponse(res, 'Returnable items fetched', { items: data });
+  } catch (error) {
+    if (error?.status) return errorResponse(res, error.message, error.status);
+    console.error('Error in getReturnableFeed:', error);
+    return internalServerErrorResponse(res, error.message || 'Failed to fetch returnable items');
+  }
+};
+// ═══ RETURNABLE FEED — REMOVABLE BLOCK (end) ═══

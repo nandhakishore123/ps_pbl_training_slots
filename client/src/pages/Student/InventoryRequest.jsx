@@ -6,7 +6,10 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, MotionConfig, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '../../store/authStore';
+import { authService } from '../../services/features/authService';
 import { inventoryService } from '../../services/features/inventoryService';
+import { trainingService } from '../../services/features/trainingService';
+import UserProfileBadge from '../../components/UserProfileBadge';
 
 // ── Scoped premium styles (self-contained; follows body.dark-mode) ──
 // Shares its design language with the intern console (InternDashboard.css): the
@@ -69,46 +72,66 @@ const CSS = `
   }
 
   /* Outfit for headings (it carries a real 900), Plus Jakarta Sans for body copy. */
-  .inv-htitle, .inv-card-title, .inv-req-id, .inv-obl-name { font-family:var(--iv-font-head); }
+  .inv-card-title, .inv-req-id, .inv-obl-name { font-family:var(--iv-font-head); }
 
-  .inv-header { background:var(--iv-glass); backdrop-filter:blur(16px) saturate(180%);
-    -webkit-backdrop-filter:blur(16px) saturate(180%);
-    border-bottom:1px solid var(--iv-hairline); padding:14px 24px;
-    display:flex; align-items:center; justify-content:space-between; gap:12px; position:sticky; top:0; z-index:50;
-    box-shadow:0 1px 0 var(--iv-hairline), 0 10px 30px rgba(26,16,64,0.05); }
-  /* Header groups — named so the mobile rules can reach them (they were unclassed
-     inline styles). Base values match what was inline; min-width:0 and flex-shrink
-     only license shrinking, which desktop never reaches because there is room. */
-  .inv-hleft { display:flex; align-items:center; gap:14px; min-width:0; }
-  .inv-hright { display:flex; align-items:center; gap:10px; flex-shrink:0; }
-  .inv-htitle-wrap { min-width:0; }
-  /* gap was previously inert (the label was one text node); 4px reproduces the
-     space character it replaced, so the desktop button keeps its width. */
-  .inv-back { display:flex; align-items:center; gap:4px; background:var(--iv-card); border:1px solid var(--iv-border);
-    color:var(--iv-text2); padding:8px 14px; border-radius:10px; font-size:13px; font-weight:700; cursor:pointer;
-    font-family:inherit; white-space:nowrap; box-shadow:var(--iv-shadow-sm);
-    transition:color .2s var(--iv-ease), border-color .2s var(--iv-ease), background .2s var(--iv-ease),
-      transform .2s var(--iv-ease); }
-  .inv-back:hover { border-color:var(--iv-purple); color:var(--iv-purple); background:var(--iv-purple-dim); }
-  .inv-back:active, .inv-dark:active { transform:translateY(1px); }
-  .inv-htitle { font-size:17px; font-weight:900; letter-spacing:-0.3px; }
-  .inv-hsub { font-size:11.5px; color:var(--iv-text3); font-weight:600; margin-top:1px; }
-  .inv-userpill { display:flex; align-items:center; gap:10px; padding:4px 14px 4px 4px; background:var(--iv-card);
-    border:1px solid var(--iv-border); border-radius:50px; box-shadow:var(--iv-shadow-sm);
-    transition:border-color .22s var(--iv-ease); }
-  .inv-userpill:hover { border-color:rgba(108,71,255,0.35); }
-  .inv-avatar { width:36px; height:36px; border-radius:50%;
-    background:linear-gradient(135deg,var(--iv-purple-lt),var(--iv-purple-2));
-    display:flex; align-items:center; justify-content:center; font-size:15px; font-weight:800; color:#fff;
-    flex-shrink:0; box-shadow:0 3px 10px var(--iv-purple-glow), inset 0 1px 0 rgba(255,255,255,0.3); }
-  .inv-uname { font-size:13px; font-weight:800; line-height:1.15; }
-  .inv-uroll { font-size:10.5px; color:var(--iv-text3); font-weight:700; letter-spacing:0.4px; }
-  .inv-dark { background:var(--iv-card); border:1px solid var(--iv-border); border-radius:20px; padding:7px 13px;
-    cursor:pointer; font-size:12.5px; color:var(--iv-text2); font-weight:700; font-family:inherit; white-space:nowrap;
-    box-shadow:var(--iv-shadow-sm);
-    transition:color .2s var(--iv-ease), border-color .2s var(--iv-ease), background .2s var(--iv-ease),
-      transform .2s var(--iv-ease); }
-  .inv-dark:hover { border-color:var(--iv-purple); color:var(--iv-purple); background:var(--iv-purple-dim); }
+  /* ══ HEADER — COPIED FROM PointsDashboard.jsx (start) ══
+     The Points Dashboard header is the template; this page reuses its .pt-* class
+     names and its rules verbatim so the two headers render identically. That CSS
+     lives in PointsDashboard's own injected <style id="pd-styles">, which is
+     removed when that page unmounts, so it has to be duplicated here rather than
+     relied upon.
+
+     Two deliberate deviations from a straight copy:
+     1. Every selector is prefixed with .inv-root. This stylesheet is injected into
+        <head> (see the note at the top of this file), so an unscoped .pt-* rule
+        would sit in the document alongside PointsDashboard's own copy. Scoping
+        keeps it contained; the prefix is applied uniformly, so the relative
+        specificity between these rules — including the !important mobile
+        overrides — is unchanged.
+     2. The .pt-* rules read the GLOBAL tokens (--white/--border/--text/--purple/
+        --font-head), not this page's --iv-* ones. Those globals are defined in
+        index.css and match PointsDashboard's own :root exactly, so light mode is
+        already identical. Dark mode is not: index.css and PointsDashboard disagree
+        slightly (--white #1e1b2e vs #1a1a2e, --text #f1f0ff vs #e8e6f0, …), so the
+        block below restates PointsDashboard's dark values, scoped to .inv-root.
+        Nothing else under .inv-root reads these names — every other rule on this
+        page uses --iv-* — so the override reaches only the header and the profile
+        badge's inline var(--white,…) fallbacks, which is exactly what should match. */
+  body.dark-mode .inv-root {
+    --white:#1a1a2e; --border:#2d2d4e;
+    --text:#e8e6f0; --text2:#a89ec9; --text3:#6b6b8a;
+  }
+
+  .inv-root .pt-header { background:var(--white); border-bottom:1px solid var(--border); padding:16px 24px; display:flex; align-items:center; justify-content:space-between; gap:12px; position:sticky; top:0; z-index:100; box-shadow:0 1px 8px rgba(0,0,0,0.05); }
+  .inv-root .pt-header-icon { width:36px; height:36px; border-radius:10px; background:var(--purple-dim); display:flex; align-items:center; justify-content:center; font-size:18px; flex-shrink:0; }
+  /* min-width:0 only licenses shrinking; desktop has room and is unaffected. */
+  .inv-root .pt-header-title { font-size:18px; font-weight:800; color:var(--text); font-family:var(--font-head); min-width:0; }
+  .inv-root .pt-header-sub { font-size:12px; color:var(--text3); margin-top:1px; }
+  .inv-root .pt-dark-toggle { background:none; border:1.5px solid var(--border); border-radius:20px; padding:5px 11px; cursor:pointer; font-size:13px; color:var(--text2); display:flex; align-items:center; gap:5px; transition:all 0.2s; font-family:var(--font-body); font-weight:600; white-space:nowrap; }
+  .inv-root .pt-dark-toggle:hover { border-color:var(--purple); color:var(--purple); }
+  .inv-root .pt-header-back { background:none; border:1.5px solid var(--border); border-radius:20px; padding:5px 11px; cursor:pointer; font-size:13px; color:var(--text2); display:flex; align-items:center; gap:6px; transition:all 0.2s; font-family:var(--font-body); font-weight:700; white-space:nowrap; }
+  .inv-root .pt-header-back:hover { border-color:var(--purple); color:var(--purple); background:var(--purple-dim); }
+  .inv-root .pt-icon-btn { width:36px; height:36px; border-radius:10px; background:none; border:1.5px solid var(--border); cursor:pointer; display:flex; align-items:center; justify-content:center; color:var(--text2); transition:all 0.2s; }
+  .inv-root .pt-icon-btn:hover { border-color:var(--purple); color:var(--purple); background:var(--purple-dim); }
+  body.dark-mode .inv-root .pt-header { background:#151525; border-bottom:1px solid #2d2d4e; }
+  body.dark-mode .inv-root .pt-dark-toggle { background:#1f1f3a; border-color:#2d2d4e; color:#a89ec9; }
+  body.dark-mode .inv-root .pt-header-back { background:#1f1f3a; border-color:#2d2d4e; color:#a89ec9; }
+  body.dark-mode .inv-root .pt-icon-btn { background:#1f1f3a; border-color:#2d2d4e; color:#a89ec9; }
+
+  /* BACK BUTTON — the mobile-only row below the header. */
+  .inv-root .pt-section-back { display:flex; align-items:center; gap:8px; background:var(--white); border:1.5px solid var(--border); color:var(--text2); padding:9px 16px; border-radius:10px; font-size:13px; font-weight:700; cursor:pointer; transition:all 0.2s; width:fit-content; margin-bottom:16px; font-family:var(--font-body); }
+  .inv-root .pt-section-back:hover { background:var(--purple-dim); border-color:rgba(108,71,255,0.3); color:var(--purple); }
+
+  /* MOBILE/DESKTOP VISIBILITY HELPERS
+     Named as on the home header so the shared .pt-menu-* dropdown and the
+     ".pt-header-right-mobile > button:first-child" overlap fix in the global
+     StudentDashboard.css apply here identically. Those global rules carry
+     !important inside their media queries, so they drive the actual switching;
+     these two are the base-state fallback. */
+  .inv-root .pt-header-right-mobile { display: none; }
+  .inv-root .pt-header-right-desktop { display: flex; }
+  .inv-root .pt-section-back-mobile-only { display: none; }
+  /* ══ HEADER — COPIED FROM PointsDashboard.jsx (end) ══ */
 
   .inv-wrap { max-width:none; margin:0; padding:24px 24px 48px; }
 
@@ -383,36 +406,38 @@ const CSS = `
 
   @media (max-width:820px) {
     .inv-grid { grid-template-columns:1fr; }
-    .inv-hsub, .inv-uroll { display:none; }
     .inv-wrap { padding:16px 14px 40px; }
   }
 
-  /* ── Mobile header: give the title room ──────────────────────────
-     The back button collapses to its arrow, the user pill and Dark toggle tighten
-     up, and the title is allowed to shrink and wrap so it can never be clipped.
+  /* ── Mobile header — COPIED FROM PointsDashboard.jsx ─────────────
+     Same breakpoints and same values as the template: below 640px the desktop
+     cluster (Back + profile + Dark + Logout) is swapped for the tight mobile
+     cluster (profile + Dark), and the "← Back" row below the header takes over.
      Layout only — no handler, route or piece of state is involved. */
   @media (max-width:640px) {
-    .inv-header { padding:11px 13px; gap:10px; }
-    .inv-hleft { gap:10px; }
-    .inv-hright { gap:7px; }
-    /* Arrow only — the label is hidden, the button itself is untouched. */
-    .inv-back-text { display:none; }
-    .inv-back { flex-shrink:0; gap:0; padding:8px 11px; font-size:16px; line-height:1; }
-    .inv-htitle { font-size:15px; letter-spacing:-0.2px; line-height:1.25;
-      white-space:normal; overflow-wrap:anywhere; }
-    .inv-userpill { padding:3px 9px 3px 3px; gap:7px; }
-    .inv-avatar { width:28px; height:28px; font-size:12.5px; }
-    .inv-uname { font-size:12px; max-width:84px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-    .inv-dark { padding:6px 9px; font-size:11.5px; }
+    /* Header: the title was being squeezed between the fixed-width icon and the
+       profile + Dark cluster. Shrink both flanks and let the title wrap. */
+    .inv-root .pt-header { padding: 12px 13px; gap: 10px; }
+    .inv-root .pt-header-icon { width: 30px; height: 30px; font-size: 15px; border-radius: 9px; }
+    .inv-root .pt-header-title { font-size: 15px; line-height: 1.25; white-space: normal; overflow-wrap: anywhere; }
+    .inv-root .pt-header-sub { font-size: 11px; white-space: normal; line-height: 1.3; }
+    .inv-root .pt-header-right-desktop { display: none !important; }
+    .inv-root .pt-header-right-mobile {
+      display: flex !important;
+      align-items: center;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+    .inv-root .pt-section-back-mobile-only { display: flex !important; }
+    .inv-root .pt-section-back { margin-bottom: 14px; padding: 8px 14px; font-size: 13px; }
   }
+
+  /* Tightest phones — keep the header title readable rather than clipped. */
   @media (max-width:380px) {
-    .inv-header { padding:10px 10px; gap:8px; }
-    .inv-hleft { gap:8px; }
-    .inv-back { padding:7px 9px; }
-    .inv-htitle { font-size:14px; }
-    .inv-avatar { width:26px; height:26px; font-size:11.5px; }
-    .inv-uname { max-width:58px; }
-    .inv-dark { padding:5px 8px; font-size:11px; }
+    .inv-root .pt-header { padding: 11px 10px; gap: 8px; }
+    .inv-root .pt-header-icon { width: 27px; height: 27px; font-size: 14px; }
+    .inv-root .pt-header-title { font-size: 14px; }
+    .inv-root .pt-header-right-mobile { gap: 5px; }
   }
 
   /* Users who ask for less motion get the same layout, minus the movement.
@@ -496,6 +521,17 @@ function fmtDateTime(d) {
   return dt.toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
+// Announcement timestamps — same formatter the home dashboard uses. Distinct from
+// fmtDateTime above, which also renders a time and is used by the pass.
+function formatAnnDate(ts) {
+  if (!ts) return '';
+  try {
+    return new Date(ts).toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' });
+  } catch {
+    return String(ts);
+  }
+}
+
 function StatusPill({ status }) {
   const s = String(status || 'PENDING').toUpperCase();
   const cls = s === 'APPROVED' ? 'approved' : s === 'REJECTED' ? 'rejected' : 'pending';
@@ -507,10 +543,35 @@ export default function InventoryRequest() {
   const user = useAuthStore((s) => s.user);
   const name = user?.name || 'Student';
   const roll = user?.reg_num || '—';
-  const initials = String(name).trim().charAt(0).toUpperCase() || 'S';
+
+  // Header actions — mirrored from PointsDashboard.jsx so both headers behave the
+  // same. This page takes no props, so handleBack drops the template's `onBack`
+  // branch and keeps the rest: browser-back when there is history to go back to,
+  // otherwise a replace onto the dashboard.
+  const handleBack = () => {
+    if (window.history.length > 1) return navigate(-1);
+    return navigate('/student-dashboard', { replace: true });
+  };
+
+  const handleLogout = async () => {
+    try { await authService.logout(); }
+    finally { navigate('/auth/login', { replace: true }); }
+  };
 
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('pt-dark') === '1');
   const [tab, setTab] = useState('buying'); // 'buying' | 'returning' (returning disabled — later stage)
+
+  // ── Announcements: bell dropdown + ☰ menu (mirrors StudentDashboard) ──
+  // Notifications only. No surveys/Documents on this page, and no one-time login
+  // popup either — that stays on the home dashboard, so the bell is the only way
+  // an announcement surfaces here.
+  const [announcements, setAnnouncements] = useState([]);
+  const [bellOpen, setBellOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  const unreadCount = announcements.filter((a) => !a.read_at).length;
+  // Same badge the home header carries, minus the survey half of the sum.
+  const menuAlertCount = unreadCount;
 
   // Catalog
   const [categories, setCategories] = useState([]);
@@ -581,6 +642,32 @@ export default function InventoryRequest() {
 
   // Drop the celebration timer if the page unmounts mid-animation.
   useEffect(() => () => clearTimeout(successTimerRef.current), []);
+
+  // Fetch this student's announcements on mount. Unlike the home dashboard this
+  // deliberately does NOT auto-pop the newest unseen one — no setPopup here.
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const res = await trainingService.getStudentAnnouncements();
+        if (!alive) return;
+        setAnnouncements(res?.data?.items || []);
+      } catch {
+        /* silent — announcements are non-critical */
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  // Open an announcement from the bell → mark read (decrements unread count).
+  // Optimistic, and the POST is fire-and-forget, exactly as on the home page.
+  const openAnnouncement = async (a) => {
+    if (a.read_at) return;
+    setAnnouncements((prev) =>
+      prev.map((x) => (x.announcement_id === a.announcement_id ? { ...x, read_at: new Date().toISOString() } : x))
+    );
+    try { await trainingService.markAnnouncementRead(a.announcement_id); } catch { /* ignore */ }
+  };
 
   const loadMine = useCallback(async () => {
     setMineLoading(true);
@@ -763,7 +850,13 @@ export default function InventoryRequest() {
       const list = res?.data?.items || [];
       setObligations(list);
       const form = {};
-      for (const o of list) form[o.obligation_id] = { include: false, action: 'RETURN', qty: String(o.taken_quantity ?? '') };
+      // Pre-fill with what is STILL owed, not the original taken quantity — a
+      // reopened partial obligation would otherwise seed a figure the server
+      // now rejects.
+      for (const o of list) {
+        const rem = o.remaining ?? (Number(o.taken_quantity ?? 0) - Number(o.returned_quantity ?? 0));
+        form[o.obligation_id] = { include: false, action: 'RETURN', qty: String(rem ?? '') };
+      }
       setReturnForm(form);
       setOblLoaded(true);
     } catch {
@@ -792,7 +885,10 @@ export default function InventoryRequest() {
       if (f.action === 'RETURN') {
         const q = Number(f.qty);
         if (!(q > 0)) { setReturnErr(`Enter a return quantity for "${o.item_name}".`); return; }
-        if (q > Number(o.taken_quantity)) { setReturnErr(`Return quantity for "${o.item_name}" exceeds taken (${money(o.taken_quantity)}).`); return; }
+        // Cap at what is still owed — mirrors the server-side check, which is
+        // authoritative either way.
+        const rem = Number(o.remaining ?? (Number(o.taken_quantity) - Number(o.returned_quantity ?? 0)));
+        if (q > rem) { setReturnErr(`Return quantity for "${o.item_name}" exceeds the ${money(rem)} still to return.`); return; }
         lines.push({ obligation_id: o.obligation_id, action: 'RETURN', return_quantity: q });
       } else {
         lines.push({ obligation_id: o.obligation_id, action: 'FULLY_COMPLETED' });
@@ -817,32 +913,141 @@ export default function InventoryRequest() {
     // MotionConfig is a context provider — it renders no DOM of its own.
     <MotionConfig reducedMotion="user">
     <div className="inv-root">
-      {/* Header */}
-      <div className="inv-header">
-        <div className="inv-hleft">
-          {/* The label is a separate span purely so the mobile CSS can hide it and
-              leave the arrow — the button, its handler and its route are unchanged. */}
-          <button className="inv-back" onClick={() => navigate('/student-dashboard')} aria-label="Back to dashboard">
-            <span aria-hidden="true">←</span><span className="inv-back-text">Dashboard</span>
-          </button>
-          <div className="inv-htitle-wrap">
-            <div className="inv-htitle">Inventory Request</div>
-            <div className="inv-hsub">Request lab items & track approvals</div>
+      {/* ── Header ── (structure copied from PointsDashboard.jsx; only the icon,
+          title, subtitle and back destination are this page's own) */}
+      <div className="pt-header">
+        <div style={{display:'flex', alignItems:'center', gap:10, minWidth:0, flex:1}}>
+          <div className="pt-header-icon">🏅</div>
+          <div style={{minWidth:0}}>
+            <div className="pt-header-title">Inventory Request</div>
+            <div className="pt-header-sub">Request lab items &amp; track approvals</div>
           </div>
         </div>
-        <div className="inv-hright">
-          <div className="inv-userpill">
-            <div className="inv-avatar">{initials}</div>
-            <div>
-              <div className="inv-uname">{name}</div>
-              <div className="inv-uroll">{roll}</div>
-            </div>
-          </div>
-          <button className="inv-dark" onClick={() => setDarkMode((d) => !d)}>{darkMode ? '☀ Light' : '🌙 Dark'}</button>
+
+        {/* Desktop right */}
+        <div className="pt-header-right-desktop" style={{alignItems:'center', gap:10}}>
+          <button type="button" className="pt-header-back" onClick={handleBack}>← Back</button>
+          <UserProfileBadge user={user} variant="desktop" />
+          <button
+            type="button"
+            className="pt-icon-btn"
+            onClick={() => setBellOpen((o) => !o)}
+            aria-label="Announcements"
+            title="Announcements"
+            style={{ position: 'relative' }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+              <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+            </svg>
+            {unreadCount > 0 && <span className="pt-bell-badge">{unreadCount > 9 ? '9+' : unreadCount}</span>}
+          </button>
+          <button className="pt-dark-toggle" onClick={() => setDarkMode((d) => !d)}>
+            {darkMode ? '☀ Light' : '🌙 Dark'}
+          </button>
+          <button type="button" className="pt-icon-btn" onClick={handleLogout} title="Logout">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+              <path d="M10 7V6a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-7a2 2 0 0 1-2-2v-1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M15 12H3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M6 9l-3 3 3 3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </button>
+        </div>
+
+        {/* Mobile right — profile badge + ☰ menu, same shape as the home header.
+            The badge MUST stay the first child: the global overlap fix targets it
+            positionally via `.pt-header-right-mobile > button:first-child`. */}
+        <div className="pt-header-right-mobile">
+          <UserProfileBadge user={user} variant="mobile" />
+          <button
+            type="button"
+            className="pt-menu-btn"
+            onClick={() => setMenuOpen((o) => !o)}
+            aria-label="Menu"
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            title="Menu"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+              <path d="M3 6h18" /><path d="M3 12h18" /><path d="M3 18h18" />
+            </svg>
+            {menuAlertCount > 0 && <span className="pt-bell-badge">{menuAlertCount > 9 ? '9+' : menuAlertCount}</span>}
+          </button>
+
+          {menuOpen && (
+            <>
+              <div className="pt-bell-backdrop" onClick={() => setMenuOpen(false)} />
+              <div className="pt-menu-panel" role="menu">
+                {/* The menu closes first so the bell panel (a fixed sibling at
+                    z-index 201) isn't stacked behind this panel's backdrop. */}
+                <button
+                  type="button" role="menuitem" className="pt-menu-item"
+                  onClick={() => { setMenuOpen(false); setBellOpen(true); }}
+                >
+                  <span className="pt-menu-ico" aria-hidden="true">🔔</span>
+                  <span className="pt-menu-label">Notifications</span>
+                  {unreadCount > 0 && <span className="pt-menu-count">{unreadCount > 9 ? '9+' : unreadCount}</span>}
+                </button>
+                <button
+                  type="button" role="menuitem" className="pt-menu-item"
+                  onClick={() => { setDarkMode((d) => !d); setMenuOpen(false); }}
+                >
+                  <span className="pt-menu-ico" aria-hidden="true">🌙</span>
+                  <span className="pt-menu-label">Dark mode</span>
+                  {darkMode && <span className="pt-menu-check" aria-hidden="true">✓</span>}
+                </button>
+                <button
+                  type="button" role="menuitem" className="pt-menu-item danger"
+                  onClick={() => { setMenuOpen(false); handleLogout(); }}
+                >
+                  <span className="pt-menu-ico" aria-hidden="true">↩</span>
+                  <span className="pt-menu-label">Logout</span>
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
+      {/* ── Bell dropdown panel ── fixed sibling of the header, so the sticky
+          header cannot clip it. No surveys panel and no auto-popup here. */}
+      {bellOpen && (
+        <>
+          <div className="pt-bell-backdrop" onClick={() => setBellOpen(false)} />
+          <div className="pt-bell-panel">
+            <div className="pt-bell-panel-head">
+              <span>Announcements</span>
+              {unreadCount > 0 && <span className="pt-bell-panel-count">{unreadCount} unread</span>}
+            </div>
+            {announcements.length === 0 ? (
+              <div className="pt-bell-empty">No announcements</div>
+            ) : (
+              announcements.map((a) => (
+                <div
+                  key={a.announcement_id}
+                  className={`pt-bell-item${!a.read_at ? ' unread' : ''}`}
+                  onClick={() => openAnnouncement(a)}
+                >
+                  <div className="pt-bell-item-top">
+                    {!a.read_at && <span className="pt-bell-dot" />}
+                    <span className="pt-bell-item-title">{a.title}</span>
+                  </div>
+                  <div className="pt-bell-item-body">{a.body}</div>
+                  <div className="pt-bell-item-date">{formatAnnDate(a.created_at)}</div>
+                </div>
+              ))
+            )}
+          </div>
+        </>
+      )}
+
       <div className="inv-wrap">
+        {/* Mobile-only "← Back" row, exactly as on the Points Dashboard: below the
+            header, first child of the content wrapper. */}
+        <button type="button" className="pt-section-back pt-section-back-mobile-only" onClick={handleBack}>
+          ← Back
+        </button>
+
         {/* Tabs: Buying (active) | Returning (coming soon) */}
         <div className="inv-tabs">
           <button className={`inv-tab${tab === 'buying' ? ' active' : ''}`} onClick={() => setTab('buying')}>
@@ -1063,13 +1268,24 @@ export default function InventoryRequest() {
                   {obligations.map((o, i) => {
                     const f = returnForm[o.obligation_id] || { include: false, action: 'RETURN', qty: '' };
                     const returnable = Number(o.is_returnable) === 1;
+                    // PARTIAL RETURNS: what is still owed. The server sends
+                    // `remaining`; the fallback covers a cached older payload.
+                    const alreadyReturned = Number(o.returned_quantity ?? 0);
+                    const remaining = Number(o.remaining ?? (Number(o.taken_quantity) - alreadyReturned));
                     return (
                       <motion.div className="inv-obl" key={o.obligation_id} {...rise(i)}>
                         <label className="inv-obl-head">
                           <input type="checkbox" checked={!!f.include} onChange={(e) => setRF(o.obligation_id, { include: e.target.checked })} />
                           <span>
                             <span className="inv-obl-name">{o.item_name}</span>
-                            <span className="inv-obl-meta">{o.category} · took {money(o.taken_quantity)} {o.unit || ''}{returnable ? ' · Returnable' : ''}</span>
+                            {/* Once something has been returned the original taken
+                                figure alone is misleading, so the running total
+                                and the balance are both spelled out. */}
+                            <span className="inv-obl-meta">
+                              {o.category} · took {money(o.taken_quantity)} {o.unit || ''}
+                              {alreadyReturned > 0 ? ` · ${money(alreadyReturned)} returned · ${money(remaining)} remaining` : ''}
+                              {returnable ? ' · Returnable' : ''}
+                            </span>
                           </span>
                         </label>
                         {f.include && (
@@ -1080,7 +1296,7 @@ export default function InventoryRequest() {
                             </div>
                             {f.action === 'RETURN' && (
                               <div className="inv-row2" style={{ marginTop: 10 }}>
-                                <input className="inv-input" type="number" min="0" step="any" value={f.qty} onChange={(e) => setRF(o.obligation_id, { qty: e.target.value })} placeholder={`Max ${money(o.taken_quantity)}`} />
+                                <input className="inv-input" type="number" min="0" step="any" max={remaining} value={f.qty} onChange={(e) => setRF(o.obligation_id, { qty: e.target.value })} placeholder={`Max ${money(remaining)}`} />
                                 <div className="inv-unit-chip">{o.unit || '—'}</div>
                               </div>
                             )}

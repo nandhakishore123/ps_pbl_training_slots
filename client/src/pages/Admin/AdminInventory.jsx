@@ -3,7 +3,7 @@
 // has full power: approve/reject any buying (both purposes) or return, and manage stock.
 // Reuses the shared inventory endpoints (role 3 is permitted / bypasses purpose routing).
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { useStore } from '../../store/useStore';
 import { inventoryService } from '../../services/features/inventoryService';
@@ -192,6 +192,54 @@ function StatusPill({ status }) {
   const cls = s === 'APPROVED' ? 'approved' : s === 'REJECTED' ? 'rejected' : 'pending';
   return <span className={`ad-pill ${cls}`}>{s}</span>;
 }
+// ── RETURNABLE ITEMS — REMOVABLE ──
+// Maps the server's status_label onto the pill variants this page already
+// defines. Amber = still with the holder, purple = awaiting a decision,
+// green = came back, grey = discharged without coming back.
+const RETURNABLE_PILL = {
+  'Out': 'pending',
+  'Partly returned': 'pending',
+  'Return pending': 'type',
+  'Returned': 'approved',
+  'Consumed': 'inactive',
+};
+
+// Reminder email. The feed is flat (one row per item), so a person's outstanding
+// rows are gathered first and rendered as one list.
+const REMINDER_SUBJECT = 'Return of Inventory Items — Reminder';
+// A Gmail compose URL carries the whole body as a query param. Browsers and
+// Google both cap URL length, so a very long list is truncated rather than
+// silently mangled — the count of what was dropped is spelled out.
+const REMINDER_MAX_ITEMS = 20;
+
+function buildReminderBody(personName, rows) {
+  const shown = rows.slice(0, REMINDER_MAX_ITEMS);
+  const lines = shown.map(
+    (r) => `- ${r.item_name || 'Item'}: ${money(r.quantity)} ${r.unit || ''}`.trimEnd()
+      + ` (taken on ${fmtDateTime(r.date)})`
+  );
+  if (rows.length > shown.length) lines.push(`…and ${rows.length - shown.length} more item(s).`);
+  return [
+    `Dear ${personName || 'Student'},`,
+    '',
+    'Our records show that the following inventory item(s) are still to be returned:',
+    '',
+    ...lines,
+    '',
+    'Kindly return these items at the inventory at your available time.',
+    '',
+    'Thank you.',
+  ].join('\n');
+}
+
+// The signed-in Gmail account becomes the sender — nothing to pass for "from".
+const gmailComposeUrl = (to, subject, body) =>
+  'https://mail.google.com/mail/?view=cm&fs=1'
+  + `&to=${encodeURIComponent(to || '')}`
+  + `&su=${encodeURIComponent(subject)}`
+  + `&body=${encodeURIComponent(body)}`;
+// ── END RETURNABLE ITEMS ──
+
 const RENDER_CAP = 250;
 
 export default function AdminInventory() {
@@ -201,7 +249,20 @@ export default function AdminInventory() {
   const name = user?.name || 'Admin';
 
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('pt-dark') === '1');
-  const [tab, setTab] = useState('overview'); // overview | buying | returns | stock
+  // Active tab lives in the URL (?tab=…) rather than in component state, so a
+  // refresh — or a shared/bookmarked link — lands on the same tab instead of
+  // snapping back to Overview. Same idiom InventoryInchargeDashboard.jsx and
+  // PointsDashboard.jsx use. An unknown or absent value falls back to
+  // 'overview', so bare and older links both still work. The lazy-load effect
+  // below keys off `tab`, so it fires on mount with the restored value and that
+  // tab's data loads as usual.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const TAB_KEYS = ['overview', 'buying', 'returns', 'stock', 'settings', 'labs', 'labpurchases', 'returnables'];
+  const tabParam = searchParams.get('tab');
+  const tab = TAB_KEYS.includes(tabParam) ? tabParam : 'overview';
+  const setTab = useCallback((val) => {
+    setSearchParams((prev) => { const p = new URLSearchParams(prev); p.set('tab', val); return p; });
+  }, [setSearchParams]);
 
   const [overview, setOverview] = useState(null);
   const [ovLoading, setOvLoading] = useState(true);
@@ -222,6 +283,15 @@ export default function AdminInventory() {
   const [labPurchases, setLabPurchases] = useState([]);
   const [labPurchasesLoading, setLabPurchasesLoading] = useState(false);
   const [labPurchasesLoaded, setLabPurchasesLoaded] = useState(false);
+
+  // ── RETURNABLE ITEMS (read-only feed) — REMOVABLE ──
+  const [returnables, setReturnables] = useState([]);
+  const [returnablesLoading, setReturnablesLoading] = useState(false);
+  const [returnablesLoaded, setReturnablesLoaded] = useState(false);
+  const [returnFilter, setReturnFilter] = useState('all');   // 'all' | 'outstanding'
+  // Reminder popup: the person whose outstanding items are being shown, or null.
+  const [emailPerson, setEmailPerson] = useState(null);
+  const [emailCopied, setEmailCopied] = useState(false);
   const [stockError, setStockError] = useState('');
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
@@ -442,6 +512,24 @@ export default function AdminInventory() {
   }, []);
   // ── END LAB PURCHASES ──
 
+  // ── RETURNABLE ITEMS — read-only view, REMOVABLE ──
+  // Merged student + lab-member returnable takings. The server already computes
+  // status_label and the outstanding flag per row, so nothing is derived here.
+  const loadReturnables = useCallback(async () => {
+    setReturnablesLoading(true);
+    try {
+      const res = await inventoryService.getReturnableFeed();
+      setReturnables(res?.data?.items || []);
+      setReturnablesLoaded(true);
+    } catch {
+      setReturnables([]);
+      setReturnablesLoaded(true);
+    } finally {
+      setReturnablesLoading(false);
+    }
+  }, []);
+  // ── END RETURNABLE ITEMS ──
+
   useEffect(() => { loadOverview(); }, [loadOverview]);
 
   useEffect(() => {
@@ -456,6 +544,7 @@ export default function AdminInventory() {
     if (tab === 'settings' && !approverLoaded) loadApprovers();
     if (tab === 'labs' && !labsLoaded) loadLabs();   // Stage 4 labs — removable
     if (tab === 'labpurchases' && !labPurchasesLoaded) loadLabPurchases();   // removable
+    if (tab === 'returnables' && !returnablesLoaded) loadReturnables();      // removable
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
 
@@ -671,6 +760,8 @@ export default function AdminInventory() {
           <button className={`ad-tab${tab === 'labs' ? ' active' : ''}`} onClick={() => setTab('labs')}>Labs</button>
           {/* LAB PURCHASES — removable */}
           <button className={`ad-tab${tab === 'labpurchases' ? ' active' : ''}`} onClick={() => setTab('labpurchases')}>Lab Purchases</button>
+          {/* RETURNABLE ITEMS — removable */}
+          <button className={`ad-tab${tab === 'returnables' ? ' active' : ''}`} onClick={() => setTab('returnables')}>Returnable Items</button>
         </div>
 
         {/* OVERVIEW */}
@@ -894,7 +985,222 @@ export default function AdminInventory() {
           </>
         )}
         {/* ══ LAB PURCHASES — REMOVABLE (end) ══ */}
+
+        {/* ══ RETURNABLE ITEMS — REMOVABLE (start) ══ */}
+        {tab === 'returnables' && (() => {
+          // Filter is presentation-only — the full feed stays in state, so
+          // toggling never refetches. `outstanding` is computed server-side.
+          const shown = returnFilter === 'outstanding' ? returnables.filter((r) => r.outstanding) : returnables;
+          const outstandingCount = returnables.filter((r) => r.outstanding).length;
+
+          // A person's outstanding rows, keyed by source+user_id. Built from the
+          // FULL feed, not `shown`, so the reminder always lists everything they
+          // still owe regardless of which filter is active. person_name /
+          // person_ref are display strings (and person_ref means different things
+          // per source), so person_user_id is the only safe key.
+          const outstandingByPerson = new Map();
+          for (const r of returnables) {
+            if (!r.outstanding || r.person_user_id == null) continue;
+            const key = `${r.source}-${r.person_user_id}`;
+            let p = outstandingByPerson.get(key);
+            if (!p) {
+              p = { key, name: r.person_name, ref: r.person_ref, email: r.person_email, source: r.source, rows: [] };
+              outstandingByPerson.set(key, p);
+            }
+            p.rows.push(r);
+          }
+          // The feed is flat, so one person can span several cards. The icon is
+          // drawn on their FIRST card only — this set tracks who has had theirs.
+          const iconDrawn = new Set();
+          return (
+            <>
+              <div className="ad-note">
+                <span>ⓘ</span> Read-only — returnable items taken by students and interns.
+              </div>
+
+              {/* Filter: All | Outstanding. Inline-styled rather than adding CSS —
+                  two pills only, and they follow the page's theme variables. */}
+              <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+                {[
+                  { key: 'all', label: `All (${returnables.length})` },
+                  { key: 'outstanding', label: `Outstanding (${outstandingCount})` },
+                ].map((f) => {
+                  const on = returnFilter === f.key;
+                  return (
+                    <button
+                      key={f.key}
+                      type="button"
+                      onClick={() => setReturnFilter(f.key)}
+                      style={{
+                        padding: '6px 14px', borderRadius: 20, cursor: 'pointer',
+                        fontSize: 12, fontWeight: 800, fontFamily: 'inherit',
+                        border: `1px solid ${on ? 'var(--ad-purple)' : 'var(--ad-border)'}`,
+                        background: on ? 'var(--ad-purple-dim)' : 'transparent',
+                        color: on ? 'var(--ad-purple)' : 'var(--ad-text2)',
+                      }}
+                    >
+                      {f.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {returnablesLoading ? (
+                <div className="ad-spinner" />
+              ) : shown.length === 0 ? (
+                <div className="ad-empty">
+                  {returnables.length === 0 ? 'No returnable items yet.' : 'Nothing outstanding — everything has been returned.'}
+                </div>
+              ) : (
+                <>
+                  <div className="ad-count">
+                    {shown.length} item{shown.length !== 1 ? 's' : ''}
+                    {returnFilter === 'outstanding' ? ' still out' : ' (students + interns)'}
+                  </div>
+                  {shown.map((r) => {
+                    // Icon appears once per person, on their first card, and only
+                    // if they actually still owe something — nobody who has
+                    // returned everything gets a reminder button.
+                    const pKey = r.person_user_id != null ? `${r.source}-${r.person_user_id}` : null;
+                    const person = pKey ? outstandingByPerson.get(pKey) : null;
+                    const showIcon = !!person && !iconDrawn.has(pKey);
+                    if (showIcon) iconDrawn.add(pKey);
+                    return (
+                    // id is only unique WITHIN a source (obligation_id vs
+                    // purchase_id), so the key has to carry the source too.
+                    <div className="ad-req" key={`${r.source}-${r.id}`}>
+                      <div className="ad-req-top">
+                        <div style={{ minWidth: 0 }}>
+                          <div className="ad-req-name">{r.person_name || '—'}
+                            <span className="ad-req-reg">{r.person_ref || '—'}</span>
+                          </div>
+                          <div className="ad-req-meta">
+                            {fmtDateTime(r.date)}
+                            {r.lab_name ? ` · ${r.lab_name}` : ''} ·{' '}
+                            <span className="ad-pill type" style={{ padding: '1px 8px' }}>
+                              {r.source === 'STUDENT' ? 'Student' : 'Intern'}
+                            </span>
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                          <span className={`ad-pill ${RETURNABLE_PILL[r.status_label] || 'pending'}`}>
+                            {r.status_label}
+                          </span>
+                          {showIcon && (
+                            <button
+                              type="button"
+                              onClick={() => { setEmailCopied(false); setEmailPerson(person); }}
+                              disabled={!person.email}
+                              title={person.email
+                                ? `Send a return reminder to ${person.name || 'this person'}`
+                                : 'No email on file'}
+                              aria-label="Send return reminder"
+                              style={{
+                                width: 30, height: 30, borderRadius: 8, flexShrink: 0,
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                border: '1.5px solid var(--ad-border)', background: 'transparent',
+                                color: person.email ? 'var(--ad-purple)' : 'var(--ad-text3)',
+                                cursor: person.email ? 'pointer' : 'not-allowed',
+                                opacity: person.email ? 1 : 0.5, fontFamily: 'inherit',
+                              }}
+                            >
+                              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                <rect x="2" y="4" width="20" height="16" rx="2" /><path d="m22 7-10 6L2 7" />
+                              </svg>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      <div className="ad-req-items">
+                        {r.item_name || '—'} ({money(r.quantity)} {r.unit || ''})
+                      </div>
+                    </div>
+                    );
+                  })}
+                </>
+              )}
+            </>
+          );
+        })()}
+        {/* ══ RETURNABLE ITEMS — REMOVABLE (end) ══ */}
       </div>
+
+      {/* ══ RETURNABLE ITEMS: reminder popup — REMOVABLE (start) ══ */}
+      {emailPerson && (() => {
+        const body = buildReminderBody(emailPerson.name, emailPerson.rows);
+        return (
+          <div className="ad-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) setEmailPerson(null); }}>
+            <div className="ad-modal">
+              <div className="ad-modal-hd">
+                <div className="ad-modal-title">Return reminder</div>
+                <button className="ad-modal-x" onClick={() => setEmailPerson(null)}>×</button>
+              </div>
+              <div className="ad-modal-bd">
+                <div className="ad-req-name" style={{ marginBottom: 2 }}>
+                  {emailPerson.name || '—'}
+                  <span className="ad-req-reg">{emailPerson.ref || '—'}</span>
+                </div>
+                <div className="ad-req-meta" style={{ marginBottom: 14 }}>
+                  {emailPerson.email || 'No email on file'} ·{' '}
+                  <span className="ad-pill type" style={{ padding: '1px 8px' }}>
+                    {emailPerson.source === 'STUDENT' ? 'Student' : 'Intern'}
+                  </span>
+                </div>
+
+                <div className="ad-count">
+                  {emailPerson.rows.length} outstanding item{emailPerson.rows.length !== 1 ? 's' : ''}
+                </div>
+                <div style={{ maxHeight: 240, overflowY: 'auto', marginBottom: 16 }}>
+                  {emailPerson.rows.map((r) => (
+                    <div
+                      key={`${r.source}-${r.id}`}
+                      style={{
+                        display: 'flex', justifyContent: 'space-between', gap: 12,
+                        padding: '9px 0', borderBottom: '1px solid var(--ad-border)', fontSize: 13,
+                      }}
+                    >
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontWeight: 800 }}>{r.item_name || '—'}</div>
+                        <div className="ad-req-meta">{fmtDateTime(r.date)}</div>
+                      </div>
+                      <div style={{ fontWeight: 800, whiteSpace: 'nowrap', color: 'var(--ad-purple)' }}>
+                        {money(r.quantity)} {r.unit || ''}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                  <button
+                    className="ad-btn ad-btn-primary"
+                    style={{ flex: 1, minWidth: 170 }}
+                    disabled={!emailPerson.email}
+                    title={emailPerson.email ? '' : 'No email on file'}
+                    onClick={() => window.open(gmailComposeUrl(emailPerson.email, REMINDER_SUBJECT, body), '_blank', 'noopener,noreferrer')}
+                  >
+                    Send Gmail reminder
+                  </button>
+                  <button
+                    className="ad-btn ad-btn-outline"
+                    onClick={async () => {
+                      // Clipboard needs a secure context; fall back silently to
+                      // leaving the button unconfirmed rather than throwing.
+                      try {
+                        await navigator.clipboard.writeText(body);
+                        setEmailCopied(true);
+                        setTimeout(() => setEmailCopied(false), 2000);
+                      } catch { /* ignore — user can still read the list above */ }
+                    }}
+                  >
+                    {emailCopied ? '✓ Copied' : 'Copy details'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+      {/* ══ RETURNABLE ITEMS: reminder popup — REMOVABLE (end) ══ */}
 
       {/* Reject modal (buying or return) */}
       {rejectModal && (

@@ -13,35 +13,55 @@
   .ic-header { background:var(--ic-white); border-bottom:1px solid var(--ic-border); padding:14px 24px;
     display:flex; align-items:center; justify-content:space-between; gap:12px; position:sticky; top:0; z-index:50;
     box-shadow:0 1px 10px rgba(26,16,64,0.05); }
-  .ic-brand { display:flex; align-items:center; gap:12px; min-width:0; }
-  .ic-logo { width:40px; height:40px; border-radius:11px; background:linear-gradient(135deg,#6c47ff,#4b2fd6);
+  /* HEADER ALIGNMENT: the brand takes the slack (flex:1) so the gap between the
+     two sides is stable rather than drifting with the title/username length,
+     and the action cluster never shrinks — the title, which can ellipsise, gives
+     way instead. Everything on the row is held to ONE control height (38px)
+     below; previously the row mixed 44/40/38/~31px and nothing shared a
+     baseline, which is what read as "uneven". */
+  .ic-brand { display:flex; align-items:center; gap:12px; min-width:0; flex:1; }
+  .ic-hactions { display:flex; align-items:center; gap:10px; flex-shrink:0; }
+  .ic-logo { width:38px; height:38px; border-radius:11px; background:linear-gradient(135deg,#6c47ff,#4b2fd6);
     display:flex; align-items:center; justify-content:center; flex-shrink:0; box-shadow:0 4px 12px var(--ic-glow); }
   /* BIT LOGO (removable) — medium, sits between the app icon and the title.
      A divider keeps the two marks visually separate. */
-  .ic-bitlogo { height:44px; width:auto; max-width:150px; object-fit:contain; flex-shrink:0;
+  .ic-bitlogo { height:38px; width:auto; max-width:150px; object-fit:contain; flex-shrink:0;
     padding-left:12px; border-left:1px solid var(--ic-border); }
-  .ic-title { font-size:16px; font-weight:900; letter-spacing:0.2px; display:flex; align-items:center; gap:9px; }
+  /* The title is the only element allowed to give way when the row is tight;
+     min-width:0 lets the ellipsis actually engage inside the flex parent. */
+  .ic-title { font-size:16px; font-weight:900; letter-spacing:0.2px; display:flex; align-items:center; gap:9px;
+    min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .ic-badge { font-size:9.5px; font-weight:800; letter-spacing:0.6px; text-transform:uppercase; padding:3px 9px;
     border-radius:20px; background:var(--ic-purple-dim); color:var(--ic-purple); border:1px solid rgba(108,71,255,0.3); }
   .ic-sub { font-size:11.5px; color:var(--ic-text3); font-weight:600; margin-top:1px; }
-  .ic-userpill { display:flex; align-items:center; gap:10px; padding:4px 14px 4px 4px; background:var(--ic-white);
-    border:1.5px solid var(--ic-border); border-radius:50px; }
-  .ic-avatar { width:34px; height:34px; border-radius:50%; background:linear-gradient(135deg,#6c47ff,#4b2fd6);
-    display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:900; color:#fff; flex-shrink:0; }
-  .ic-uname { font-size:13px; font-weight:800; }
+  /* All three controls are box-sizing:border-box (set globally), so an explicit
+     height:38px lands them on one baseline regardless of padding/border. */
+  .ic-userpill { display:flex; align-items:center; gap:9px; height:38px; padding:0 14px 0 4px; background:var(--ic-white);
+    border:1.5px solid var(--ic-border); border-radius:50px; flex-shrink:0; }
+  .ic-avatar { width:30px; height:30px; border-radius:50%; background:linear-gradient(135deg,#6c47ff,#4b2fd6);
+    display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:900; color:#fff; flex-shrink:0; }
+  .ic-uname { font-size:13px; font-weight:800; white-space:nowrap; }
   .ic-iconbtn { width:38px; height:38px; border-radius:10px; background:var(--ic-white); border:1.5px solid var(--ic-border);
-    color:var(--ic-text2); cursor:pointer; display:flex; align-items:center; justify-content:center; }
+    color:var(--ic-text2); cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
   .ic-iconbtn:hover { border-color:var(--ic-purple); color:var(--ic-purple); background:var(--ic-purple-dim); }
-  .ic-dark { background:var(--ic-white); border:1.5px solid var(--ic-border); border-radius:20px; padding:7px 12px;
+  .ic-dark { display:inline-flex; align-items:center; height:38px; background:var(--ic-white);
+    border:1.5px solid var(--ic-border); border-radius:20px; padding:0 14px; flex-shrink:0;
     cursor:pointer; font-size:12.5px; color:var(--ic-text2); font-weight:600; font-family:inherit; white-space:nowrap; }
   .ic-dark:hover { border-color:var(--ic-purple); color:var(--ic-purple); }
 
   .ic-wrap { max-width:none; margin:0; padding:22px 24px 48px; }
 
-  .ic-tabs { display:flex; gap:8px; background:var(--ic-white); border:1px solid var(--ic-border); border-radius:14px;
-    padding:6px; margin-bottom:20px; max-width:440px; }
-  .ic-tab { flex:1; padding:11px 14px; border-radius:9px; border:none; background:transparent; font-size:13.5px;
+  /* TAB BAR: max-width was 440px, set when this page had THREE tabs. With five
+     that left ~79px per tab for labels up to 19 characters, so they crowded and
+     wrapped. The bar now spans its container and each tab sizes to its own
+     label (flex:1 1 auto + nowrap) rather than being forced to an equal share,
+     which keeps the spacing even without squeezing the longest one. */
+  .ic-tabs { display:flex; flex-wrap:wrap; gap:6px; background:var(--ic-white); border:1px solid var(--ic-border);
+    border-radius:14px; padding:6px; margin-bottom:20px; }
+  .ic-tab { flex:1 1 auto; min-width:0; white-space:nowrap; text-align:center;
+    padding:11px 16px; border-radius:9px; border:none; background:transparent; font-size:13.5px;
     font-weight:800; color:var(--ic-text2); cursor:pointer; font-family:inherit; transition:all .18s; }
+  .ic-tab:hover:not(.active) { background:var(--ic-purple-dim); color:var(--ic-purple); }
   .ic-tab.active { background:linear-gradient(135deg,#6c47ff,#4b2fd6); color:#fff; box-shadow:0 4px 14px var(--ic-glow); }
 
   .ic-toolbar { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:16px; }
@@ -97,6 +117,10 @@
   .ic-pill.approved { background:rgba(16,185,129,0.12); color:#047857; border:1px solid rgba(16,185,129,0.4); }
   .ic-pill.rejected { background:rgba(239,68,68,0.12); color:#b91c1c; border:1px solid rgba(239,68,68,0.4); }
   .ic-pill.type { background:var(--ic-purple-dim); color:var(--ic-purple); border:1px solid rgba(108,71,255,0.3); }
+  /* RETURNABLE ITEMS (removable): grey variant for the "Consumed" status — an
+     obligation discharged without the item coming back. Copied verbatim from
+     .ad-pill.inactive on the admin page so both tabs read identically. */
+  .ic-pill.inactive { background:rgba(156,163,175,0.16); color:#6b7280; border:1px solid rgba(156,163,175,0.45); }
 
   /* Modal */
   .ic-overlay { position:fixed; inset:0; background:rgba(15,10,40,0.55); backdrop-filter:blur(5px);
@@ -124,6 +148,18 @@
     .ic-sub, .ic-uname { display:none; }
     .ic-bitlogo { height:32px; padding-left:8px; }   /* BIT LOGO (removable) */
     .ic-wrap { padding:16px 14px 40px; }
+    /* Header + tabs on narrow screens: shrink the controls together so they keep
+       sharing one baseline, and let the five tabs wrap onto two rows instead of
+       crushing their labels. */
+    .ic-header { padding:12px 14px; gap:10px; }
+    .ic-hactions { gap:7px; }
+    .ic-logo, .ic-iconbtn { width:32px; height:32px; }
+    .ic-userpill { height:32px; padding:0 4px 0 3px; gap:0; }
+    .ic-avatar { width:26px; height:26px; font-size:12px; }
+    .ic-dark { height:32px; padding:0 10px; font-size:11.5px; }
+    .ic-title { font-size:14px; }
+    .ic-tabs { gap:5px; padding:5px; }
+    .ic-tab { padding:9px 12px; font-size:12px; }
   }
 
   /* ══ RETURNABLE ITEMS (reference popup) — REMOVABLE BLOCK (start) ══

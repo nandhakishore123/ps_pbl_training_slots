@@ -185,6 +185,14 @@ export const inventoryService = {
     return api.get('/inventory/lab-purchases-feed');
   },
 
+  // ── RETURNABLE FEED — REMOVABLE ──
+  // Admin + incharge only. One flat row per returnable item taken, merging
+  // student obligations and lab-member purchases; each row carries its own
+  // status_label + outstanding flag, so no client-side status derivation.
+  getReturnableFeed() {
+    return api.get('/inventory/returnable-feed');
+  },
+
   // Consumption report (admin + incharge): approved student buys + intern lab
   // purchases in a date range. Dates are plain 'YYYY-MM-DD' strings.
   getConsumptionReport(from, to) {

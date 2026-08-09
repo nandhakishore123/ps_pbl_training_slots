@@ -459,7 +459,13 @@ export const createReturnRequest = async (userId, lines) => {
     }
     if (l.action === 'RETURN') {
       if (!(l.return_quantity > 0)) throw badRequest(`Enter a return quantity for "${o.item_name}"`);
-      if (l.return_quantity > Number(o.taken_quantity)) throw badRequest(`Return quantity for "${o.item_name}" exceeds the taken quantity`);
+      // PARTIAL RETURNS: cap at what is STILL owed, not at the original taken
+      // quantity. After returning 2 of 5 the obligation reopens with
+      // returned_quantity = 2, so a further return may be at most 3.
+      const remaining = Number(o.remaining ?? (Number(o.taken_quantity) - Number(o.returned_quantity ?? 0)));
+      if (l.return_quantity > remaining) {
+        throw badRequest(`Return quantity for "${o.item_name}" exceeds the ${remaining} still to return`);
+      }
     }
     return {
       obligation_id: o.obligation_id,
@@ -746,3 +752,9 @@ export const submitLabReturn = async (userId, userName, { purchase_id, quantity 
   });
 };
 // ═══ INTERN LAB RETURNS — REMOVABLE BLOCK (end) ═══
+
+// ═══ RETURNABLE FEED — REMOVABLE BLOCK (start) ═══
+// Read-only pass-through, exactly like listLabPurchasesReadOnly: the whole feed
+// is one query pair with no arguments to validate and no caller-supplied scope.
+export const listReturnableFeedReadOnly = async () => model.listReturnableFeed();
+// ═══ RETURNABLE FEED — REMOVABLE BLOCK (end) ═══
