@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { GoogleLogin } from '@react-oauth/google';
 import { authService } from '../../services/features/authService';
+import { consumeSessionExpired } from '../../services/core/session';
 import { useStore } from '../../store/useStore';
 import { useAuthStore } from '../../store/authStore.jsx';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -113,6 +114,12 @@ export default function PCDPLogin() {
   const [btnHover, setBtnHover] = useState(false);
   const passwordRef = useRef(null);
   const usernameRef = useRef(null);
+
+  // SESSION EXPIRY NOTICE — read once on mount (the lazy initialiser runs a
+  // single time, so React 18's double-invoked effects can't consume the flag
+  // and then lose it). Shown only when a real session ran out: a first visit
+  // and a deliberate Logout both leave the flag unset.
+  const [sessionExpired, setSessionExpired] = useState(() => consumeSessionExpired());
 
   const handleKeyUp = (e) => {
     setCapsLock(e.getModifierState && e.getModifierState('CapsLock'));
@@ -289,6 +296,24 @@ export default function PCDPLogin() {
 
           <h1 style={styles.formTitle}>Welcome back</h1>
           <p style={styles.formSubtitle}>Sign in to your account to continue</p>
+
+          {/* SESSION EXPIRY NOTICE — dismissible, shown once per expiry */}
+          {sessionExpired && (
+            <div style={styles.expiredNotice} role="status">
+              <span style={styles.expiredIcon} aria-hidden="true">⏱</span>
+              <span style={styles.expiredText}>
+                Your session expired. Please sign in again.
+              </span>
+              <button
+                type="button"
+                onClick={() => setSessionExpired(false)}
+                style={styles.expiredClose}
+                aria-label="Dismiss"
+              >
+                ×
+              </button>
+            </div>
+          )}
 
           {/* Username */}
           <div style={styles.field}>
@@ -805,6 +830,44 @@ const styles = {
     fontSize: '14px',
     color: '#64748b',
     marginBottom: '2rem',
+  },
+
+  /* SESSION EXPIRY NOTICE — amber, informational rather than an error: nothing
+     went wrong, the session simply ran its course. Matches the page's rounded
+     card language. */
+  expiredNotice: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+    background: '#fffbeb',
+    border: '1px solid #fcd34d',
+    borderRadius: '12px',
+    padding: '11px 12px 11px 14px',
+    marginTop: '-1rem',
+    marginBottom: '1.5rem',
+  },
+  expiredIcon: {
+    fontSize: '15px',
+    lineHeight: 1,
+    flexShrink: 0,
+  },
+  expiredText: {
+    flex: 1,
+    fontSize: '13px',
+    fontWeight: 500,
+    color: '#92400e',
+    lineHeight: 1.45,
+  },
+  expiredClose: {
+    background: 'none',
+    border: 'none',
+    color: '#b45309',
+    fontSize: '18px',
+    lineHeight: 1,
+    cursor: 'pointer',
+    padding: '0 2px',
+    fontFamily: 'inherit',
+    flexShrink: 0,
   },
   field: {
     marginBottom: '1.1rem',

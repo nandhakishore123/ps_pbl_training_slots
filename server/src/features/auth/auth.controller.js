@@ -1,6 +1,6 @@
 import { badRequestResponse, successResponse, unauthorizedResponse, internalServerErrorResponse } from '../../utils/response.js';
 import { verifyGoogleToken, refreshAccessToken, logout } from './auth.services.js';
-import { verifyRefreshToken } from '../../utils/jwt.js';
+import { verifyRefreshToken, getRefreshTokenMaxAgeMs } from '../../utils/jwt.js';
 import { getUserById } from './auth.model.js';
 import { getRoleMap } from './auth.model.js';
 
@@ -13,9 +13,13 @@ export const googleLoginHandler = async (req, res) => {
         const result = await verifyGoogleToken(credential);
         res.cookie('refreshToken', result.refreshToken, {
             httpOnly: true,
-            secure: process.env.NODE_ENV === 'production', 
+            secure: process.env.NODE_ENV === 'production',
             sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-            maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+            // SESSION LIFETIME: derived from REFRESH_TOKEN_EXPIRY (server/.env),
+            // the same value the refresh token itself is signed with. Was a
+            // hardcoded 7 days, which could silently disagree with the token.
+            // Change the session length in .env only — never here.
+            maxAge: getRefreshTokenMaxAgeMs()
         });
         
         return successResponse(res, result.message, {

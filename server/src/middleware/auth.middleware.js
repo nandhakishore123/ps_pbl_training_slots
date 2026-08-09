@@ -1,4 +1,4 @@
-import { verifyAccessToken } from '../utils/jwt.js';
+import { verifyAccessToken, getRefreshTokenMaxAgeMs } from '../utils/jwt.js';
 import { unauthorizedResponse } from '../utils/response.js';
 
 export const authMiddleware = async (req, res, next) => {
@@ -29,6 +29,9 @@ export const setRefreshTokenCookie = (res, refreshToken) => {
         httpOnly: true,
         secure: true, 
         sameSite: 'none',
-        maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+        // Same single source of truth as the login handler (server/.env
+        // REFRESH_TOKEN_EXPIRY). This helper is currently unused, but a
+        // hardcoded 7 days here would be a trap for whoever adopts it.
+        maxAge: getRefreshTokenMaxAgeMs()
     });
 };

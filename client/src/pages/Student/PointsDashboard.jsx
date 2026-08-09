@@ -9,8 +9,19 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { authService } from '../../services/features/authService'
 import { pointsService } from '../../services/features/pointsService'
+import { trainingService } from '../../services/features/trainingService'
 import { useAuthStore } from '../../store/authStore'
 import UserProfileBadge from '../../components/UserProfileBadge'
+
+// Announcement timestamps — same formatter the home dashboard uses.
+function formatAnnDate(ts) {
+  if (!ts) return ''
+  try {
+    return new Date(ts).toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' })
+  } catch {
+    return String(ts)
+  }
+}
 
 function UserIdentity({ user }) {
   if (!user) return null
@@ -249,8 +260,11 @@ const CSS = `
   .pt-col-desktop-only { /* visible by default */ }
   .pt-col-mobile-year { display: none; font-size:11px; color:var(--text2); font-weight:600; }
   .pt-details-mobile-inline { display: none !important; }
-  .pt-hdr-right-mobile { display: none; }
-  .pt-hdr-right-desktop { display: flex; }
+  /* Renamed to the home header's class names so the shared .pt-menu-* dropdown
+     and the ".pt-header-right-mobile > button:first-child" overlap fix in the
+     global StudentDashboard.css apply here identically. */
+  .pt-header-right-mobile { display: none; }
+  .pt-header-right-desktop { display: flex; }
   .pt-section-back-mobile-only { display: none; }
 
   /* ── RESPONSIVE ── */
@@ -261,14 +275,13 @@ const CSS = `
     .pt-header-icon { width: 30px; height: 30px; font-size: 15px; border-radius: 9px; }
     .pt-header-title { font-size: 15px; line-height: 1.25; white-space: normal; overflow-wrap: anywhere; }
     .pt-header-sub { font-size: 11px; white-space: normal; line-height: 1.3; }
-    .pt-hdr-right-desktop { display: none !important; }
-    .pt-hdr-right-mobile {
+    .pt-header-right-desktop { display: none !important; }
+    .pt-header-right-mobile {
       display: flex !important;
       align-items: center;
       gap: 6px;
       flex-shrink: 0;
     }
-    .pt-hdr-right-mobile .pt-dark-toggle { padding: 5px 9px; font-size: 11.5px; }
     .pt-content { padding: 14px 14px 24px; }
     .pt-section-back-mobile-only { display: flex !important; }
     .pt-section-back { margin-bottom: 14px; padding: 8px 14px; font-size: 13px; }
@@ -329,8 +342,7 @@ const CSS = `
     .pt-header { padding: 11px 10px; gap: 8px; }
     .pt-header-icon { width: 27px; height: 27px; font-size: 14px; }
     .pt-header-title { font-size: 14px; }
-    .pt-hdr-right-mobile { gap: 5px; }
-    .pt-hdr-right-mobile .pt-dark-toggle { padding: 5px 8px; font-size: 11px; }
+    .pt-header-right-mobile { gap: 5px; }
   }
 `
 
@@ -964,16 +976,33 @@ function ActivityPoints({ onOpenGroup }) {
 // ── Main PointsDashboard ──────────────────────────────────────
 export default function PointsDashboard({ onBack }) {
   const navigate = useNavigate()
-  // Main tab reflected in the URL (?ptab=rp|ap) so refresh restores it.
-  const [searchParams, setSearchParams] = useSearchParams()
-  const tab = searchParams.get('ptab') === 'ap' ? 'ap' : 'rp'
-  const setTab = useCallback((val) => {
-    setSearchParams((prev) => { const p = new URLSearchParams(prev); p.set('ptab', val); return p })
-  }, [setSearchParams])
+  // ══ ACTIVITY POINTS TAB — REMOVED, restore here if needed ══
+  // The page renders Reward Points directly now, so the main tab state and its
+  // ?ptab= URL sync have no reader left. Restore this block together with the
+  // .pt-tabs markup further down to bring the toggle back.
+  //   // Main tab reflected in the URL (?ptab=rp|ap) so refresh restores it.
+  //   const [searchParams, setSearchParams] = useSearchParams()
+  //   const tab = searchParams.get('ptab') === 'ap' ? 'ap' : 'rp'
+  //   const setTab = useCallback((val) => {
+  //     setSearchParams((prev) => { const p = new URLSearchParams(prev); p.set('ptab', val); return p })
+  //   }, [setSearchParams])
+  // ══ ACTIVITY POINTS TAB — REMOVED (end) ══
   const [darkMode,     setDarkMode]     = useState(()=>localStorage.getItem('pt-dark')==='1')
   const { user } = useAuthStore()
   const [groupOpen,    setGroupOpen]    = useState(false)
   const [selectedGroup,setSelectedGroup]= useState(null)
+
+  // ── Announcements: bell dropdown + ☰ menu (mirrors StudentDashboard) ──
+  // Notifications only. No surveys/Documents on this page, and no one-time login
+  // popup either — that stays on the home dashboard, so the bell is the only way
+  // an announcement surfaces here.
+  const [announcements, setAnnouncements] = useState([])
+  const [bellOpen, setBellOpen] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
+
+  const unreadCount = announcements.filter((a) => !a.read_at).length
+  // Same badge the home header carries, minus the survey half of the sum.
+  const menuAlertCount = unreadCount
 
   const handleBack = () => {
     if (typeof onBack==='function') return onBack()
@@ -999,6 +1028,32 @@ export default function PointsDashboard({ onBack }) {
     localStorage.setItem('pt-dark', darkMode?'1':'0')
   }, [darkMode])
 
+  // Fetch this student's announcements on mount. Unlike the home dashboard this
+  // deliberately does NOT auto-pop the newest unseen one — no setPopup here.
+  useEffect(() => {
+    let alive = true
+    ;(async () => {
+      try {
+        const res = await trainingService.getStudentAnnouncements()
+        if (!alive) return
+        setAnnouncements(res?.data?.items || [])
+      } catch {
+        /* silent — announcements are non-critical */
+      }
+    })()
+    return () => { alive = false }
+  }, [])
+
+  // Open an announcement from the bell → mark read (decrements unread count).
+  // Optimistic, and the POST is fire-and-forget, exactly as on the home page.
+  const openAnnouncement = async (a) => {
+    if (a.read_at) return
+    setAnnouncements((prev) =>
+      prev.map((x) => (x.announcement_id === a.announcement_id ? { ...x, read_at: new Date().toISOString() } : x))
+    )
+    try { await trainingService.markAnnouncementRead(a.announcement_id) } catch { /* ignore */ }
+  }
+
   return (
     <div style={{minHeight:'100vh', background:'var(--bg)'}}>
 
@@ -1013,9 +1068,23 @@ export default function PointsDashboard({ onBack }) {
         </div>
 
         {/* Desktop right */}
-        <div className="pt-hdr-right-desktop" style={{alignItems:'center', gap:10}}>
+        <div className="pt-header-right-desktop" style={{alignItems:'center', gap:10}}>
           <button type="button" className="pt-header-back" onClick={handleBack}>← Back</button>
           <UserProfileBadge user={user} variant="desktop" />
+          <button
+            type="button"
+            className="pt-icon-btn"
+            onClick={()=>setBellOpen(o=>!o)}
+            aria-label="Announcements"
+            title="Announcements"
+            style={{ position:'relative' }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+              <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+            </svg>
+            {unreadCount > 0 && <span className="pt-bell-badge">{unreadCount > 9 ? '9+' : unreadCount}</span>}
+          </button>
           <button className="pt-dark-toggle" onClick={()=>setDarkMode(d=>!d)}>
             {darkMode?'☀ Light':'🌙 Dark'}
           </button>
@@ -1028,14 +1097,92 @@ export default function PointsDashboard({ onBack }) {
           </button>
         </div>
 
-        {/* Mobile right */}
-        <div className="pt-hdr-right-mobile">
+        {/* Mobile right — profile badge + ☰ menu, same shape as the home header.
+            The badge MUST stay the first child: the global overlap fix targets it
+            positionally via `.pt-header-right-mobile > button:first-child`. */}
+        <div className="pt-header-right-mobile">
           <UserProfileBadge user={user} variant="mobile" />
-          <button className="pt-dark-toggle" onClick={()=>setDarkMode(d=>!d)}>
-            {darkMode?'☀ Light':'Dark'}
+          <button
+            type="button"
+            className="pt-menu-btn"
+            onClick={()=>setMenuOpen(o=>!o)}
+            aria-label="Menu"
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            title="Menu"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+              <path d="M3 6h18" /><path d="M3 12h18" /><path d="M3 18h18" />
+            </svg>
+            {menuAlertCount > 0 && <span className="pt-bell-badge">{menuAlertCount > 9 ? '9+' : menuAlertCount}</span>}
           </button>
+
+          {menuOpen && (
+            <>
+              <div className="pt-bell-backdrop" onClick={()=>setMenuOpen(false)} />
+              <div className="pt-menu-panel" role="menu">
+                {/* The menu closes first so the bell panel (a fixed sibling at
+                    z-index 201) isn't stacked behind this panel's backdrop. */}
+                <button
+                  type="button" role="menuitem" className="pt-menu-item"
+                  onClick={()=>{ setMenuOpen(false); setBellOpen(true) }}
+                >
+                  <span className="pt-menu-ico" aria-hidden="true">🔔</span>
+                  <span className="pt-menu-label">Notifications</span>
+                  {unreadCount > 0 && <span className="pt-menu-count">{unreadCount > 9 ? '9+' : unreadCount}</span>}
+                </button>
+                <button
+                  type="button" role="menuitem" className="pt-menu-item"
+                  onClick={()=>{ setDarkMode(d=>!d); setMenuOpen(false) }}
+                >
+                  <span className="pt-menu-ico" aria-hidden="true">🌙</span>
+                  <span className="pt-menu-label">Dark mode</span>
+                  {darkMode && <span className="pt-menu-check" aria-hidden="true">✓</span>}
+                </button>
+                <button
+                  type="button" role="menuitem" className="pt-menu-item danger"
+                  onClick={()=>{ setMenuOpen(false); handleLogout() }}
+                >
+                  <span className="pt-menu-ico" aria-hidden="true">↩</span>
+                  <span className="pt-menu-label">Logout</span>
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
+
+      {/* ── Bell dropdown panel ── fixed sibling of the header, so the sticky
+          header cannot clip it. No surveys panel and no auto-popup here. */}
+      {bellOpen && (
+        <>
+          <div className="pt-bell-backdrop" onClick={()=>setBellOpen(false)} />
+          <div className="pt-bell-panel">
+            <div className="pt-bell-panel-head">
+              <span>Announcements</span>
+              {unreadCount > 0 && <span className="pt-bell-panel-count">{unreadCount} unread</span>}
+            </div>
+            {announcements.length === 0 ? (
+              <div className="pt-bell-empty">No announcements</div>
+            ) : (
+              announcements.map((a) => (
+                <div
+                  key={a.announcement_id}
+                  className={`pt-bell-item${!a.read_at ? ' unread' : ''}`}
+                  onClick={()=>openAnnouncement(a)}
+                >
+                  <div className="pt-bell-item-top">
+                    {!a.read_at && <span className="pt-bell-dot" />}
+                    <span className="pt-bell-item-title">{a.title}</span>
+                  </div>
+                  <div className="pt-bell-item-body">{a.body}</div>
+                  <div className="pt-bell-item-date">{formatAnnDate(a.created_at)}</div>
+                </div>
+              ))
+            )}
+          </div>
+        </>
+      )}
 
       {/* ── Content ── */}
       <div className="pt-content">
@@ -1043,22 +1190,43 @@ export default function PointsDashboard({ onBack }) {
           ← Back
         </button>
 
+        {/* ══ ACTIVITY POINTS TAB — REMOVED, restore here if needed ══
+            Reward Points is the only view, so the toggle and its disabled
+            "Coming Soon" sibling are gone and RewardPoints renders directly.
+            Restore this block together with the tab state block near the top of
+            this component (search: ACTIVITY POINTS TAB — REMOVED).
+
+            <div className="pt-tabs">
+              <button className={`pt-tab${tab==='rp'?' active':''}`} onClick={()=>setTab('rp')}>Reward Points</button>
+              <button
+                className="pt-tab"
+                disabled
+                title="Coming Soon"
+                style={{ cursor:'not-allowed', opacity:0.6, display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}
+              >
+                Activity Points
+                <span style={{ fontSize:9, fontWeight:800, letterSpacing:0.5, textTransform:'uppercase', background:'rgba(245,158,11,0.16)', color:'#b45309', border:'1px solid rgba(245,158,11,0.4)', borderRadius:20, padding:'2px 8px' }}>
+                  Coming Soon
+                </span>
+              </button>
+            </div>
+            {tab==='rp' && <RewardPoints/>}
+            ══ ACTIVITY POINTS TAB — REMOVED (end) ══ */}
+
+        {/* Section indicator — what the "Reward Points" tab looked like in its
+            active state, kept as a static label now that there is nothing to
+            switch to. Same .pt-tabs frame and .pt-tab.active pill as before, so
+            the purple, radius, padding and font are inherited rather than
+            restated; the two inline rules only undo what made it read as a
+            button (.pt-tab sets cursor:pointer, and a div does not centre its
+            text the way the original <button> did). */}
         <div className="pt-tabs">
-          <button className={`pt-tab${tab==='rp'?' active':''}`} onClick={()=>setTab('rp')}>Reward Points</button>
-          {/* Activity Points — Coming Soon: disabled, does not open the old view */}
-          <button
-            className="pt-tab"
-            disabled
-            title="Coming Soon"
-            style={{ cursor:'not-allowed', opacity:0.6, display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}
-          >
-            Activity Points
-            <span style={{ fontSize:9, fontWeight:800, letterSpacing:0.5, textTransform:'uppercase', background:'rgba(245,158,11,0.16)', color:'#b45309', border:'1px solid rgba(245,158,11,0.4)', borderRadius:20, padding:'2px 8px' }}>
-              Coming Soon
-            </span>
-          </button>
+          <div className="pt-tab active" style={{ cursor:'default', textAlign:'center' }}>
+            Reward Points
+          </div>
         </div>
-        {tab==='rp' && <RewardPoints/>}
+
+        <RewardPoints/>
       </div>
 
       {/* ── Modals ── */}
