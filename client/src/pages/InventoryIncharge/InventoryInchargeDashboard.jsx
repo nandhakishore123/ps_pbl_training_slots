@@ -109,6 +109,16 @@ export default function InventoryInchargeDashboard() {
   const tabParam = searchParams.get('tab');
   const tab = TAB_KEYS.includes(tabParam) ? tabParam : 'stock';
   const setTab = useCallback((val) => {
+    /* ══ BUYING SEARCH — REMOVABLE: leaving the tab drops the query, so coming
+       back never shows a silently-filtered list. The tab logic itself is
+       untouched — this only runs alongside it. `setBuySearch` is a stable
+       useState setter declared below, referenced at call time (post-mount),
+       so it stays out of the dependency array. ══ */
+    if (val !== 'buying') setBuySearch('');
+    /* ══ RETURNS SEARCH — REMOVABLE: same rule for the Returns tab ══ */
+    if (val !== 'returns') setRetnSearch('');
+    /* ══ LAB PURCHASES SEARCH — REMOVABLE: same rule for the Lab Purchases tab ══ */
+    if (val !== 'labpurchases') setLabpSearch('');
     setSearchParams((prev) => { const p = new URLSearchParams(prev); p.set('tab', val); return p; });
   }, [setSearchParams]);
 
@@ -124,18 +134,32 @@ export default function InventoryInchargeDashboard() {
   const [buying, setBuying] = useState([]);
   const [buyingLoading, setBuyingLoading] = useState(false);
   const [buyingLoaded, setBuyingLoaded] = useState(false);
+  /* ══ BUYING SEARCH — REMOVABLE (start) ══
+     Display-only filter. The whole buying feed already lives in `buying`, so
+     typing never refetches and `buying` itself is never mutated — the count
+     line below can therefore still show the unfiltered total. */
+  const [buySearch, setBuySearch] = useState('');
+  /* ══ BUYING SEARCH — REMOVABLE (end) ══ */
 
   // ── LAB PURCHASES (intern role 5) — read-only view, REMOVABLE ──
   const [labPurchases, setLabPurchases] = useState([]);
   const [labPurchasesLoading, setLabPurchasesLoading] = useState(false);
   const [labPurchasesLoaded, setLabPurchasesLoaded] = useState(false);
+  /* ══ LAB PURCHASES SEARCH — REMOVABLE (start) ══
+     Display-only filter, same shape as the buying/returns ones: the whole feed
+     already lives in `labPurchases`, so typing never refetches and the array
+     itself is never mutated. */
+  const [labpSearch, setLabpSearch] = useState('');
+  /* ══ LAB PURCHASES SEARCH — REMOVABLE (end) ══ */
   // ── END LAB PURCHASES ──
 
   // ── RETURNABLE ITEMS (students + interns) — read-only view, REMOVABLE ──
   const [returnables, setReturnables] = useState([]);
   const [returnablesLoading, setReturnablesLoading] = useState(false);
   const [returnablesLoaded, setReturnablesLoaded] = useState(false);
-  const [returnFilter, setReturnFilter] = useState('all');   // 'all' | 'outstanding'
+  // DEFAULT CHANGED: 'all' -> 'outstanding' so the tab opens on items not yet
+  // returned. Revert by putting 'all' back — nothing else depends on this.
+  const [returnFilter, setReturnFilter] = useState('outstanding');   // 'all' | 'outstanding'
   // Reminder popup: the person whose outstanding items are being shown, or null.
   const [emailPerson, setEmailPerson] = useState(null);
   const [emailCopied, setEmailCopied] = useState(false);
@@ -145,6 +169,12 @@ export default function InventoryInchargeDashboard() {
   const [returns, setReturns] = useState([]);
   const [returnsLoading, setReturnsLoading] = useState(false);
   const [returnsLoaded, setReturnsLoaded] = useState(false);
+  /* ══ RETURNS SEARCH — REMOVABLE (start) ══
+     Display-only filter, same shape as the buying one above: the whole returns
+     feed already lives in `returns`, so typing never refetches and `returns`
+     itself is never mutated. */
+  const [retnSearch, setRetnSearch] = useState('');
+  /* ══ RETURNS SEARCH — REMOVABLE (end) ══ */
   const [retBusyId, setRetBusyId] = useState(null);
   const [retRowErr, setRetRowErr] = useState({});
   const [retRejectFor, setRetRejectFor] = useState(null);
@@ -426,6 +456,76 @@ export default function InventoryInchargeDashboard() {
 
   const shown = stock.slice(0, RENDER_CAP);
 
+  /* ══ BUYING SEARCH — REMOVABLE (start) ══
+     One space-joined haystack per row, lowercased + .includes() — the same
+     idiom as `retShown` above, so a single box matches student, roll no,
+     request #, item, lab, guide, purpose, status or date at once.
+     Two deliberate choices:
+       · the date is matched AS DISPLAYED (fmtDateTime), not the raw
+         `created_at` — otherwise typing "10 Aug 2026" could never match.
+       · `|| ''` on every field: lab_name, project_guide_name and purpose are
+         nullable, and request_id is a number.
+     `buying` is never mutated — this list is read-only here in any case. */
+  const buyQuery = buySearch.trim().toLowerCase();
+  const buyShown = buyQuery
+    ? buying.filter((r) => [
+        r.student_name || '',
+        r.student_reg || '',
+        String(r.request_id ?? ''),
+        r.lab_name || '',
+        r.project_guide_name || '',
+        r.purpose || '',
+        r.purpose_type || '',
+        r.status || '',
+        fmtDateTime(r.created_at) || '',
+        (r.items || []).map((it) => it.item_name || '').join(' '),
+      ].join(' ').toLowerCase().includes(buyQuery))
+    : buying;
+  /* ══ BUYING SEARCH — REMOVABLE (end) ══ */
+
+  /* ══ RETURNS SEARCH — REMOVABLE (start) ══
+     Same idiom as `buyShown` above. The RETURN row shape is thinner than a BUY
+     one — the returns SQL joins only `students`, so there is no lab, purpose or
+     project guide to match on; the fields below are everything a return carries.
+     Per line the haystack takes item_name, the quantity AS DISPLAYED
+     (return_quantity falls back to quantity) and the unit. Date is matched via
+     fmtDateTime, not raw `created_at`, so "10 Aug 2026" works.
+     `returns` is never mutated, so approve/reject keep keying off request_id. */
+  const retnQuery = retnSearch.trim().toLowerCase();
+  const retnShown = retnQuery
+    ? returns.filter((r) => [
+        r.student_name || '',
+        r.student_reg || '',
+        String(r.request_id ?? ''),
+        r.status || '',
+        fmtDateTime(r.created_at) || '',
+        (r.items || []).map((it) => `${it.item_name || ''} ${it.return_quantity ?? it.quantity ?? ''} ${it.unit || ''}`).join(' '),
+      ].join(' ').toLowerCase().includes(retnQuery))
+    : returns;
+  /* ══ RETURNS SEARCH — REMOVABLE (end) ══ */
+
+  /* ══ LAB PURCHASES SEARCH — REMOVABLE (start) ══
+     Same idiom as `buyShown` / `retnShown` above. The feed arrives already
+     grouped one card per cart, so lab_guide_name and purpose are cart-level
+     (matched once) while item_name/quantity/unit are flattened out of items[].
+     There is no status and no member sub-type on this row — the "Direct
+     purchase" pill is a literal in the markup, not data — so neither is in the
+     haystack and neither is named in the placeholder. Date is matched via
+     fmtDateTime, not raw `created_at`, so "10 Aug 2026" works. */
+  const labpQuery = labpSearch.trim().toLowerCase();
+  const labpShown = labpQuery
+    ? labPurchases.filter((p) => [
+        p.buyer_name || '',
+        String(p.purchase_id ?? ''),
+        p.lab_name || '',
+        p.lab_guide_name || '',
+        p.purpose || '',
+        fmtDateTime(p.created_at) || '',
+        (p.items || []).map((it) => `${it.item_name || ''} ${it.quantity ?? ''} ${it.unit || ''}`).join(' '),
+      ].join(' ').toLowerCase().includes(labpQuery))
+    : labPurchases;
+  /* ══ LAB PURCHASES SEARCH — REMOVABLE (end) ══ */
+
   return (
     <div className="ic-root">
       {/* ===== WELCOME INTRO (removable: delete this block + the WelcomeIntro import + the state block) ===== */}
@@ -547,12 +647,36 @@ export default function InventoryInchargeDashboard() {
             <div className="ic-note">
               <span>ⓘ</span> Read-only — buying requests are approved by <strong>Faculty</strong>. You cannot approve or reject them here.
             </div>
+            {/* ══ BUYING SEARCH — REMOVABLE (start) ══
+                Below the report bar and the notice, above the count — directly
+                on top of what it filters. Hidden while loading and when there
+                is nothing to search, so the empty tab stays as bare as it was. */}
+            {!buyingLoading && buying.length > 0 && (
+              <div className="ic-toolbar">
+                <input className="ic-search" value={buySearch}
+                  onChange={(e) => setBuySearch(e.target.value)}
+                  placeholder="Search by student, roll no, item, lab, guide, status or date…" />
+              </div>
+            )}
+            {/* ══ BUYING SEARCH — REMOVABLE (end) ══ */}
             {buyingLoading ? (
               <div className="ic-spinner" />
             ) : buying.length === 0 ? (
               <div className="ic-empty">No buying requests yet.</div>
+            ) : buyShown.length === 0 ? (
+              /* ══ BUYING SEARCH — REMOVABLE: no-match branch, so a query that
+                 hits nothing explains itself instead of leaving a blank tab ══ */
+              <div className="ic-empty">No matching buying requests.</div>
             ) : (
-              buying.map((r) => (
+              <>
+                {/* ══ BUYING SEARCH — REMOVABLE: count line (new on this page,
+                    matching the Admin page's wording) ══ */}
+                <div className="ic-count">
+                  {buyQuery
+                    ? `${buyShown.length} of ${buying.length} buying request${buying.length !== 1 ? 's' : ''}`
+                    : `${buying.length} buying request${buying.length !== 1 ? 's' : ''} (all purposes & statuses)`}
+                </div>
+                {buyShown.map((r) => (
                 <div className="ic-req" key={r.request_id}>
                   <div className="ic-req-top">
                     <div>
@@ -576,7 +700,8 @@ export default function InventoryInchargeDashboard() {
                   </div>
                   {r.purpose && <div className="ic-req-meta" style={{ marginTop: 6 }}>Purpose: {r.purpose}</div>}
                 </div>
-              ))
+                ))}
+              </>
             )}
           </>
         )}
@@ -586,12 +711,34 @@ export default function InventoryInchargeDashboard() {
             <div className="ic-note" style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.35)', color: '#047857' }}>
               <span>✓</span> Approve returns to add stock back (for returned quantities). Fully-completed items are cleared with no stock change.
             </div>
+            {/* ══ RETURNS SEARCH — REMOVABLE (start) ══
+                Directly above the list. Hidden while loading and when there is
+                nothing to search, so the empty tab stays as bare as it was. */}
+            {!returnsLoading && returns.length > 0 && (
+              <div className="ic-toolbar">
+                <input className="ic-search" value={retnSearch}
+                  onChange={(e) => setRetnSearch(e.target.value)}
+                  placeholder="Search by student, roll no, item, status or date…" />
+              </div>
+            )}
+            {/* ══ RETURNS SEARCH — REMOVABLE (end) ══ */}
             {returnsLoading ? (
               <div className="ic-spinner" />
             ) : returns.length === 0 ? (
               <div className="ic-empty">No return requests yet.</div>
+            ) : retnShown.length === 0 ? (
+              /* ══ RETURNS SEARCH — REMOVABLE: no-match branch ══ */
+              <div className="ic-empty">No matching returns.</div>
             ) : (
-              returns.map((r) => {
+              <>
+                {/* ══ RETURNS SEARCH — REMOVABLE: count line (new on this page,
+                    matching the Admin page's wording) ══ */}
+                <div className="ic-count">
+                  {retnQuery
+                    ? `${retnShown.length} of ${returns.length} return request${returns.length !== 1 ? 's' : ''}`
+                    : `${returns.length} return request${returns.length !== 1 ? 's' : ''} (all statuses)`}
+                </div>
+                {retnShown.map((r) => {
                 const isPending = String(r.status).toUpperCase() === 'PENDING';
                 return (
                   <div className="ic-req" key={r.request_id}>
@@ -629,7 +776,8 @@ export default function InventoryInchargeDashboard() {
                     {retRowErr[r.request_id] && <div style={{ marginTop: 8, fontSize: 12.5, color: 'var(--ic-red)', fontWeight: 800 }}>{retRowErr[r.request_id]}</div>}
                   </div>
                 );
-              })
+                })}
+              </>
             )}
           </>
         )}
@@ -640,12 +788,34 @@ export default function InventoryInchargeDashboard() {
             <div className="ic-note">
               <span>ⓘ</span> Read-only — intern lab purchases are direct and already final. This is a view only.
             </div>
+            {/* ══ LAB PURCHASES SEARCH — REMOVABLE (start) ══
+                Directly above the list. Hidden while loading and when there is
+                nothing to search, so the empty tab stays as bare as it was. */}
+            {!labPurchasesLoading && labPurchases.length > 0 && (
+              <div className="ic-toolbar">
+                <input className="ic-search" value={labpSearch}
+                  onChange={(e) => setLabpSearch(e.target.value)}
+                  placeholder="Search by buyer, item, lab, guide, purpose or date…" />
+              </div>
+            )}
+            {/* ══ LAB PURCHASES SEARCH — REMOVABLE (end) ══ */}
             {labPurchasesLoading ? (
               <div className="ic-spinner" />
             ) : labPurchases.length === 0 ? (
               <div className="ic-empty">No lab purchases yet.</div>
+            ) : labpShown.length === 0 ? (
+              /* ══ LAB PURCHASES SEARCH — REMOVABLE: no-match branch ══ */
+              <div className="ic-empty">No matching lab purchases.</div>
             ) : (
-              labPurchases.map((p) => (
+              <>
+                {/* ══ LAB PURCHASES SEARCH — REMOVABLE: count line (new on this
+                    page, matching the Admin page's wording) ══ */}
+                <div className="ic-count">
+                  {labpQuery
+                    ? `${labpShown.length} of ${labPurchases.length} purchase${labPurchases.length !== 1 ? 's' : ''}`
+                    : `${labPurchases.length} purchase${labPurchases.length !== 1 ? 's' : ''} (all labs)`}
+                </div>
+                {labpShown.map((p) => (
                 <div className="ic-req" key={p.purchase_key || p.purchase_id}>
                   <div className="ic-req-top">
                     <div>
@@ -666,7 +836,8 @@ export default function InventoryInchargeDashboard() {
                     Lab Guide: {p.lab_guide_name || '—'} · Purpose: {p.purpose || '—'}
                   </div>
                 </div>
-              ))
+                ))}
+              </>
             )}
           </>
         )}
@@ -709,7 +880,8 @@ export default function InventoryInchargeDashboard() {
               <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
                 {[
                   { key: 'all', label: `All (${returnables.length})` },
-                  { key: 'outstanding', label: `Outstanding (${outstandingCount})` },
+                  // LABEL ONLY: was `Outstanding (…)`. The key stays 'outstanding'.
+                  { key: 'outstanding', label: `Not yet returned (${outstandingCount})` },
                 ].map((f) => {
                   const on = returnFilter === f.key;
                   return (
@@ -741,7 +913,8 @@ export default function InventoryInchargeDashboard() {
                 <>
                   <div className="ic-count">
                     {shown.length} item{shown.length !== 1 ? 's' : ''}
-                    {returnFilter === 'outstanding' ? ' still out' : ' (students + interns)'}
+                    {/* WORDING ONLY: was ' still out' — matches the renamed pill. */}
+                    {returnFilter === 'outstanding' ? ' not yet returned' : ' (students + interns)'}
                   </div>
                   {shown.map((r) => {
                     // Icon appears once per person, on their first card, and only
