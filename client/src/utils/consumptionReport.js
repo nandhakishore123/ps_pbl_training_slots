@@ -71,7 +71,15 @@ const typeClass = (t) => TYPE_CLASSES[typeKey(t)] || 'tag-intern';
 
 // ── HTML document ────────────────────────────────────────────
 export function buildConsumptionReportHtml(report) {
-  const summary = report?.summary || [];
+  /* ══ SUMMARY BY MEMBER — REMOVED ON REQUEST (start) ══
+     The report now opens directly on Detailed Transactions. Disabled at the
+     RENDERING layer only: the endpoint, the query and the payload are untouched,
+     and the server still computes `summary` — totals.members / student_members /
+     intern_members are derived from it, so the totals strip below still works.
+     To restore: uncomment `summary` and `summaryRows` here, plus the <h2> and
+     table in the document body, all marked with this same banner. */
+  // const summary = report?.summary || [];
+  /* ══ SUMMARY BY MEMBER — REMOVED ON REQUEST (end) ══ */
   const details = report?.details || [];
   const totals = report?.totals || {};
   const rangeStr = `${fmtDay(report?.from)} — ${fmtDay(report?.to)}`;
@@ -79,6 +87,7 @@ export function buildConsumptionReportHtml(report) {
   // Correct public path under the app's base ('/BIT.png' 404s here).
   const logoUrl = `${window.location.origin}${import.meta.env.BASE_URL}bit-logo.png`;
 
+  /* ══ SUMMARY BY MEMBER — REMOVED ON REQUEST (start) ══
   const summaryRows = summary.length
     ? summary.map((m, i) => `<tr>
         <td class="num">${i + 1}</td>
@@ -90,6 +99,7 @@ export function buildConsumptionReportHtml(report) {
         <td class="items">${esc((m.items || []).join(', ') || '—')}</td>
       </tr>`).join('')
     : `<tr><td colspan="7" class="empty">No records in this range</td></tr>`;
+  ══ SUMMARY BY MEMBER — REMOVED ON REQUEST (end) ══ */
 
   const detailRows = details.length
     ? details.map((r, i) => `<tr>
@@ -166,6 +176,16 @@ export function buildConsumptionReportHtml(report) {
       </div>
     </div>
 
+    ${/* ══ SUMMARY BY MEMBER — REMOVED ON REQUEST (start) ══
+       Kept in place but commented out, so the report opens straight on Detailed
+       Transactions. The <h2> is commented out together with its table — leaving
+       the heading behind would have produced an orphaned section header. This
+       interpolation evaluates to an empty string, so it emits nothing into the
+       document and adds no page break.
+       To restore: remove the interpolation wrapper around this block (the
+       opening brace-dollar-slash-star and the closing star-slash empty-string),
+       and uncomment `summary` and `summaryRows` above.
+
     <h2>Summary by Member</h2>
     <table>
       <thead><tr>
@@ -175,6 +195,7 @@ export function buildConsumptionReportHtml(report) {
       <tbody>${summaryRows}</tbody>
     </table>
 
+       ══ SUMMARY BY MEMBER — REMOVED ON REQUEST (end) ══ */ ''}
     <h2>Detailed Transactions</h2>
     <table>
       <thead><tr>
