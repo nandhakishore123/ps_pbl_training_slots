@@ -41,6 +41,61 @@ const RETURNABLE_PILL = {
   'Consumed': 'inactive',
 };
 
+/* ══ PERSON TYPE FILTER — REMOVABLE (start) ══
+   The sub-type rides on the feed's person_ref, which for INTERN rows is
+   COALESCE(up.member_subtype,'INTERN'). The only write path validates against
+   FACULTY | INTERN | TECHNICIAN after trim().toUpperCase(), so those three
+   uppercase strings — or NULL, coalesced to 'INTERN' — are the whole domain.
+   STUDENT rows carry a reg_num in that same field, so every sub-type match is
+   gated on `source` FIRST and a reg number can never match a type. */
+const PERSON_TYPES = [
+  { key: 'all', label: 'All' },
+  { key: 'Student', label: 'Student' },
+  { key: 'Faculty', label: 'Faculty' },
+  { key: 'Intern', label: 'Intern' },
+  { key: 'Technician', label: 'Technician' },
+];
+const matchesPersonType = (r, type) => {
+  if (type === 'all') return true;
+  if (type === 'Student') return r.source === 'STUDENT';
+  // Case-insensitive: the column is varchar, not ENUM, so tolerate casing.
+  return r.source === 'INTERN'
+    && String(r.person_ref ?? '').trim().toUpperCase() === type.toUpperCase();
+};
+// A type that matches nothing names itself rather than falling through to the
+// generic "nothing outstanding" text, which would read as a data problem.
+const PERSON_TYPE_EMPTY = {
+  Student: 'No students with returnable items.',
+  Faculty: 'No faculty with returnable items.',
+  Intern: 'No interns with returnable items.',
+  Technician: 'No technicians with returnable items.',
+};
+/* ══ PERSON TYPE FILTER — REMOVABLE (end) ══ */
+
+/* ══ HELD-FOR FILTER — REMOVABLE (start) ══
+   How long an item has been out, measured from its taking `date`. 'any' is the
+   off position. This filters ROWS, not people — a person whose rows are all
+   filtered out simply produces no group, so no empty card can appear. */
+const HELD_FOR_OPTIONS = [
+  { key: 'any', label: 'Any duration' },
+  { key: '2', label: '2+ days' },
+  { key: '7', label: '7+ days' },
+  { key: '15', label: '15+ days' },
+  { key: '30', label: '30+ days' },
+];
+const DAY_MS = 24 * 60 * 60 * 1000;
+// A missing or unparseable date is KEPT rather than dropped: hiding an
+// obligation because of a bad timestamp is the worse failure of the two.
+const matchesHeldFor = (r, key) => {
+  if (key === 'any') return true;
+  const days = Number(key);
+  if (!days) return true;
+  const taken = new Date(r.date).getTime();
+  if (!Number.isFinite(taken)) return true;
+  return Date.now() - taken > days * DAY_MS;
+};
+/* ══ HELD-FOR FILTER — REMOVABLE (end) ══ */
+
 // Reminder email. The feed is flat (one row per item), so a person's outstanding
 // rows are gathered first and rendered as one list.
 const REMINDER_SUBJECT = 'Return of Inventory Items — Reminder';
@@ -119,6 +174,11 @@ export default function InventoryInchargeDashboard() {
     if (val !== 'returns') setRetnSearch('');
     /* ══ LAB PURCHASES SEARCH — REMOVABLE: same rule for the Lab Purchases tab ══ */
     if (val !== 'labpurchases') setLabpSearch('');
+    /* ══ PERSON TYPE FILTER — REMOVABLE: same rule for Returnable Items, so
+       coming back never shows a silently type-filtered list ══ */
+    if (val !== 'returnables') setPersonTypeFilter('all');
+    /* ══ HELD-FOR FILTER — REMOVABLE: same rule ══ */
+    if (val !== 'returnables') setHeldForFilter('any');
     setSearchParams((prev) => { const p = new URLSearchParams(prev); p.set('tab', val); return p; });
   }, [setSearchParams]);
 
@@ -160,6 +220,16 @@ export default function InventoryInchargeDashboard() {
   // DEFAULT CHANGED: 'all' -> 'outstanding' so the tab opens on items not yet
   // returned. Revert by putting 'all' back — nothing else depends on this.
   const [returnFilter, setReturnFilter] = useState('outstanding');   // 'all' | 'outstanding'
+  /* ══ PERSON TYPE FILTER — REMOVABLE (start) ══
+     Second, independent pill row. It COMPOSES with returnFilter above — the two
+     narrow together, neither replaces the other. */
+  const [personTypeFilter, setPersonTypeFilter] = useState('all');   // 'all' | Student | Faculty | Intern | Technician
+  /* ══ PERSON TYPE FILTER — REMOVABLE (end) ══ */
+  /* ══ HELD-FOR FILTER — REMOVABLE (start) ══
+     Third independent filter. Composes with the two above — all three narrow
+     together, none replaces another. */
+  const [heldForFilter, setHeldForFilter] = useState('any');   // 'any' | '2' | '7' | '15' | '30'
+  /* ══ HELD-FOR FILTER — REMOVABLE (end) ══ */
   // Reminder popup: the person whose outstanding items are being shown, or null.
   const [emailPerson, setEmailPerson] = useState(null);
   const [emailCopied, setEmailCopied] = useState(false);
@@ -850,6 +920,34 @@ export default function InventoryInchargeDashboard() {
           const shown = returnFilter === 'outstanding' ? returnables.filter((r) => r.outstanding) : returnables;
           const outstandingCount = returnables.filter((r) => r.outstanding).length;
 
+          /* ══ PERSON TYPE FILTER — REMOVABLE (start) ══
+             Applied to the ROWS, before grouping, so the person count on the
+             count line stays truthful and a card never lists items belonging to
+             a type that is filtered out.
+             Counts are taken over `shown` — the list the existing All / Not yet
+             returned pills already produced — so the five numbers always sum to
+             what is actually on screen. The existing two pills and their counts
+             are untouched. */
+          const typeShown = personTypeFilter === 'all'
+            ? shown
+            : shown.filter((r) => matchesPersonType(r, personTypeFilter));
+          const personTypeCounts = PERSON_TYPES.reduce((acc, t) => {
+            acc[t.key] = t.key === 'all'
+              ? shown.length
+              : shown.filter((r) => matchesPersonType(r, t.key)).length;
+            return acc;
+          }, {});
+          /* ══ PERSON TYPE FILTER — REMOVABLE (end) ══ */
+
+          /* ══ HELD-FOR FILTER — REMOVABLE (start) ══
+             Third stage, still on ROWS and still before grouping, so all three
+             filters compose and a person left with no matching rows produces no
+             group at all rather than an empty card. */
+          const heldShown = heldForFilter === 'any'
+            ? typeShown
+            : typeShown.filter((r) => matchesHeldFor(r, heldForFilter));
+          /* ══ HELD-FOR FILTER — REMOVABLE (end) ══ */
+
           // A person's outstanding rows, keyed by source+user_id. Built from the
           // FULL feed, not `shown`, so the reminder always lists everything they
           // still owe regardless of which filter is active. person_name /
@@ -866,9 +964,127 @@ export default function InventoryInchargeDashboard() {
             }
             p.rows.push(r);
           }
-          // The feed is flat, so one person can span several cards. The icon is
-          // drawn on their FIRST card only — this set tracks who has had theirs.
-          const iconDrawn = new Set();
+          // ══ GROUPED CARDS — REMOVABLE (start) ══
+          // Display grouping, deliberately SEPARATE from outstandingByPerson above.
+          // This one is built from `shown`, so a card lists exactly the items the
+          // active filter is about; outstandingByPerson stays outstanding-only and
+          // remains the ✉ payload.
+          // Orphan rows (person_user_id null — e.g. a lab purchase whose buyer was
+          // deleted) are keyed per ROW so each keeps its own card. Keying them on a
+          // shared null/name would merge two unrelated people and misattribute
+          // items; this way no row is ever lost off the page.
+          // `heldShown` is already newest-first from the server and Map preserves
+          // insertion order, so groups come out ordered by each person's newest
+          // item — no sort needed, and the server's ordering still governs.
+          const displayGroups = new Map();
+          for (const r of heldShown) {
+            const gKey = r.person_user_id != null
+              ? `${r.source}-uid-${r.person_user_id}`
+              : `${r.source}-orphan-${r.id}`;
+            let g = displayGroups.get(gKey);
+            if (!g) {
+              g = {
+                key: gKey, source: r.source, name: r.person_name,
+                ref: r.person_ref, person_user_id: r.person_user_id, rows: [],
+              };
+              displayGroups.set(gKey, g);
+            }
+            g.rows.push(r);
+          }
+          const groups = [...displayGroups.values()];
+
+          // Item rows are inline-styled on purpose: .ic-req, .ic-req-top and
+          // .ic-req-items are shared with the other request lists on this page,
+          // so nothing here may add or alter a rule on them.
+          // One card per person. The ✉ payload is looked up in outstandingByPerson
+          // by the person key — NOT the display group — so the reminder always
+          // lists everything they still owe whichever filter is active. A miss
+          // (orphan row, or someone with nothing outstanding on the All view)
+          // simply yields no icon.
+          const renderGroupCard = (g) => {
+            const person = g.person_user_id != null
+              ? outstandingByPerson.get(`${g.source}-${g.person_user_id}`)
+              : null;
+            return (
+              <div className="ic-req" key={g.key}>
+                {/* alignItems set explicitly so the ✉ sits identically on both
+                    pages now that the header is taller (.ic-req-top defaults to
+                    center, .ad-req-top to flex-start). */}
+                <div className="ic-req-top" style={{ alignItems: 'flex-start' }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div className="ic-req-name">{g.name || '—'}
+                      <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--ic-text3)', marginLeft: 8 }}>
+                        {g.ref || '—'}
+                      </span>
+                    </div>
+                    <div className="ic-req-meta">
+                      <span className="ic-pill type" style={{ padding: '1px 8px' }}>
+                        {g.source === 'STUDENT' ? 'Student' : 'Intern'}
+                      </span>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                    {person && (
+                      <button
+                        type="button"
+                        onClick={() => { setEmailCopied(false); setEmailPerson(person); }}
+                        disabled={!person.email}
+                        title={person.email
+                          ? `Send a return reminder to ${person.name || 'this person'}`
+                          : 'No email on file'}
+                        aria-label="Send return reminder"
+                        style={{
+                          width: 30, height: 30, borderRadius: 8, flexShrink: 0,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          border: '1.5px solid var(--ic-border)', background: 'transparent',
+                          color: person.email ? 'var(--ic-purple)' : 'var(--ic-text3)',
+                          cursor: person.email ? 'pointer' : 'not-allowed',
+                          opacity: person.email ? 1 : 0.5, fontFamily: 'inherit',
+                        }}
+                      >
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <rect x="2" y="4" width="20" height="16" rx="2" /><path d="m22 7-10 6L2 7" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <div className="ic-req-items">
+                  {/* date and lab_name are PER ITEM — they stay on the item row and
+                      are never hoisted into the card header, which would assert one
+                      date/lab for items taken at different times. */}
+                  {g.rows.map((r) => (
+                    // id is only unique WITHIN a source (obligation_id vs
+                    // purchase_id), so the key has to carry the source too.
+                    <div
+                      key={`${r.source}-${r.id}`}
+                      style={{
+                        display: 'flex', alignItems: 'flex-start', gap: 10,
+                        justifyContent: 'space-between', padding: '8px 0',
+                        borderTop: '1px solid var(--ic-border)',
+                      }}
+                    >
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontWeight: 800 }}>
+                          {r.item_name || '—'} ({money(r.quantity)} {r.unit || ''})
+                        </div>
+                        <div className="ic-req-meta">
+                          {fmtDateTime(r.date)}{r.lab_name ? ` · ${r.lab_name}` : ''}
+                        </div>
+                      </div>
+                      <span
+                        className={`ic-pill ${RETURNABLE_PILL[r.status_label] || 'pending'}`}
+                        style={{ flexShrink: 0 }}
+                      >
+                        {r.status_label}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          };
+          // ══ GROUPED CARDS — REMOVABLE (end) ══
           return (
             <>
               <div className="ic-note">
@@ -903,81 +1119,73 @@ export default function InventoryInchargeDashboard() {
                 })}
               </div>
 
+              {/* ══ FILTER DROPDOWNS — REMOVABLE (start) ══
+                  Type + Held for, on one row directly below the pill row. Was a
+                  second pill row, which read as a rival "All" next to the one
+                  above. Reuses .ic-label / .ic-select — the same idiom as the
+                  Stock tab's category dropdown — so no CSS is needed. Both
+                  compose with the pill row rather than replacing it. */}
+              <div style={{ display: 'flex', gap: 14, marginBottom: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                <div>
+                  <label className="ic-label" htmlFor="ic-ret-type">Type</label>
+                  <select
+                    id="ic-ret-type"
+                    className="ic-select"
+                    value={personTypeFilter}
+                    onChange={(e) => setPersonTypeFilter(e.target.value)}
+                  >
+                    {PERSON_TYPES.map((t) => (
+                      <option key={t.key} value={t.key}>
+                        {`${t.key === 'all' ? 'All types' : t.label} (${personTypeCounts[t.key] ?? 0})`}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="ic-label" htmlFor="ic-ret-held">Held for</label>
+                  <select
+                    id="ic-ret-held"
+                    className="ic-select"
+                    value={heldForFilter}
+                    onChange={(e) => setHeldForFilter(e.target.value)}
+                  >
+                    {HELD_FOR_OPTIONS.map((h) => (
+                      <option key={h.key} value={h.key}>{h.label}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              {/* ══ FILTER DROPDOWNS — REMOVABLE (end) ══ */}
+
               {returnablesLoading ? (
                 <div className="ic-spinner" />
-              ) : shown.length === 0 ? (
+              ) : groups.length === 0 ? (
                 <div className="ic-empty">
-                  {returnables.length === 0 ? 'No returnable items yet.' : 'Nothing outstanding — everything has been returned.'}
+                  {/* Whichever filter emptied the list names itself, so the reason
+                      is never a blank area. Type is checked first: if it already
+                      matched nothing, held-for never got a chance to. ══ */}
+                  {personTypeFilter !== 'all' && typeShown.length === 0
+                    ? PERSON_TYPE_EMPTY[personTypeFilter]
+                    /* ══ HELD-FOR FILTER — REMOVABLE: its own no-match message ══ */
+                    : heldForFilter !== 'any'
+                      ? `No items held longer than ${heldForFilter} days.`
+                      : returnables.length === 0
+                        ? 'No returnable items yet.'
+                        : 'Nothing outstanding — everything has been returned.'}
                 </div>
               ) : (
                 <>
                   <div className="ic-count">
-                    {shown.length} item{shown.length !== 1 ? 's' : ''}
+                    {/* All three filters are already baked into `groups` and
+                        `heldShown`, so this line reflects the pill row and both
+                        dropdowns without restating any of their logic. */}
+                    {groups.length} {groups.length !== 1 ? 'people' : 'person'} · {heldShown.length} item{heldShown.length !== 1 ? 's' : ''}
                     {/* WORDING ONLY: was ' still out' — matches the renamed pill. */}
                     {returnFilter === 'outstanding' ? ' not yet returned' : ' (students + interns)'}
                   </div>
-                  {shown.map((r) => {
-                    // Icon appears once per person, on their first card, and only
-                    // if they actually still owe something — nobody who has
-                    // returned everything gets a reminder button.
-                    const pKey = r.person_user_id != null ? `${r.source}-${r.person_user_id}` : null;
-                    const person = pKey ? outstandingByPerson.get(pKey) : null;
-                    const showIcon = !!person && !iconDrawn.has(pKey);
-                    if (showIcon) iconDrawn.add(pKey);
-                    return (
-                    // id is only unique WITHIN a source (obligation_id vs
-                    // purchase_id), so the key has to carry the source too.
-                    <div className="ic-req" key={`${r.source}-${r.id}`}>
-                      <div className="ic-req-top">
-                        <div style={{ minWidth: 0 }}>
-                          <div className="ic-req-name">{r.person_name || '—'}
-                            <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--ic-text3)', marginLeft: 8 }}>
-                              {r.person_ref || '—'}
-                            </span>
-                          </div>
-                          <div className="ic-req-meta">
-                            {fmtDateTime(r.date)}
-                            {r.lab_name ? ` · ${r.lab_name}` : ''} ·{' '}
-                            <span className="ic-pill type" style={{ padding: '1px 8px' }}>
-                              {r.source === 'STUDENT' ? 'Student' : 'Intern'}
-                            </span>
-                          </div>
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-                          <span className={`ic-pill ${RETURNABLE_PILL[r.status_label] || 'pending'}`}>
-                            {r.status_label}
-                          </span>
-                          {showIcon && (
-                            <button
-                              type="button"
-                              onClick={() => { setEmailCopied(false); setEmailPerson(person); }}
-                              disabled={!person.email}
-                              title={person.email
-                                ? `Send a return reminder to ${person.name || 'this person'}`
-                                : 'No email on file'}
-                              aria-label="Send return reminder"
-                              style={{
-                                width: 30, height: 30, borderRadius: 8, flexShrink: 0,
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                border: '1.5px solid var(--ic-border)', background: 'transparent',
-                                color: person.email ? 'var(--ic-purple)' : 'var(--ic-text3)',
-                                cursor: person.email ? 'pointer' : 'not-allowed',
-                                opacity: person.email ? 1 : 0.5, fontFamily: 'inherit',
-                              }}
-                            >
-                              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                                <rect x="2" y="4" width="20" height="16" rx="2" /><path d="m22 7-10 6L2 7" />
-                              </svg>
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                      <div className="ic-req-items">
-                        {r.item_name || '—'} ({money(r.quantity)} {r.unit || ''})
-                      </div>
-                    </div>
-                    );
-                  })}
+                  {/* One flat grouped list — the Students / Interns section headings
+                      are replaced by the person-type pill row above. */}
+                  {groups.map(renderGroupCard)}
                 </>
               )}
             </>
