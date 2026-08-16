@@ -753,6 +753,23 @@ export const submitLabReturn = async (userId, userName, { purchase_id, quantity 
 };
 // ═══ INTERN LAB RETURNS — REMOVABLE BLOCK (end) ═══
 
+// ═══ ROLE-5 FULLY COMPLETED — REMOVABLE BLOCK (start) ═══
+// Mark a CONSUMED purchase discharged. Shape validation only — the same
+// division of labour as submitLabReturn: ownership, the returnable guard, the
+// already-completed check and the remaining-balance check all live inside the
+// model transaction, where the purchase row is locked. Repeating them here
+// would only be a racy preview. `userId` always comes from the JWT.
+export const completeLabPurchase = async (userId, { purchase_id } = {}) => {
+  const purchaseId = Number(purchase_id);
+  if (!purchaseId || Number.isNaN(purchaseId)) throw badRequest('purchase_id is required');
+
+  return model.completeLabPurchase({
+    purchase_id: purchaseId,
+    completerUserId: userId,
+  });
+};
+// ═══ ROLE-5 FULLY COMPLETED — REMOVABLE BLOCK (end) ═══
+
 // ═══ RETURNABLE FEED — REMOVABLE BLOCK (start) ═══
 // Read-only pass-through, exactly like listLabPurchasesReadOnly: the whole feed
 // is one query pair with no arguments to validate and no caller-supplied scope.

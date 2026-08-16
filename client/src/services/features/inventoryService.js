@@ -214,4 +214,14 @@ export const inventoryService = {
     return api.post('/inventory/lab-return', { purchase_id, quantity });
   },
   // ═══ INTERN LAB RETURNS — REMOVABLE BLOCK (end) ═══
+
+  // ═══ ROLE-5 FULLY COMPLETED — REMOVABLE BLOCK (start) ═══
+  // Discharge a CONSUMED purchase — the role-5 equivalent of the student's
+  // "Fully completed". Moves NO stock. The server rejects it for a returnable
+  // item, for a purchase the caller does not own, and for one already completed
+  // or already fully returned.
+  completeLabPurchase(purchase_id) {
+    return api.post('/inventory/lab-purchase-complete', { purchase_id });
+  },
+  // ═══ ROLE-5 FULLY COMPLETED — REMOVABLE BLOCK (end) ═══
 };
