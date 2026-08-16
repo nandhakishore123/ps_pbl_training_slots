@@ -1703,7 +1703,7 @@ const returnableFeedInternRows = async () => {
 
 // STUDENT status → one label + whether it is still out.
 // OPEN splits two ways now that partial returns reopen an obligation: nothing
-// back yet ("Out") versus some already returned with a balance still owed
+// back yet ("Not yet returned") versus some already returned with a balance still owed
 // ("Partly returned") — the same distinction the intern side draws.
 // CLEARED likewise covers two different real-world outcomes: an actual return
 // (returned_quantity > 0, set by approveReturnRequest) and a FULLY_COMPLETED
@@ -1716,7 +1716,7 @@ const studentStatusLabel = (status, returnedQuantity) => {
   if (st === 'OPEN') {
     return returned > 0
       ? { status_label: 'Partly returned', outstanding: true }
-      : { status_label: 'Out', outstanding: true };
+      : { status_label: 'Not yet returned', outstanding: true };
   }
   if (st === 'RETURN_PENDING') return { status_label: 'Return pending', outstanding: true };
   if (st === 'CLEARED') {
@@ -1735,7 +1735,7 @@ const studentStatusLabel = (status, returnedQuantity) => {
 const internStatusLabel = (purchasedQty, alreadyReturned) => {
   const purchased = Number(purchasedQty ?? 0);
   const returned = Number(alreadyReturned ?? 0);
-  if (returned <= 0) return { status_label: 'Out', outstanding: true };
+  if (returned <= 0) return { status_label: 'Not yet returned', outstanding: true };
   if (returned >= purchased) return { status_label: 'Returned', outstanding: false };
   return { status_label: 'Partly returned', outstanding: true };
 };
