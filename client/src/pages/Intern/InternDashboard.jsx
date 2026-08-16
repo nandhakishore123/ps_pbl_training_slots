@@ -276,6 +276,28 @@ export default function InternDashboard() {
     } finally { setRetBusy(null); }
   };
 
+  // ══ ROLE-5 FULLY COMPLETED — REMOVABLE (start) ══
+  // Discharge a CONSUMED purchase. Deliberately moves NO stock — that is the
+  // whole difference from submitReturn above, and the reason this exists: a
+  // used-up chemical used to be clearable only by "returning" it, which
+  // wrongly credited stock back into the shared pool.
+  // The button is hidden for returnable items, but the server re-checks the
+  // catalog flag inside its transaction, so a stale list cannot write one off.
+  const submitComplete = async (p) => {
+    const id = p.purchase_id;
+    setRetErr((m) => ({ ...m, [id]: '' }));
+    setRetBusy(id);
+    try {
+      await inventoryService.completeLabPurchase(id);
+      setToast(`Marked ${p.item_name} as fully completed — no stock returned`);
+      setRetQty((m) => ({ ...m, [id]: '' }));
+      await loadReturnables();   // a completed purchase leaves the list
+    } catch (err) {
+      setRetErr((m) => ({ ...m, [id]: err?.response?.data?.message || 'Failed to mark it completed. Please try again.' }));
+    } finally { setRetBusy(null); }
+  };
+  // ══ ROLE-5 FULLY COMPLETED — REMOVABLE (end) ══
+
   // Recent purchases for ONE lab (used on load and after a purchase).
   const loadRecent = useCallback(async (labId) => {
     try {
@@ -716,13 +738,21 @@ export default function InternDashboard() {
                   const typed = Number(retQty[p.purchase_id]);
                   const over = typed > remaining;
                   const busy = retBusy === p.purchase_id;
+                  // ROLE-5 FULLY COMPLETED (removable): the live catalog flag,
+                  // normalised server-side. Returnable → must physically come
+                  // back; consumable → may be written off instead.
+                  const returnable = Number(p.is_returnable) === 1;
                   return (
                     <motion.div className="in-card" key={p.purchase_id} variants={cardRise} whileHover={retHover}>
                       <div className="in-ret-hd">
                         <div style={{ minWidth: 0 }}>
                           <div className="in-card-title">{p.item_name}</div>
                           <div className="in-ret-meta">
+                            {/* ROLE-5 FULLY COMPLETED (removable): category first,
+                                mirroring the student page's "Chemicals · took 25 G". */}
+                            {p.category ? `${p.category} · ` : ''}
                             {p.lab_name || 'Unknown lab'} · bought {fmtDateTime(p.created_at)}
+                            {returnable ? ' · Returnable' : ''}
                           </div>
                         </div>
                         <span className="in-labchip">{money(remaining)} {p.unit || ''} left</span>
@@ -754,10 +784,31 @@ export default function InternDashboard() {
                         </button>
                       </div>
 
-                      <button className="in-log-link in-ret-all" disabled={busy}
-                        onClick={() => setRetQty((m) => ({ ...m, [p.purchase_id]: String(remaining) }))}>
-                        Return all {money(remaining)} {p.unit || ''}
-                      </button>
+                      {/* ══ ROLE-5 FULLY COMPLETED — REMOVABLE (start) ══
+                          "Return all" is now a RETURNABLE-only shortcut — writing off
+                          a consumable is exactly what "Fully completed" is for, so
+                          offering both on the same card invites the wrong one.
+                          "Fully completed" mirrors the student page's rule: present
+                          but disabled on a returnable item, with the same tooltip.
+                          Existing .in-log-link / .in-ret-all classes only — no new CSS.
+                          To restore the original: drop this wrapper and the complete
+                          button, leaving the unconditional "Return all". */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+                        {returnable && (
+                          <button className="in-log-link in-ret-all" disabled={busy}
+                            onClick={() => setRetQty((m) => ({ ...m, [p.purchase_id]: String(remaining) }))}>
+                            Return all {money(remaining)} {p.unit || ''}
+                          </button>
+                        )}
+                        <button className="in-log-link in-ret-all" disabled={busy || returnable}
+                          title={returnable
+                            ? 'Returnable item must be returned'
+                            : 'Already used up — clears this without returning any stock'}
+                          onClick={() => submitComplete(p)}>
+                          Fully completed
+                        </button>
+                      </div>
+                      {/* ══ ROLE-5 FULLY COMPLETED — REMOVABLE (end) ══ */}
 
                       {/* Client-side cap. The server re-checks it regardless. */}
                       {over && (

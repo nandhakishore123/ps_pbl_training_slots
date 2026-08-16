@@ -1501,16 +1501,27 @@ export const listMyReturnablePurchases = async (userId) => {
     `SELECT purchase_id, lab_id, lab_name, item_id, item_name, unit,
             purchased_qty, already_returned,
             (purchased_qty - already_returned) AS remaining_returnable,
-            created_at
+            created_at, is_returnable, category
      FROM (
        SELECT lp.purchase_id, lp.lab_id, l.lab_name, lp.item_id, lp.item_name, lp.unit,
               lp.quantity AS purchased_qty,
               COALESCE((SELECT SUM(lr.quantity) FROM lab_returns lr
                         WHERE lr.purchase_id = lp.purchase_id), 0) AS already_returned,
-              lp.created_at
+              lp.created_at,
+              -- ROLE-5 FULLY COMPLETED (removable): is_returnable + category are
+              -- read LIVE from the catalog — lab_purchases stores neither, the
+              -- same live-read idiom returnableFeedInternRows uses. LEFT JOIN so
+              -- a purchase is never dropped if its catalog row vanished; the
+              -- authoritative returnable check runs inside completeLabPurchase.
+              COALESCE(i.is_returnable, 0) AS is_returnable,
+              i.category AS category
        FROM lab_purchases lp
        LEFT JOIN labs l ON l.lab_id = lp.lab_id
+       LEFT JOIN inventory_items i ON i.item_id = lp.item_id
        WHERE lp.buyer_user_id = ?
+         -- ROLE-5 FULLY COMPLETED (removable): a discharged purchase leaves the
+         -- list. NULL = never completed, which is every pre-existing row.
+         AND lp.completed_at IS NULL
      ) t
      WHERE purchased_qty - already_returned > 0
      ORDER BY created_at DESC, purchase_id DESC`,
@@ -1523,6 +1534,10 @@ export const listMyReturnablePurchases = async (userId) => {
     purchased_qty: Number(r.purchased_qty),
     already_returned: Number(r.already_returned),
     remaining_returnable: Number(r.remaining_returnable),
+    // ROLE-5 FULLY COMPLETED (removable): normalise the live catalog fields the
+    // UI branches on, so the client never does its own coercion.
+    is_returnable: Number(r.is_returnable) === 1 ? 1 : 0,
+    category: r.category ?? null,
   }));
 };
 
@@ -1623,6 +1638,109 @@ export const returnLabPurchase = async ({ purchase_id, quantity, returnerUserId,
 };
 // ═══ INTERN LAB RETURNS — REMOVABLE BLOCK (end) ═════════════════════════════
 
+// ═══ ROLE-5 FULLY COMPLETED — REMOVABLE BLOCK (start) ═══════════════════════
+// Discharge a CONSUMED lab purchase — the role-5 twin of the student side's
+// FULLY_COMPLETED action (see the else-branch of approveReturnRequest). Sets
+// completed_at and NOTHING else: no stock movement, no lab_returns row, no
+// inventory_stock_txns entry, because a consumed item never came back. That is
+// the whole point — the old workaround was to "return" a used-up chemical,
+// which wrongly credited stock.
+//
+// Same lock-then-verify shape as returnLabPurchase: the purchase row is locked
+// FOR UPDATE first and every check runs against the LOCKED row, never against
+// anything the client sent. Instant, like every other role-5 action — there is
+// no approval step here by design.
+//
+// To remove: delete this function, the service/controller/route entries, the
+// completed_at reads in listMyReturnablePurchases, and the column itself.
+export const completeLabPurchase = async ({ purchase_id, completerUserId }) => {
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    const [prows] = await conn.execute(
+      `SELECT purchase_id, lab_id, item_id, item_name, quantity, unit, buyer_user_id, completed_at
+       FROM lab_purchases WHERE purchase_id = ? LIMIT 1 FOR UPDATE`,
+      [Number(purchase_id)]
+    );
+    const purchase = prows?.[0];
+    if (!purchase) { const e = new Error('Purchase not found'); e.status = 404; throw e; }
+
+    // OWNERSHIP — identical rule to returnLabPurchase: a member may only act on
+    // their own purchase, checked against the locked row.
+    if (completerUserId == null || Number(purchase.buyer_user_id) !== Number(completerUserId)) {
+      const e = new Error('You can only complete items from your own purchases');
+      e.status = 403;
+      throw e;
+    }
+
+    // Idempotence guard — a second click (or a stale list) must not silently
+    // re-stamp an already-discharged purchase.
+    if (purchase.completed_at != null) {
+      const e = new Error(`"${purchase.item_name}" has already been marked fully completed`);
+      e.status = 409;
+      throw e;
+    }
+
+    // RETURNABLE GUARD — mirrors the student-side rule in createReturnRequest:
+    // glassware must physically come back and can never be written off. Read
+    // LIVE from the catalog, since lab_purchases has no is_returnable column.
+    const [irows] = await conn.execute(
+      `SELECT is_returnable FROM inventory_items WHERE item_id = ? LIMIT 1`,
+      [Number(purchase.item_id)]
+    );
+    const item = irows?.[0];
+    if (!item) {
+      const e = new Error(`Catalog item for "${purchase.item_name}" is no longer available`);
+      e.status = 409;
+      throw e;
+    }
+    if (Number(item.is_returnable) === 1) {
+      const e = new Error(`"${purchase.item_name}" is returnable (e.g. glassware) and must be returned, not marked completed`);
+      e.status = 400;
+      throw e;
+    }
+
+    // There must still be a balance to discharge. Same SUM-vs-purchase idiom as
+    // returnLabPurchase's cap check.
+    const [srows] = await conn.execute(
+      `SELECT COALESCE(SUM(quantity), 0) AS returned FROM lab_returns WHERE purchase_id = ?`,
+      [Number(purchase_id)]
+    );
+    const alreadyReturned = Number(srows?.[0]?.returned ?? 0);
+    const remaining = Number((Number(purchase.quantity) - alreadyReturned).toFixed(2));
+    if (!(remaining > 0)) {
+      const e = new Error(`"${purchase.item_name}" has already been fully returned`);
+      e.status = 400;
+      throw e;
+    }
+
+    // The ENTIRE state change. `AND completed_at IS NULL` keeps the write itself
+    // idempotent even if two requests somehow got past the read above.
+    await conn.execute(
+      `UPDATE lab_purchases SET completed_at = NOW()
+       WHERE purchase_id = ? AND completed_at IS NULL`,
+      [Number(purchase_id)]
+    );
+
+    await conn.commit();
+    return {
+      purchase_id: Number(purchase.purchase_id),
+      lab_id: Number(purchase.lab_id),
+      item_id: Number(purchase.item_id),
+      item_name: purchase.item_name ?? null,
+      unit: purchase.unit ?? null,
+      completed_quantity: remaining,
+    };
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+};
+// ═══ ROLE-5 FULLY COMPLETED — REMOVABLE BLOCK (end) ═════════════════════════
+
 // ═══ RETURNABLE FEED — REMOVABLE BLOCK (start) ══════════════════════════════
 // Read-only, admin + incharge. ONE flat list of every returnable item currently
 // or previously taken out, from BOTH flows, one row per item taken:
@@ -1703,7 +1821,7 @@ const returnableFeedInternRows = async () => {
 
 // STUDENT status → one label + whether it is still out.
 // OPEN splits two ways now that partial returns reopen an obligation: nothing
-// back yet ("Out") versus some already returned with a balance still owed
+// back yet ("Not yet returned") versus some already returned with a balance still owed
 // ("Partly returned") — the same distinction the intern side draws.
 // CLEARED likewise covers two different real-world outcomes: an actual return
 // (returned_quantity > 0, set by approveReturnRequest) and a FULLY_COMPLETED
@@ -1716,7 +1834,7 @@ const studentStatusLabel = (status, returnedQuantity) => {
   if (st === 'OPEN') {
     return returned > 0
       ? { status_label: 'Partly returned', outstanding: true }
-      : { status_label: 'Out', outstanding: true };
+      : { status_label: 'Not yet returned', outstanding: true };
   }
   if (st === 'RETURN_PENDING') return { status_label: 'Return pending', outstanding: true };
   if (st === 'CLEARED') {
@@ -1735,7 +1853,7 @@ const studentStatusLabel = (status, returnedQuantity) => {
 const internStatusLabel = (purchasedQty, alreadyReturned) => {
   const purchased = Number(purchasedQty ?? 0);
   const returned = Number(alreadyReturned ?? 0);
-  if (returned <= 0) return { status_label: 'Out', outstanding: true };
+  if (returned <= 0) return { status_label: 'Not yet returned', outstanding: true };
   if (returned >= purchased) return { status_label: 'Returned', outstanding: false };
   return { status_label: 'Partly returned', outstanding: true };
 };

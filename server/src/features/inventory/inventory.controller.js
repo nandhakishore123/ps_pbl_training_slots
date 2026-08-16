@@ -476,6 +476,21 @@ export const createLabReturn = async (req, res) => {
 };
 // ═══ INTERN LAB RETURNS — REMOVABLE BLOCK (end) ═══
 
+// ═══ ROLE-5 FULLY COMPLETED — REMOVABLE BLOCK (start) ═══
+// POST → discharge a CONSUMED purchase. Like the two handlers above, the user
+// comes from req.user; the body may only say WHICH purchase, never WHO.
+export const completeLabPurchase = async (req, res) => {
+  try {
+    const data = await service.completeLabPurchase(req.user?.user_id, req.body);
+    return successResponse(res, 'Purchase marked fully completed', data);
+  } catch (error) {
+    if (error?.status) return errorResponse(res, error.message, error.status);
+    console.error('Error in completeLabPurchase:', error);
+    return internalServerErrorResponse(res, error.message || 'Failed to mark the purchase completed');
+  }
+};
+// ═══ ROLE-5 FULLY COMPLETED — REMOVABLE BLOCK (end) ═══
+
 // ═══ RETURNABLE FEED — REMOVABLE BLOCK (start) ═══
 // GET → every returnable item taken by a student or a lab member, merged.
 // Read-only; the route restricts it to admin + incharge.

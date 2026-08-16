@@ -639,6 +639,21 @@ export const testConnection = async () => {
                 console.log(chalk.green('  Added lab_purchases.purpose.'));
             }
 
+            // ── ROLE-5 FULLY COMPLETED — REMOVABLE SUB-BLOCK (start) ────────
+            // Discharge for a CONSUMED lab purchase — the role-5 twin of the
+            // student side's FULLY_COMPLETED action. lab_purchases has no status
+            // column (remaining is derived from SUM(lab_returns)), so this single
+            // nullable timestamp IS the whole state: NULL = still open, which is
+            // exactly how every pre-existing row already behaves; non-NULL =
+            // discharged with NO stock movement and NO lab_returns row.
+            // Deliberately NOT backfilled — nothing existing changes meaning.
+            // To remove: ALTER TABLE lab_purchases DROP COLUMN completed_at.
+            if (!labPurCols.some((c) => c.Field === 'completed_at')) {
+                await connection.execute('ALTER TABLE lab_purchases ADD COLUMN completed_at timestamp NULL DEFAULT NULL');
+                console.log(chalk.green('  Added lab_purchases.completed_at.'));
+            }
+            // ── ROLE-5 FULLY COMPLETED — REMOVABLE SUB-BLOCK (end) ──────────
+
             // ── INTERN LAB RETURNS — REMOVABLE SUB-BLOCK (start) ────────────
             // Intern direct-return log. One row per return event, always against
             // ONE lab_purchases row, so a purchase can be returned in several

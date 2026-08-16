@@ -43,6 +43,8 @@ import {
   // ── INTERN LAB RETURNS — REMOVABLE ──
   getMyReturnablePurchases,
   createLabReturn,
+  // ── ROLE-5 FULLY COMPLETED — REMOVABLE ──
+  completeLabPurchase,
   // ── RETURNABLE FEED — REMOVABLE ──
   getReturnableFeed,
 } from './inventory.controller.js';
@@ -149,6 +151,13 @@ router.post('/lab-purchase', authMiddleware, requireRole(5, 3), createLabPurchas
 router.get('/my-returnable-purchases', authMiddleware, requireRole(5, 3), getMyReturnablePurchases);
 router.post('/lab-return', authMiddleware, requireRole(5, 3), createLabReturn);      // { purchase_id, quantity }
 // ═══ INTERN LAB RETURNS — REMOVABLE BLOCK (end) ═══
+
+// ═══ ROLE-5 FULLY COMPLETED — REMOVABLE BLOCK (start) ═══
+// Discharge a CONSUMED purchase — the role-5 equivalent of the student's
+// FULLY_COMPLETED action. Moves NO stock. Same guard as /lab-return above, and
+// the handler scopes to req.user, so an admin only ever completes their own.
+router.post('/lab-purchase-complete', authMiddleware, requireRole(5, 3), completeLabPurchase);  // { purchase_id }
+// ═══ ROLE-5 FULLY COMPLETED — REMOVABLE BLOCK (end) ═══
 
 // ═══ RETURNABLE FEED — REMOVABLE BLOCK (start) ═══
 // Merged student + lab-member returnable items, read-only. Admin + incharge
