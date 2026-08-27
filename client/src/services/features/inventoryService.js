@@ -195,8 +195,14 @@ export const inventoryService = {
 
   // Consumption report (admin + incharge): approved student buys + intern lab
   // purchases in a date range. Dates are plain 'YYYY-MM-DD' strings.
-  getConsumptionReport(from, to) {
-    return api.get('/inventory/reports/consumption', { params: { from, to } });
+  // LAB FILTER (removable): `labId` is OPTIONAL — '' / null / undefined omits the
+  // param entirely, so the request is byte-identical to the pre-feature one and
+  // the server returns the all-labs report. Pass a lab id for one lab, or the
+  // string 'none' for rows that carry no lab.
+  getConsumptionReport(from, to, labId) {
+    const params = { from, to };
+    if (labId) params.lab_id = labId;
+    return api.get('/inventory/reports/consumption', { params });
   },
   // ═══ LABS (Stage 4) — REMOVABLE BLOCK (end) ═══
 

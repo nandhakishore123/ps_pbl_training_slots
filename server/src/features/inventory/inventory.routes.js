@@ -135,7 +135,9 @@ router.get('/lab-purchases-feed', authMiddleware, requireRole(3, 4, 5), getLabPu
 
 // Consumption report — approved student buys + intern lab purchases in a date
 // range. Admin + Incharge only (oversight); interns and students excluded.
-router.get('/reports/consumption', authMiddleware, requireRole(3, 4), getConsumptionReport);  // ?from=YYYY-MM-DD&to=YYYY-MM-DD
+// LAB FILTER (removable): the optional &lab_id below narrows the report to one
+// lab; omit it (or send it empty) for the original all-labs report.
+router.get('/reports/consumption', authMiddleware, requireRole(3, 4), getConsumptionReport);  // ?from=YYYY-MM-DD&to=YYYY-MM-DD[&lab_id=<id>|none]
 
 // Intern direct buy — no request, no approval; decrements the shared pool.
 // Role 3 is included so an admin can exercise it without an intern account.
