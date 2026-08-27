@@ -5,7 +5,10 @@
 // TrainingSlots.jsx (manual escaping → HTML string → window.open → document.write),
 // so no PDF dependency is added.
 
-const esc = (s) => String(s ?? '')
+// STOCK REPORT (removable): `export` added so client/src/utils/stockReport.js
+// reuses this escaper instead of declaring its own. Nothing else changed — the
+// consumption document is byte-identical.
+export const esc = (s) => String(s ?? '')
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 // ── Date helpers ─────────────────────────────────────────────
@@ -31,7 +34,8 @@ const fmtDay = (d) => {
   return dt.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 };
 
-const fmtDateTime = (d) => {
+// STOCK REPORT (removable): `export` added for reuse by stockReport.js.
+export const fmtDateTime = (d) => {
   if (!d) return '—';
   const dt = new Date(d);
   if (Number.isNaN(dt.getTime())) return '—';
