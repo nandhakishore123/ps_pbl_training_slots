@@ -427,7 +427,13 @@ export const getLabPurchasesFeed = async (req, res) => {
 // GET ?from=YYYY-MM-DD&to=YYYY-MM-DD → combined student + intern consumption.
 export const getConsumptionReport = async (req, res) => {
   try {
-    const data = await service.getConsumptionReport({ from: req.query?.from, to: req.query?.to });
+    const data = await service.getConsumptionReport({
+      from: req.query?.from,
+      to: req.query?.to,
+      // LAB FILTER (removable): optional. Absent or empty → the whole institution,
+      // exactly as before. Validated in the service, not here.
+      labId: req.query?.lab_id,
+    });
     return successResponse(res, 'Consumption report generated', data);
   } catch (error) {
     if (error?.status) return errorResponse(res, error.message, error.status);

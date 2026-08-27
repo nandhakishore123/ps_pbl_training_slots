@@ -9,6 +9,8 @@ import { useStore } from '../../store/useStore';
 import { inventoryService } from '../../services/features/inventoryService';
 // CONSUMPTION REPORT (removable)
 import ConsumptionReportBar from '../../components/ConsumptionReportBar';
+// STOCK REPORT (removable): printable Current Stock Report for the Stock tab.
+import { openStockReport } from '../../utils/stockReport';
 
 const CSS = `
   .ad-root {
@@ -704,6 +706,33 @@ export default function AdminInventory() {
     setModalErr('');
   };
   const openAdd = (item) => { setStockModal({ mode: 'add', item }); setQtyInput(''); setModalErr(''); };
+
+  // ═══ STOCK REPORT — REMOVABLE BLOCK (start) ═══
+  // Re-fetches on click with the CURRENT category + search rather than reusing
+  // the `stock` state, for two reasons: the search box is debounced by 300ms, so
+  // `stock` can lag what the user just typed; and the on-screen list is sliced to
+  // RENDER_CAP while the report must contain every matching row. GET
+  // /inventory/stock applies no LIMIT, so this one call returns the full set.
+  const [stockRepBusy, setStockRepBusy] = useState(false);
+  const generateStockReport = async () => {
+    setStockRepBusy(true);
+    try {
+      const res = await inventoryService.getStock({ category: categoryFilter, search });
+      openStockReport({
+        items: res?.data?.items || [],
+        category: categoryFilter,
+        search,
+        generated_at: new Date(),
+      });
+      showToast('Stock report generated.', false);
+    } catch {
+      showToast('Failed to generate the stock report.', true);
+    } finally {
+      setStockRepBusy(false);
+    }
+  };
+  // ═══ STOCK REPORT — REMOVABLE BLOCK (end) ═══
+
   const openNew = () => { setStockModal({ mode: 'new' }); setNewItem({ category: categoryFilter || '', subcategory: '', item_name: '', sub_name: '', unit: '', current_quantity: '', rack_location: '', is_returnable: false }); setModalErr(''); };
   const closeStockModal = () => { if (!saving) { setStockModal(null); setModalErr(''); } };
   const submitStockModal = async () => {
@@ -1032,6 +1061,17 @@ export default function AdminInventory() {
                 </svg>
                 Returnable Items
               </button>
+              {/* ═══ STOCK REPORT — REMOVABLE BLOCK (start) ═══
+                  Reuses the toolbar's existing .ad-btn / .ad-btn-outline —
+                  no new CSS. Placed before "+ Add New Item" so the primary
+                  action stays last, exactly as it was. */}
+              <button
+                className="ad-btn ad-btn-outline"
+                disabled={stockRepBusy}
+                onClick={generateStockReport}
+                title="Print the current stock list (category + search applied)"
+              >{stockRepBusy ? 'Preparing…' : 'Stock Report'}</button>
+              {/* ═══ STOCK REPORT — REMOVABLE BLOCK (end) ═══ */}
               <button className="ad-btn ad-btn-primary" onClick={openNew}>+ Add New Item</button>
             </div>
             {stockError && <div className="ad-empty" style={{ color: 'var(--ad-red)' }}>{stockError}</div>}

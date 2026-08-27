@@ -667,14 +667,42 @@ const parseReportDate = (value, label) => {
   return clean;
 };
 
-export const getConsumptionReport = async ({ from, to } = {}) => {
+// ── LAB FILTER — REMOVABLE BLOCK (start) ─────────────────────────────────────
+// Resolves the optional ?lab_id into the shape the model expects.
+//   absent / '' / null / undefined → null  (no filter; the pre-feature path)
+//   'none'                         → { mode: 'none' }   (rows with lab_id NULL)
+//   a positive integer             → { mode: 'lab', labId, labName }
+// Anything else — a non-numeric string, 0, a negative, a decimal, or an id that
+// is not in `labs` — is REJECTED with 400. Falling back to "all" would hand the
+// caller a whole-institution report while the heading claimed one lab, which is
+// worse than an error. The lab name is read here (not in the model) so the
+// printed heading uses the canonical stored name, not client-supplied text.
+const NO_LAB = 'none';
+
+const parseReportLab = async (value) => {
+  const clean = String(value ?? '').trim();
+  if (!clean) return null;                       // unfiltered — unchanged behaviour
+  if (clean.toLowerCase() === NO_LAB) return { mode: NO_LAB, labId: null, labName: 'No lab assigned' };
+  if (!/^\d+$/.test(clean)) throw badRequest('lab_id must be a lab id or "none"');
+  const labId = Number(clean);
+  if (!Number.isSafeInteger(labId) || labId <= 0) throw badRequest('lab_id must be a lab id or "none"');
+  const lab = await model.getLabById(labId);
+  if (!lab) throw badRequest('Unknown lab_id');
+  return { mode: 'lab', labId, labName: lab.lab_name };
+};
+// ── LAB FILTER — REMOVABLE BLOCK (end) ───────────────────────────────────────
+
+export const getConsumptionReport = async ({ from, to, labId } = {}) => {
   const cleanFrom = parseReportDate(from, 'from');
   const cleanTo = parseReportDate(to, 'to');
   if (cleanTo < cleanFrom) throw badRequest('"to" date cannot be earlier than "from" date');
+  // LAB FILTER (removable): null when the param is absent/empty, so the model
+  // call below is identical to the pre-feature one.
+  const labFilter = await parseReportLab(labId);
 
   // An empty range is a normal result, not an error — the model returns
   // empty arrays and the caller renders an empty report.
-  return model.getConsumptionReport({ from: cleanFrom, to: cleanTo });
+  return model.getConsumptionReport({ from: cleanFrom, to: cleanTo, labFilter });
 };
 // ═══ CONSUMPTION REPORT — REMOVABLE BLOCK (end) ═══
 

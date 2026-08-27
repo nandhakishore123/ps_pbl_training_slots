@@ -1210,10 +1210,32 @@ export const listAllLabPurchases = async () => {
 // m…) and adding them would produce a meaningless number. Line items are
 // counted instead.
 // ═══════════════════════════════════════════════════════════════════════════
-export const getConsumptionReport = async ({ from, to }) => {
+export const getConsumptionReport = async ({ from, to, labFilter = null }) => {
   // Inclusive of the whole `to` day — callers pass plain YYYY-MM-DD dates.
   const fromTs = `${from} 00:00:00`;
   const toTs = `${to} 23:59:59`;
+
+  // ── LAB FILTER — REMOVABLE BLOCK (start) ───────────────────────────────────
+  // `labFilter` is resolved and validated in the service; the model only sees
+  //   null                      → no filter at all (the pre-feature behaviour:
+  //                               both WHERE clauses and both parameter lists
+  //                               come out byte-identical to before),
+  //   { mode: 'none' }          → only rows whose lab_id IS NULL (the old rows
+  //                               that predate the lab_id column),
+  //   { mode: 'lab', labId: N } → only rows for that one lab.
+  // Both branches filter on their OWN lab_id column, never on the joined
+  // labs row — an inner-join-style filter would silently drop rows whose lab
+  // was later hard-deleted, and would make the IS NULL case impossible.
+  const labSql = (col) => {
+    if (!labFilter) return '';
+    if (labFilter.mode === 'none') return `
+       AND ${col} IS NULL`;
+    return `
+       AND ${col} = ?`;
+  };
+  // One extra bound parameter, and only in the 'lab' case.
+  const labParams = labFilter && labFilter.mode === 'lab' ? [labFilter.labId] : [];
+  // ── LAB FILTER — REMOVABLE BLOCK (end) ─────────────────────────────────────
 
   // ── STUDENT side: approved buys only, one row per item line ──
   // LEFT JOIN labs so the report's Lab column populates for students too. LEFT,
@@ -1230,9 +1252,9 @@ export const getConsumptionReport = async ({ from, to }) => {
      LEFT JOIN labs l ON l.lab_id = r.lab_id
      WHERE r.request_type = 'BUY'
        AND r.status = 'APPROVED'
-       AND r.decided_at BETWEEN ? AND ?
+       AND r.decided_at BETWEEN ? AND ?${labSql('r.lab_id')}
      ORDER BY r.decided_at DESC`,
-    [fromTs, toTs]
+    [fromTs, toTs, ...labParams]     // LAB FILTER (removable): empty when unfiltered
   );
 
   // ── INTERN side: every lab purchase row in range, NET of returns ──
@@ -1260,9 +1282,9 @@ export const getConsumptionReport = async ({ from, to }) => {
      FROM lab_purchases lp
      LEFT JOIN labs l ON l.lab_id = lp.lab_id
      LEFT JOIN user_profiles up ON up.user_id = lp.buyer_user_id
-     WHERE lp.created_at BETWEEN ? AND ?
+     WHERE lp.created_at BETWEEN ? AND ?${labSql('lp.lab_id')}
      ORDER BY lp.created_at DESC`,
-    [fromTs, toTs]
+    [fromTs, toTs, ...labParams]     // LAB FILTER (removable): empty when unfiltered
   );
 
   const details = [];
@@ -1356,7 +1378,16 @@ export const getConsumptionReport = async ({ from, to }) => {
   return {
     from,
     to,
+    // ── LAB FILTER — REMOVABLE BLOCK (start) ──
+    // Echoed back so the printed document can name the lab it covers. Both are
+    // null for "All Labs", which is what keeps that heading byte-identical.
+    lab_id: labFilter && labFilter.mode === 'lab' ? labFilter.labId : null,
+    lab_name: labFilter ? labFilter.labName : null,
+    // ── LAB FILTER — REMOVABLE BLOCK (end) ──
     generated_at: new Date(),
+    // `summary`/`totals` below are derived from `details`, which now holds only
+    // the filtered rows — so member and line-item counts follow the filter with
+    // no separate recomputation. (LAB FILTER, removable.)
     summary,
     details,
     totals: {

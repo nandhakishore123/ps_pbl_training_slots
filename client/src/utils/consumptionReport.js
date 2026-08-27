@@ -5,7 +5,10 @@
 // TrainingSlots.jsx (manual escaping → HTML string → window.open → document.write),
 // so no PDF dependency is added.
 
-const esc = (s) => String(s ?? '')
+// STOCK REPORT (removable): `export` added so client/src/utils/stockReport.js
+// reuses this escaper instead of declaring its own. Nothing else changed — the
+// consumption document is byte-identical.
+export const esc = (s) => String(s ?? '')
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 // ── Date helpers ─────────────────────────────────────────────
@@ -31,7 +34,8 @@ const fmtDay = (d) => {
   return dt.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 };
 
-const fmtDateTime = (d) => {
+// STOCK REPORT (removable): `export` added for reuse by stockReport.js.
+export const fmtDateTime = (d) => {
   if (!d) return '—';
   const dt = new Date(d);
   if (Number.isNaN(dt.getTime())) return '—';
@@ -83,6 +87,15 @@ export function buildConsumptionReportHtml(report) {
   const details = report?.details || [];
   const totals = report?.totals || {};
   const rangeStr = `${fmtDay(report?.from)} — ${fmtDay(report?.to)}`;
+
+  // ── LAB FILTER — REMOVABLE BLOCK (start) ───────────────────────────────────
+  // `lab_name` is echoed by the endpoint: the lab's stored name when one lab was
+  // selected, 'No lab assigned' for the null-lab report, and null for All Labs.
+  // Null yields an empty suffix, so the All Labs heading below stays exactly as
+  // it was. Nothing else in the document reacts to it.
+  const labName = String(report?.lab_name ?? '').trim();
+  const labSuffix = labName ? ` — ${esc(labName)}` : '';
+  // ── LAB FILTER — REMOVABLE BLOCK (end) ─────────────────────────────────────
 
   // Correct public path under the app's base ('/BIT.png' 404s here).
   const logoUrl = `${window.location.origin}${import.meta.env.BASE_URL}bit-logo.png`;
@@ -170,7 +183,7 @@ export function buildConsumptionReportHtml(report) {
     </div>
 
     <div style="margin-bottom:4px;">
-      <div style="font-size:17px;font-weight:900;margin-top:14px;">Consumables Consumption Report</div>
+      <div style="font-size:17px;font-weight:900;margin-top:14px;">Consumables Consumption Report${labSuffix/* LAB FILTER (removable): '' unless one lab was selected */}</div>
       <div style="font-size:12px;color:#6b7280;font-weight:600;margin-top:2px;">
         Period: <strong style="color:#1a1a2e;">${esc(rangeStr)}</strong> · Approved student requests &amp; intern lab purchases
       </div>
