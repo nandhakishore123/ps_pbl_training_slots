@@ -201,6 +201,11 @@ export default function InventoryInchargeDashboard() {
      typing never refetches and `buying` itself is never mutated — the count
      line below can therefore still show the unfiltered total. */
   const [buySearch, setBuySearch] = useState('');
+  // ═══ REQUEST ITEM EDIT AUDIT — REMOVABLE (start) ═══
+  const [lineDraft, setLineDraft] = useState({});   // { [line_id]: string } unsaved quantity
+  const [lineBusy, setLineBusy] = useState(null);   // line_id being saved / removed
+  const [lineErr, setLineErr] = useState({});       // { [line_id]: message }
+  // ═══ REQUEST ITEM EDIT AUDIT — REMOVABLE (end) ═══
   /* ══ BUYING SEARCH — REMOVABLE (end) ══ */
 
   // ── LAB PURCHASES (intern role 5) — read-only view, REMOVABLE ──
@@ -307,6 +312,48 @@ export default function InventoryInchargeDashboard() {
       setBuyingLoading(false);
     }
   }, []);
+
+  // ═══ REQUEST ITEM EDIT AUDIT — REMOVABLE BLOCK (start) ═══
+  // Edit / remove one line of a PENDING buying request. The max-stock check
+  // here is only a hint; the server re-checks stock and PENDING under a lock.
+  // Errors show inline under the line (this page has no toast).
+  const saveLine = async (r, it) => {
+    const lid = it.line_id;
+    const qty = Number(lineDraft[lid]);
+    const stockQty = it.stock_quantity != null ? Number(it.stock_quantity) : null;
+    if (!Number.isFinite(qty) || qty <= 0) { setLineErr((m) => ({ ...m, [lid]: 'Enter a quantity greater than 0.' })); return; }
+    if (stockQty != null && qty > stockQty) { setLineErr((m) => ({ ...m, [lid]: `Only ${money(stockQty)} ${it.unit || ''} in stock.` })); return; }
+    setLineBusy(lid);
+    setLineErr((m) => ({ ...m, [lid]: '' }));
+    try {
+      await inventoryService.editRequestItem(r.request_id, lid, qty);
+      setLineDraft((m) => { const n = { ...m }; delete n[lid]; return n; });
+      await loadBuying();
+    } catch (err) {
+      setLineErr((m) => ({ ...m, [lid]: err?.response?.data?.message || 'Failed to update quantity.' }));
+    } finally {
+      setLineBusy(null);
+    }
+  };
+  const removeLine = async (r, it) => {
+    const lid = it.line_id;
+    const isLast = (r.items || []).length === 1;
+    const ok = window.confirm(isLast
+      ? `"${it.item_name}" is the LAST item on request #${r.request_id}.\n\nRemoving it will CANCEL THE WHOLE REQUEST, not just remove this item.\n\nCancel the request?`
+      : `Remove "${it.item_name}" from request #${r.request_id}?`);
+    if (!ok) return;
+    setLineBusy(lid);
+    setLineErr((m) => ({ ...m, [lid]: '' }));
+    try {
+      await inventoryService.deleteRequestItem(r.request_id, lid);
+      await loadBuying();
+    } catch (err) {
+      setLineErr((m) => ({ ...m, [lid]: err?.response?.data?.message || 'Failed to remove item.' }));
+    } finally {
+      setLineBusy(null);
+    }
+  };
+  // ═══ REQUEST ITEM EDIT AUDIT — REMOVABLE BLOCK (end) ═══
 
   // Initial: categories + stock
   useEffect(() => {
@@ -756,6 +803,8 @@ export default function InventoryInchargeDashboard() {
             <ConsumptionReportBar prefix="ic" />
             <div className="ic-note">
               <span>ⓘ</span> Read-only — buying requests are approved by <strong>Faculty</strong>. You cannot approve or reject them here.
+              {/* REQUEST ITEM EDIT AUDIT (removable) */}
+              {' '}While a request is pending you can adjust or remove its items.
             </div>
             {/* ══ BUYING SEARCH — REMOVABLE (start) ══
                 Below the report bar and the notice, above the count — directly
@@ -800,9 +849,47 @@ export default function InventoryInchargeDashboard() {
                     </div>
                     <StatusPill status={r.status} />
                   </div>
-                  <div className="ic-req-items">
-                    {(r.items || []).map((it) => `${it.item_name} (${money(it.quantity)} ${it.unit || ''})`).join(' · ') || '—'}
-                  </div>
+                  {/* ═══ REQUEST ITEM EDIT AUDIT — REMOVABLE (start) ═══
+                      PENDING: one editable row per line (qty + in-stock hint + remove).
+                      Anything else: the original read-only line, with an "edited"
+                      marker only — who/when is deliberately admin-page-only. */}
+                  {String(r.status).toUpperCase() === 'PENDING' && (r.items || []).length > 0 ? (
+                    <div className="ic-req-items ic-li-list">
+                      {(r.items || []).map((it) => {
+                        const lid = it.line_id;
+                        const stockQty = it.stock_quantity != null ? Number(it.stock_quantity) : null;
+                        const draft = lineDraft[lid];
+                        const changed = draft !== undefined && Number(draft) !== Number(it.quantity);
+                        const over = changed && stockQty != null && Number(draft) > stockQty;
+                        const busy = lineBusy === lid;
+                        return (
+                          <div className="ic-li-row" key={lid}>
+                            <span className="ic-li-name">{it.item_name}</span>
+                            <input
+                              className="ic-li-qty" type="number" min="0" step="any"
+                              max={stockQty != null ? stockQty : undefined}
+                              value={draft ?? String(Number(it.quantity ?? 0))}
+                              disabled={busy}
+                              onChange={(e) => { const v = e.target.value; setLineDraft((m) => ({ ...m, [lid]: v })); setLineErr((m) => ({ ...m, [lid]: '' })); }}
+                              aria-label={`Quantity for ${it.item_name}`}
+                            />
+                            <span>{it.unit || ''}</span>
+                            <span className="ic-li-stock">in stock: {stockQty != null ? `${money(stockQty)} ${it.unit || ''}` : '—'}</span>
+                            {changed && <button className="ic-li-save" disabled={busy || over} onClick={() => saveLine(r, it)}>{busy ? 'Saving…' : 'Save'}</button>}
+                            <button className="ic-li-del" disabled={busy} title="Remove this item" aria-label={`Remove ${it.item_name}`} onClick={() => removeLine(r, it)}>🗑</button>
+                            {it.edited_at && <span className="ic-li-edited">✎ edited</span>}
+                            {over && <span className="ic-li-err">Only {money(stockQty)} {it.unit || ''} in stock — lower the quantity to save.</span>}
+                            {lineErr[lid] && <span className="ic-li-err">{lineErr[lid]}</span>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="ic-req-items">
+                      {(r.items || []).map((it) => `${it.item_name} (${money(it.quantity)} ${it.unit || ''})${it.edited_at ? ' ✎ edited' : ''}`).join(' · ') || '—'}
+                    </div>
+                  )}
+                  {/* ═══ REQUEST ITEM EDIT AUDIT — REMOVABLE (end) ═══ */}
                   {/* SELECT LAB + PROJECT GUIDE — both already returned by
                       listAllBuyingRequests; '—' covers rows predating the columns. */}
                   <div className="ic-req-meta" style={{ marginTop: 6 }}>

@@ -129,7 +129,9 @@ export const listRequestsForStudent = async (studentId) => {
   const ids = reqs.map((r) => Number(r.request_id));
   const placeholders = ids.map(() => '?').join(',');
   const [items] = await db.execute(
-    `SELECT line_id, request_id, item_id, item_name, quantity, unit, created_at
+    // REQUEST ITEM EDIT AUDIT (removable): `, edited_at` added so the student
+    // sees an "edited" marker. Who edited is deliberately NOT exposed here.
+    `SELECT line_id, request_id, item_id, item_name, quantity, unit, created_at, edited_at
      FROM inventory_request_items
      WHERE request_id IN (${placeholders})
      ORDER BY line_id ASC`,
@@ -319,7 +321,10 @@ export const updateItem = async (itemId, fields, actorUserId) => {
 };
 
 // All BUY requests (newest first) with student name/reg + nested items — incharge READ-ONLY view.
-export const listAllBuyingRequests = async () => {
+// REQUEST ITEM EDIT AUDIT (removable): `withEditor` adds the editor's display
+// name to each line. Only the admin read passes it — the incharge page shows
+// the "edited" marker but deliberately not who/when.
+export const listAllBuyingRequests = async ({ withEditor = false } = {}) => {
   const [reqs] = await db.execute(
     `SELECT r.request_id, r.student_id, s.name AS student_name, s.reg_num AS student_reg,
             r.request_type, r.purpose_type, r.purpose, r.status, r.lab_id, l.lab_name,
@@ -334,13 +339,27 @@ export const listAllBuyingRequests = async () => {
   if (!reqs.length) return [];
   const ids = reqs.map((r) => Number(r.request_id));
   const placeholders = ids.map(() => '?').join(',');
+  // ═══ REQUEST ITEM EDIT AUDIT — REMOVABLE (start) ═══
+  // Was: SELECT line_id, request_id, item_id, item_name, quantity, unit FROM
+  // inventory_request_items. Same rows, same order; added columns only:
+  //   stock_quantity — live inventory_items.current_quantity, for the
+  //                    "in stock: N" hint next to the pending-line editor,
+  //   edited_at      — non-NULL = an approver changed this line's quantity,
+  //   edited_by_name — admin read only (see withEditor above).
+  // LEFT JOINs so a dangling item_id / editor never drops a line.
   const [items] = await db.execute(
-    `SELECT line_id, request_id, item_id, item_name, quantity, unit
-     FROM inventory_request_items
-     WHERE request_id IN (${placeholders})
-     ORDER BY line_id ASC`,
+    `SELECT ri.line_id, ri.request_id, ri.item_id, ri.item_name, ri.quantity, ri.unit,
+            ii.current_quantity AS stock_quantity, ri.edited_at
+            ${withEditor ? ', ri.edited_by_user_id, COALESCE(up.name, u.email) AS edited_by_name' : ''}
+     FROM inventory_request_items ri
+     LEFT JOIN inventory_items ii ON ii.item_id = ri.item_id
+     ${withEditor ? `LEFT JOIN user_profiles up ON up.user_id = ri.edited_by_user_id
+     LEFT JOIN users u ON u.user_id = ri.edited_by_user_id` : ''}
+     WHERE ri.request_id IN (${placeholders})
+     ORDER BY ri.line_id ASC`,
     ids
   );
+  // ═══ REQUEST ITEM EDIT AUDIT — REMOVABLE (end) ═══
   const byReq = {};
   for (const it of items) { (byReq[it.request_id] ||= []).push(it); }
   return reqs.map((r) => ({ ...r, items: byReq[r.request_id] || [] }));
@@ -615,6 +634,126 @@ export const rejectBuyingRequest = async (requestId, approverUserId, approverRol
   );
   return { request_id: Number(requestId), status: 'REJECTED', affected: result.affectedRows };
 };
+
+// ═══ REQUEST ITEM EDIT AUDIT — REMOVABLE BLOCK (start) ═══
+// Admin (3) / Incharge (4) edit or delete ONE line of a PENDING BUY request.
+// Both run in a transaction with the request header locked FOR UPDATE, so a
+// concurrent approve/reject cannot land between the PENDING check and the
+// write. Neither touches stock — nothing is deducted until approval, and
+// approveBuyingRequest simply reads whatever quantities are stored then.
+
+// Shared: lock the header and insist it is a PENDING BUY request.
+const lockPendingBuyHeader = async (conn, requestId) => {
+  const [hrows] = await conn.execute(
+    `SELECT request_id, request_type, status
+       FROM inventory_requests WHERE request_id = ? FOR UPDATE`,
+    [Number(requestId)]
+  );
+  const header = hrows?.[0];
+  if (!header) { const e = new Error('Request not found'); e.status = 404; throw e; }
+  if (header.request_type !== 'BUY') { const e = new Error('Not a buying request'); e.status = 400; throw e; }
+  if (String(header.status).toUpperCase() !== 'PENDING') {
+    const e = new Error(`Request is ${String(header.status).toLowerCase()}, not pending — items can no longer be changed`);
+    e.status = 409; throw e;
+  }
+  return header;
+};
+
+// Set one line's quantity. May raise or lower; capped only by current stock.
+// requested_quantity (the student's original ask) is left untouched.
+export const editRequestLineQuantity = async (requestId, lineId, quantity, actorUserId) => {
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
+    await lockPendingBuyHeader(conn, requestId);
+
+    const [lrows] = await conn.execute(
+      `SELECT line_id, item_id, item_name, unit FROM inventory_request_items
+        WHERE line_id = ? AND request_id = ? LIMIT 1`,
+      [Number(lineId), Number(requestId)]
+    );
+    const line = lrows?.[0];
+    if (!line) { const e = new Error(`Line ${lineId} does not belong to request ${requestId}`); e.status = 404; throw e; }
+
+    const [srows] = await conn.execute(
+      `SELECT current_quantity FROM inventory_items WHERE item_id = ? LIMIT 1`,
+      [Number(line.item_id)]
+    );
+    if (!srows?.[0]) { const e = new Error(`Item ${line.item_id} not found`); e.status = 400; throw e; }
+    // decimal(12,2) comes back as a string — normalise before comparing.
+    const available = Number(srows[0].current_quantity);
+    if (Number(quantity) > available) {
+      const e = new Error(`Only ${available} ${line.unit || ''} of "${line.item_name}" in stock`.replace(/\s+/g, ' '));
+      e.status = 400; throw e;
+    }
+
+    await conn.execute(
+      `UPDATE inventory_request_items
+          SET quantity = ?, edited_by_user_id = ?, edited_at = NOW()
+        WHERE line_id = ? AND request_id = ?`,
+      [Number(quantity), actorUserId != null ? Number(actorUserId) : null, Number(lineId), Number(requestId)]
+    );
+    const [out] = await conn.execute(
+      `SELECT line_id, request_id, item_id, item_name, quantity, unit, edited_by_user_id, edited_at
+         FROM inventory_request_items WHERE line_id = ? LIMIT 1`,
+      [Number(lineId)]
+    );
+    await conn.commit();
+    return { request_id: Number(requestId), status: 'PENDING', item: out[0] };
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+};
+
+// Remove one line. If it was the last, the request is closed as REJECTED —
+// the only "not going ahead" status this system has (there is no CANCELLED),
+// and what the student already sees for a request that will not be fulfilled.
+// The remark says why, so it reads as a cancellation rather than a refusal.
+export const CANCELLED_REMARK = 'Cancelled — all items removed by inventory staff';
+export const deleteRequestLine = async (requestId, lineId, actorUserId, actorRole) => {
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
+    await lockPendingBuyHeader(conn, requestId);
+
+    const [del] = await conn.execute(
+      `DELETE FROM inventory_request_items WHERE line_id = ? AND request_id = ?`,
+      [Number(lineId), Number(requestId)]
+    );
+    if (!del.affectedRows) { const e = new Error(`Line ${lineId} does not belong to request ${requestId}`); e.status = 404; throw e; }
+
+    const [[cnt]] = await conn.execute(
+      `SELECT COUNT(*) AS n FROM inventory_request_items WHERE request_id = ?`,
+      [Number(requestId)]
+    );
+    const remaining = Number(cnt.n || 0);
+    let status = 'PENDING';
+    if (remaining === 0) {
+      // AUTO-CANCEL NO-APPROVER FIX (removable comment): status + remark ONLY.
+      // approver_user_id / approver_role / decided_at stay NULL — approval
+      // counts key off approver_user_id, and a deletion is not an approval.
+      // Who removed the lines is on inventory_request_items.edited_by_user_id.
+      await conn.execute(
+        `UPDATE inventory_requests
+            SET status = 'REJECTED', remarks = ?
+          WHERE request_id = ?`,
+        [CANCELLED_REMARK, Number(requestId)]
+      );
+      status = 'REJECTED';
+    }
+    await conn.commit();
+    return { request_id: Number(requestId), line_id: Number(lineId), remaining, status, cancelled: remaining === 0 };
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+};
+// ═══ REQUEST ITEM EDIT AUDIT — REMOVABLE BLOCK (end) ═══
 
 // ── Stage 5 — obligations + return flow ──────────────────────
 

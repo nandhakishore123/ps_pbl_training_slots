@@ -47,6 +47,9 @@ import {
   completeLabPurchase,
   // ── RETURNABLE FEED — REMOVABLE ──
   getReturnableFeed,
+  // ── REQUEST ITEM EDIT AUDIT — REMOVABLE ──
+  editRequestItem,
+  deleteRequestItem,
 } from './inventory.controller.js';
 
 const router = express.Router();
@@ -168,5 +171,14 @@ router.post('/lab-purchase-complete', authMiddleware, requireRole(5, 3), complet
 // hence 3,4 rather than the 3,4,5 used by /lab-purchases-feed.
 router.get('/returnable-feed', authMiddleware, requireRole(3, 4), getReturnableFeed);
 // ═══ RETURNABLE FEED — REMOVABLE BLOCK (end) ═══
+
+// ═══ REQUEST ITEM EDIT AUDIT — REMOVABLE BLOCK (start) ═══
+// Admin (3) + Incharge (4) edit / remove ONE line of a PENDING BUY request.
+// Same authMiddleware + requireRole pattern as approve. The model re-checks
+// PENDING under a row lock (409 otherwise); stock is never touched here.
+// Deleting the last line closes the request (status REJECTED, "Cancelled" remark).
+router.patch('/requests/:requestId/items/:lineId', authMiddleware, requireRole(3, 4), editRequestItem);    // { quantity }
+router.delete('/requests/:requestId/items/:lineId', authMiddleware, requireRole(3, 4), deleteRequestItem);
+// ═══ REQUEST ITEM EDIT AUDIT — REMOVABLE BLOCK (end) ═══
 
 export default router;

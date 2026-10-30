@@ -79,6 +79,18 @@ export const inventoryService = {
     return api.patch(`/inventory/buying/${requestId}/items`, { items });
   },
 
+  // ═══ REQUEST ITEM EDIT AUDIT — REMOVABLE (start) ═══
+  // Admin (3) / Incharge (4): change or remove ONE line of a PENDING request.
+  // Server caps quantity at current stock; removing the last line cancels it.
+  editRequestItem(requestId, lineId, quantity) {
+    return api.patch(`/inventory/requests/${requestId}/items/${lineId}`, { quantity });
+  },
+
+  deleteRequestItem(requestId, lineId) {
+    return api.delete(`/inventory/requests/${requestId}/items/${lineId}`);
+  },
+  // ═══ REQUEST ITEM EDIT AUDIT — REMOVABLE (end) ═══
+
   // ── Student return flow (Stage 5) ──────────────────────────
   getMyObligations() {
     return api.get('/inventory/obligations/mine');

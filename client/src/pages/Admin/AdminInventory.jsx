@@ -105,6 +105,19 @@ const CSS = `
   .ad-reject { flex:1; padding:10px 16px; border-radius:10px; background:rgba(239,68,68,0.09); color:#dc2626; border:1.5px solid rgba(239,68,68,0.4); font-size:13px; font-weight:800; cursor:pointer; font-family:inherit; }
   .ad-approve:disabled, .ad-reject:disabled { opacity:0.5; cursor:not-allowed; }
   .ad-err { margin-top:8px; font-size:12.5px; color:var(--ad-red); font-weight:800; }
+  /* ═══ REQUEST ITEM EDIT AUDIT — REMOVABLE (start) ═══ per-line editor on PENDING buying requests */
+  .ad-li-list { display:flex; flex-direction:column; gap:6px; }
+  .ad-li-row { display:flex; flex-wrap:wrap; align-items:center; gap:8px; font-size:12.5px; color:var(--ad-text2); }
+  .ad-li-name { font-weight:800; min-width:120px; }
+  .ad-li-qty { width:90px; padding:6px 8px; border:1.5px solid var(--ad-border); border-radius:8px; font-size:12.5px; font-family:inherit; background:var(--ad-white); color:inherit; }
+  .ad-li-qty:focus { outline:none; border-color:var(--ad-purple); }
+  .ad-li-stock { font-size:11.5px; color:var(--ad-text3); font-weight:700; }
+  .ad-li-save { padding:5px 12px; border:none; border-radius:8px; background:var(--ad-purple); color:#fff; font-size:12px; font-weight:800; cursor:pointer; font-family:inherit; }
+  .ad-li-del { padding:5px 9px; border-radius:8px; background:rgba(239,68,68,0.09); color:#dc2626; border:1.5px solid rgba(239,68,68,0.4); font-size:12px; font-weight:800; cursor:pointer; font-family:inherit; }
+  .ad-li-save:disabled, .ad-li-del:disabled { opacity:0.5; cursor:not-allowed; }
+  .ad-li-edited { font-size:11px; font-weight:800; color:#b45309; }
+  .ad-li-err { flex-basis:100%; font-size:12px; color:var(--ad-red); font-weight:800; }
+  /* ═══ REQUEST ITEM EDIT AUDIT — REMOVABLE (end) ═══ */
 
   .ad-pill { display:inline-flex; align-items:center; gap:6px; padding:4px 12px; border-radius:20px; font-size:11px; font-weight:800; letter-spacing:0.4px; text-transform:uppercase; white-space:nowrap; }
   .ad-pill.pending { background:rgba(245,158,11,0.12); color:#b45309; border:1px solid rgba(245,158,11,0.4); }
@@ -432,6 +445,11 @@ export default function AdminInventory() {
   const [rowErr, setRowErr] = useState({});
   const [rejectModal, setRejectModal] = useState(null); // { kind:'BUY'|'RETURN', id }
   const [rejectRemarks, setRejectRemarks] = useState('');
+  // ═══ REQUEST ITEM EDIT AUDIT — REMOVABLE (start) ═══
+  const [lineDraft, setLineDraft] = useState({});   // { [line_id]: string } unsaved quantity
+  const [lineBusy, setLineBusy] = useState(null);   // line_id being saved / removed
+  const [lineErr, setLineErr] = useState({});       // { [line_id]: message }
+  // ═══ REQUEST ITEM EDIT AUDIT — REMOVABLE (end) ═══
 
   const [stockModal, setStockModal] = useState(null); // { mode:'editItem'|'add'|'new', item? }
   const [qtyInput, setQtyInput] = useState('');
@@ -669,6 +687,47 @@ export default function AdminInventory() {
     catch (err) { const msg = err?.response?.data?.message || 'Failed to approve.'; setRowErr((m) => ({ ...m, [id]: msg })); showToast(msg, true); }
     finally { setBusyId(null); }
   };
+  // ═══ REQUEST ITEM EDIT AUDIT — REMOVABLE BLOCK (start) ═══
+  // Edit / remove one line of a PENDING buying request. The max-stock check
+  // here is only a hint; the server re-checks stock and PENDING under a lock.
+  const saveLine = async (r, it) => {
+    const lid = it.line_id;
+    const qty = Number(lineDraft[lid]);
+    const stockQty = it.stock_quantity != null ? Number(it.stock_quantity) : null;
+    if (!Number.isFinite(qty) || qty <= 0) { setLineErr((m) => ({ ...m, [lid]: 'Enter a quantity greater than 0.' })); return; }
+    if (stockQty != null && qty > stockQty) { setLineErr((m) => ({ ...m, [lid]: `Only ${money(stockQty)} ${it.unit || ''} in stock.` })); return; }
+    setLineBusy(lid); setLineErr((m) => ({ ...m, [lid]: '' }));
+    try {
+      await inventoryService.editRequestItem(r.request_id, lid, qty);
+      setLineDraft((m) => { const n = { ...m }; delete n[lid]; return n; });
+      showToast('Quantity updated', false);
+      await loadBuying();
+    } catch (err) { const msg = err?.response?.data?.message || 'Failed to update quantity.'; setLineErr((m) => ({ ...m, [lid]: msg })); showToast(msg, true); }
+    finally { setLineBusy(null); }
+  };
+  const removeLine = async (r, it) => {
+    const lid = it.line_id;
+    const isLast = (r.items || []).length === 1;
+    const ok = window.confirm(isLast
+      ? `"${it.item_name}" is the LAST item on request #${r.request_id}.\n\nRemoving it will CANCEL THE WHOLE REQUEST, not just remove this item.\n\nCancel the request?`
+      : `Remove "${it.item_name}" from request #${r.request_id}?`);
+    if (!ok) return;
+    setLineBusy(lid); setLineErr((m) => ({ ...m, [lid]: '' }));
+    try {
+      await inventoryService.deleteRequestItem(r.request_id, lid);
+      showToast(isLast ? 'Last item removed — request cancelled' : 'Item removed', false);
+      await loadBuying(); loadOverview();
+    } catch (err) { const msg = err?.response?.data?.message || 'Failed to remove item.'; setLineErr((m) => ({ ...m, [lid]: msg })); showToast(msg, true); }
+    finally { setLineBusy(null); }
+  };
+  // Who/when shown on THIS page only, in IST regardless of the viewer's clock.
+  const fmtIST = (d) => {
+    const dt = d ? new Date(d) : null;
+    if (!dt || Number.isNaN(dt.getTime())) return '';
+    return `${dt.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })} IST`;
+  };
+  const editedNote = (it) => `✎ edited by ${it.edited_by_name || 'staff'}${it.edited_at ? ` · ${fmtIST(it.edited_at)}` : ''}`;
+  // ═══ REQUEST ITEM EDIT AUDIT — REMOVABLE BLOCK (end) ═══
   const approveRet = async (id) => {
     setBusyId(id); setRowErr((m) => ({ ...m, [id]: '' }));
     try { await inventoryService.approveReturn(id); showToast('Return approved — stock updated', false); await loadReturns(); loadOverview(); }
@@ -841,7 +900,54 @@ export default function AdminInventory() {
           </div>
           <StatusPill status={r.status} />
         </div>
-        <div className="ad-req-items">{(r.items || []).map((it) => `${it.item_name} (${money(it.quantity)} ${it.unit || ''})`).join(' · ') || '—'}</div>
+        {/* ═══ REQUEST ITEM EDIT AUDIT — REMOVABLE (start) ═══
+            PENDING: one editable row per line (qty + in-stock hint + remove).
+            Anything else: the original read-only line, plus who/when for any
+            line that was edited before the decision. */}
+        {isPending && (r.items || []).length > 0 ? (
+          <div className="ad-req-items ad-li-list">
+            {(r.items || []).map((it) => {
+              const lid = it.line_id;
+              const stockQty = it.stock_quantity != null ? Number(it.stock_quantity) : null;
+              const draft = lineDraft[lid];
+              const changed = draft !== undefined && Number(draft) !== Number(it.quantity);
+              const over = changed && stockQty != null && Number(draft) > stockQty;
+              const busy = lineBusy === lid || busyId === r.request_id;
+              return (
+                <div className="ad-li-row" key={lid}>
+                  <span className="ad-li-name">{it.item_name}</span>
+                  <input
+                    className="ad-li-qty" type="number" min="0" step="any"
+                    max={stockQty != null ? stockQty : undefined}
+                    value={draft ?? String(Number(it.quantity ?? 0))}
+                    disabled={busy}
+                    onChange={(e) => { const v = e.target.value; setLineDraft((m) => ({ ...m, [lid]: v })); setLineErr((m) => ({ ...m, [lid]: '' })); }}
+                    aria-label={`Quantity for ${it.item_name}`}
+                  />
+                  <span>{it.unit || ''}</span>
+                  <span className="ad-li-stock">in stock: {stockQty != null ? `${money(stockQty)} ${it.unit || ''}` : '—'}</span>
+                  {changed && <button className="ad-li-save" disabled={busy || over} onClick={() => saveLine(r, it)}>{lineBusy === lid ? 'Saving…' : 'Save'}</button>}
+                  <button className="ad-li-del" disabled={busy} title="Remove this item" aria-label={`Remove ${it.item_name}`} onClick={() => removeLine(r, it)}>🗑</button>
+                  {it.edited_at && <span className="ad-li-edited">{editedNote(it)}</span>}
+                  {over && <span className="ad-li-err">Only {money(stockQty)} {it.unit || ''} in stock — lower the quantity to save.</span>}
+                  {lineErr[lid] && <span className="ad-li-err">{lineErr[lid]}</span>}
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <>
+            <div className="ad-req-items">{(r.items || []).map((it) => `${it.item_name} (${money(it.quantity)} ${it.unit || ''})`).join(' · ') || '—'}</div>
+            {(r.items || []).some((it) => it.edited_at) && (
+              <div className="ad-req-meta" style={{ marginTop: 4 }}>
+                {(r.items || []).filter((it) => it.edited_at).map((it) => (
+                  <div key={it.line_id}><span className="ad-li-edited">{it.item_name}: {editedNote(it)}</span></div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+        {/* ═══ REQUEST ITEM EDIT AUDIT — REMOVABLE (end) ═══ */}
         {/* SELECT LAB + PROJECT GUIDE — listAllBuyingRequests already returns both;
             '—' covers rows predating the columns. */}
         <div className="ad-req-meta" style={{ marginTop: 6 }}>

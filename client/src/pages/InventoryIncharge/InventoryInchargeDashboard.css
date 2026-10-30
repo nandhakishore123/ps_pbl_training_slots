@@ -111,6 +111,19 @@
   .ic-req-name { font-size:13.5px; font-weight:900; }
   .ic-req-meta { font-size:11.5px; color:var(--ic-text3); font-weight:600; margin-top:2px; }
   .ic-req-items { font-size:12.5px; color:var(--ic-text2); line-height:1.6; }
+  /* ═══ REQUEST ITEM EDIT AUDIT — REMOVABLE (start) ═══ per-line editor on PENDING buying requests */
+  .ic-li-list { display:flex; flex-direction:column; gap:6px; }
+  .ic-li-row { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+  .ic-li-name { font-weight:800; min-width:120px; }
+  .ic-li-qty { width:90px; padding:6px 8px; border:1.5px solid var(--ic-border); border-radius:8px; font-size:12.5px; font-family:inherit; background:var(--ic-white); color:inherit; }
+  .ic-li-qty:focus { outline:none; border-color:var(--ic-purple); }
+  .ic-li-stock { font-size:11.5px; color:var(--ic-text3); font-weight:700; }
+  .ic-li-save { padding:5px 12px; border:none; border-radius:8px; background:var(--ic-purple); color:#fff; font-size:12px; font-weight:800; cursor:pointer; font-family:inherit; }
+  .ic-li-del { padding:5px 9px; border-radius:8px; background:rgba(239,68,68,0.09); color:#dc2626; border:1.5px solid rgba(239,68,68,0.4); font-size:12px; font-weight:800; cursor:pointer; font-family:inherit; }
+  .ic-li-save:disabled, .ic-li-del:disabled { opacity:0.5; cursor:not-allowed; }
+  .ic-li-edited { font-size:11px; font-weight:800; color:#b45309; }
+  .ic-li-err { flex-basis:100%; font-size:12px; color:var(--ic-red); font-weight:800; }
+  /* ═══ REQUEST ITEM EDIT AUDIT — REMOVABLE (end) ═══ */
   .ic-pill { display:inline-flex; align-items:center; gap:6px; padding:4px 12px; border-radius:20px; font-size:11px;
     font-weight:800; letter-spacing:0.4px; text-transform:uppercase; }
   .ic-pill.pending { background:rgba(245,158,11,0.12); color:#b45309; border:1px solid rgba(245,158,11,0.4); }

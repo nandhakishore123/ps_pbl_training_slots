@@ -421,6 +421,35 @@ export const rejectBuying = async (userId, roleId, requestId, remarks) => {
   return model.rejectBuyingRequest(requestId, userId, roleId, cleanRemarks);
 };
 
+// ═══ REQUEST ITEM EDIT AUDIT — REMOVABLE BLOCK (start) ═══
+// Admin (3) / Incharge (4) adjust one line of a PENDING request. The route's
+// requireRole(3, 4) is the whole authorization — no purpose-based approver
+// check, since the incharge is not a purpose approver. The PENDING check and
+// stock check live in the model, inside the locked transaction.
+const parseIds = (requestId, lineId) => {
+  const rid = Number(requestId);
+  const lid = Number(lineId);
+  if (!Number.isInteger(rid) || rid <= 0) throw badRequest('Invalid request id');
+  if (!Number.isInteger(lid) || lid <= 0) throw badRequest('Invalid line id');
+  return { rid, lid };
+};
+
+export const editRequestLine = async (userId, requestId, lineId, quantity) => {
+  const { rid, lid } = parseIds(requestId, lineId);
+  // Normalise first: the body may carry "12.5" as a string.
+  const qty = Number(quantity);
+  if (quantity === null || quantity === '' || !Number.isFinite(qty) || qty <= 0) {
+    throw badRequest('Quantity must be a positive number');
+  }
+  return model.editRequestLineQuantity(rid, lid, qty, userId);
+};
+
+export const deleteRequestLine = async (userId, roleId, requestId, lineId) => {
+  const { rid, lid } = parseIds(requestId, lineId);
+  return model.deleteRequestLine(rid, lid, userId, roleId);
+};
+// ═══ REQUEST ITEM EDIT AUDIT — REMOVABLE BLOCK (end) ═══
+
 // ── Student return flow (Stage 5) ────────────────────────────
 export const listMyOpenObligations = async (userId) => {
   const studentId = await getStudentIdByUserId(userId);
@@ -514,7 +543,9 @@ export const listReturnsReadOnly = async () => {
 // (authorizeApprover bypasses purpose routing for role 3). These add the
 // "see everything" reads for the admin console.
 export const getAdminOverview = async () => model.getInventoryCounts();
-export const listAllBuying = async () => model.listAllBuyingRequests();          // all BUY, both purposes, all statuses
+// REQUEST ITEM EDIT AUDIT (removable): was `model.listAllBuyingRequests()`; the
+// flag only adds edited_by_name per line (admin sees who edited; incharge not).
+export const listAllBuying = async () => model.listAllBuyingRequests({ withEditor: true });          // all BUY, both purposes, all statuses
 export const listAllReturns = async () => model.listReturnRequests({ onlyPending: false });
 
 // ── Admin-configurable approvers (Stage 7) ───────────────────

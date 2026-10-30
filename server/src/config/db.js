@@ -440,6 +440,22 @@ export const testConnection = async () => {
                 await connection.execute('ALTER TABLE inventory_request_items ADD COLUMN requested_quantity decimal(12,2) DEFAULT NULL');
                 console.log(chalk.green('  Added inventory_request_items.requested_quantity.'));
             }
+            // ═══ REQUEST ITEM EDIT AUDIT — REMOVABLE BLOCK (start) ═══
+            // Who last edited a PENDING line's quantity (admin / incharge) and when.
+            // NULLABLE: untouched lines stay NULL, which is what "not edited" means.
+            // bigint (not INT) to match every other *_user_id column here.
+            // Live DBs get the same two columns from
+            // server/migrations/2026-10-30_request_item_edit_audit.sql.
+            // To remove: delete this block and DROP both columns.
+            if (!iriHas('edited_by_user_id')) {
+                await connection.execute('ALTER TABLE inventory_request_items ADD COLUMN edited_by_user_id bigint NULL DEFAULT NULL');
+                console.log(chalk.green('  Added inventory_request_items.edited_by_user_id.'));
+            }
+            if (!iriHas('edited_at')) {
+                await connection.execute('ALTER TABLE inventory_request_items ADD COLUMN edited_at datetime NULL DEFAULT NULL');
+                console.log(chalk.green('  Added inventory_request_items.edited_at.'));
+            }
+            // ═══ REQUEST ITEM EDIT AUDIT — REMOVABLE BLOCK (end) ═══
             // Additive: the lab a student's BUY request is for. NULLABLE by design —
             // requests created before this column existed keep NULL, and RETURN
             // requests never set it. Required-ness is enforced in the service for
