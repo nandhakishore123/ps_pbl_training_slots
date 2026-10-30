@@ -162,7 +162,8 @@ export default function InventoryInchargeDashboard() {
   // URL both still work. The lazy-load effect below keys off `tab`, so it fires
   // on mount with the restored value and that tab's data loads as usual.
   const [searchParams, setSearchParams] = useSearchParams();
-  const TAB_KEYS = ['stock', 'buying', 'returns', 'labpurchases', 'returnables'];
+  // LAB PROCUREMENT — REMOVABLE: 'procurement' appended to the list.
+  const TAB_KEYS = ['stock', 'buying', 'returns', 'labpurchases', 'returnables', 'procurement'];
   const tabParam = searchParams.get('tab');
   const tab = TAB_KEYS.includes(tabParam) ? tabParam : 'stock';
   const setTab = useCallback((val) => {
@@ -181,6 +182,8 @@ export default function InventoryInchargeDashboard() {
     if (val !== 'returnables') setPersonTypeFilter('all');
     /* ══ HELD-FOR FILTER — REMOVABLE: same rule ══ */
     if (val !== 'returnables') setHeldForFilter('any');
+    /* ══ LAB PROCUREMENT — REMOVABLE: same rule for the Lab Procurement tab ══ */
+    if (val !== 'procurement') setProcSearch('');
     setSearchParams((prev) => { const p = new URLSearchParams(prev); p.set('tab', val); return p; });
   }, [setSearchParams]);
 
@@ -219,6 +222,20 @@ export default function InventoryInchargeDashboard() {
   const [labpSearch, setLabpSearch] = useState('');
   /* ══ LAB PURCHASES SEARCH — REMOVABLE (end) ══ */
   // ── END LAB PURCHASES ──
+
+  // ══ LAB PROCUREMENT — REMOVABLE (start) ══
+  const [procurement, setProcurement] = useState([]);
+  const [procLoading, setProcLoading] = useState(false);
+  const [procLoaded, setProcLoaded] = useState(false);
+  const [procSearch, setProcSearch] = useState('');
+  const [procDelBusy, setProcDelBusy] = useState(null);   // procurement_id being deleted
+  const [procExporting, setProcExporting] = useState(false);
+  const [procMsg, setProcMsg] = useState('');             // inline error (this page has no toast)
+  const [procLabs, setProcLabs] = useState([]);            // active labs for the Add form
+  const [procForm, setProcForm] = useState({ item_name: '', quantity: '', unit: '', lab_id: '' });
+  const [procSaving, setProcSaving] = useState(false);
+  const [procFormErr, setProcFormErr] = useState('');      // inline error under the Add form
+  // ══ LAB PROCUREMENT — REMOVABLE (end) ══
 
   // ── RETURNABLE ITEMS (students + interns) — read-only view, REMOVABLE ──
   const [returnables, setReturnables] = useState([]);
@@ -411,6 +428,92 @@ export default function InventoryInchargeDashboard() {
   }, []);
   // ── END LAB PURCHASES ──
 
+  // ══ LAB PROCUREMENT — REMOVABLE (start) ══
+  // What labs need to buy from outside — a record only, no stock effect.
+  // Incharge may delete any row; the export takes exactly the rows on screen.
+  const loadProcurement = useCallback(async () => {
+    setProcLoading(true);
+    try {
+      const res = await inventoryService.getLabProcurement();
+      setProcurement(res?.data?.items || []);
+      setProcLoaded(true);
+    } catch {
+      setProcurement([]);
+      setProcLoaded(true);
+    } finally {
+      setProcLoading(false);
+    }
+    // Active labs for the Add form's dropdown; a failure just leaves "No lab".
+    try {
+      const res = await inventoryService.getLabs(1);
+      setProcLabs(res?.data?.items || []);
+    } catch {
+      setProcLabs([]);
+    }
+  }, []);
+  // Same Add form as role 5. This page's error style is the inline message;
+  // the server re-validates everything and takes user_id from the token.
+  const addProcurement = async () => {
+    const itemName = procForm.item_name.trim();
+    const unit = procForm.unit.trim();
+    const qty = Number(procForm.quantity);
+    let err = '';
+    if (!itemName) err = 'Enter an item name.';
+    else if (itemName.length > 255) err = 'Item name must be 255 characters or fewer.';
+    else if (procForm.quantity === '' || !Number.isFinite(qty) || qty <= 0) err = 'Enter a quantity greater than 0.';
+    else if (!unit) err = 'Enter a unit.';
+    else if (unit.length > 50) err = 'Unit must be 50 characters or fewer.';
+    if (err) { setProcFormErr(err); return; }
+    setProcSaving(true);
+    setProcFormErr('');
+    try {
+      await inventoryService.createLabProcurement({ item_name: itemName, quantity: qty, unit, lab_id: procForm.lab_id ? Number(procForm.lab_id) : null });
+      setProcForm({ item_name: '', quantity: '', unit: '', lab_id: '' });
+      await loadProcurement();
+    } catch (e) {
+      setProcFormErr(e?.response?.data?.message || 'Failed to add entry.');
+    } finally {
+      setProcSaving(false);
+    }
+  };
+  const deleteProcurement = async (p) => {
+    if (!window.confirm(`Delete "${p.item_name}" (entered by ${p.entered_by_name || 'unknown'}) from lab procurement?`)) return;
+    setProcDelBusy(p.procurement_id);
+    setProcMsg('');
+    try {
+      await inventoryService.deleteLabProcurement(p.procurement_id);
+      await loadProcurement();
+    } catch (err) {
+      setProcMsg(err?.response?.data?.message || 'Failed to delete entry.');
+    } finally {
+      setProcDelBusy(null);
+    }
+  };
+  // Download: same Blob + temporary <a> steps as exportActivityPointsCsv
+  // (DataContext.jsx). The CSV itself is built server-side by the Activity
+  // Points csvCell helper; `rows` is whatever the search is showing.
+  const exportProcurement = async (rows) => {
+    if (!rows.length) return;
+    setProcExporting(true);
+    setProcMsg('');
+    try {
+      const res = await inventoryService.exportLabProcurementCsv(rows.map((p) => p.procurement_id));
+      const url = window.URL.createObjectURL(new Blob([res.data], { type: 'text/csv' }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `lab-procurement-${new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' })}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      setProcMsg(err?.response?.data?.message || 'Failed to export CSV');
+    } finally {
+      setProcExporting(false);
+    }
+  };
+  // ══ LAB PROCUREMENT — REMOVABLE (end) ══
+
   // ── RETURNABLE ITEMS — read-only view, REMOVABLE ──
   // Merged student + lab-member returnable takings. The server already computes
   // status_label and the outstanding flag per row, so nothing is derived here.
@@ -435,6 +538,7 @@ export default function InventoryInchargeDashboard() {
     if (tab === 'returns' && !returnsLoaded) loadReturns();
     if (tab === 'labpurchases' && !labPurchasesLoaded) loadLabPurchases();  // removable
     if (tab === 'returnables' && !returnablesLoaded) loadReturnables();     // removable
+    if (tab === 'procurement' && !procLoaded) loadProcurement();            // LAB PROCUREMENT — removable
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
 
@@ -672,6 +776,22 @@ export default function InventoryInchargeDashboard() {
     : labPurchases;
   /* ══ LAB PURCHASES SEARCH — REMOVABLE (end) ══ */
 
+  /* ══ LAB PROCUREMENT — REMOVABLE (start) ══
+     Same haystack idiom as `labpShown`. Matches item, unit, lab, person and
+     the date AS DISPLAYED (fmtDateTime). The CSV export sends `procShown`,
+     so the file always matches what is on screen. */
+  const procQuery = procSearch.trim().toLowerCase();
+  const procShown = procQuery
+    ? procurement.filter((p) => [
+        p.item_name || '',
+        p.unit || '',
+        p.lab_name || 'No lab',
+        p.entered_by_name || '',
+        fmtDateTime(p.created_at) || '',
+      ].join(' ').toLowerCase().includes(procQuery))
+    : procurement;
+  /* ══ LAB PROCUREMENT — REMOVABLE (end) ══ */
+
   return (
     <div className="ic-root">
       {/* ===== WELCOME INTRO (removable: delete this block + the WelcomeIntro import + the state block) ===== */}
@@ -728,6 +848,8 @@ export default function InventoryInchargeDashboard() {
           <button className={`ic-tab${tab === 'labpurchases' ? ' active' : ''}`} onClick={() => setTab('labpurchases')}>Lab Purchases</button>
           {/* RETURNABLE ITEMS — removable */}
           <button className={`ic-tab${tab === 'returnables' ? ' active' : ''}`} onClick={() => setTab('returnables')}>Returnable Items</button>
+          {/* LAB PROCUREMENT — removable */}
+          <button className={`ic-tab${tab === 'procurement' ? ' active' : ''}`} onClick={() => setTab('procurement')}>Lab Procurement</button>
         </div>
 
         {tab === 'stock' && (
@@ -1039,6 +1161,97 @@ export default function InventoryInchargeDashboard() {
           </>
         )}
         {/* ══ LAB PURCHASES — REMOVABLE (end) ══ */}
+
+        {/* ══ LAB PROCUREMENT — REMOVABLE (start) ══ */}
+        {tab === 'procurement' && (
+          <>
+            <div className="ic-note">
+              <span>ⓘ</span> What labs need to buy from outside, entered by lab members and inventory staff. A record only — it never changes stock.
+            </div>
+            {/* Add form — same fields as the role-5 page; the entry is owned by the incharge who adds it. */}
+            <div className="ic-req" style={{ marginBottom: 16 }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-end' }}>
+                <div style={{ flex: '2 1 220px' }}>
+                  <label className="ic-label">Item name</label>
+                  <input className="ic-input" style={{ marginBottom: 0 }} type="text" maxLength={255} placeholder="e.g. Arduino Uno R3"
+                    value={procForm.item_name} disabled={procSaving}
+                    onChange={(e) => { const v = e.target.value; setProcForm((f) => ({ ...f, item_name: v })); setProcFormErr(''); }} />
+                </div>
+                <div style={{ flex: '1 1 110px' }}>
+                  <label className="ic-label">Quantity</label>
+                  <input className="ic-input" style={{ marginBottom: 0 }} type="number" min="0" step="any" placeholder="e.g. 5"
+                    value={procForm.quantity} disabled={procSaving}
+                    onChange={(e) => { const v = e.target.value; setProcForm((f) => ({ ...f, quantity: v })); setProcFormErr(''); }} />
+                </div>
+                <div style={{ flex: '1 1 110px' }}>
+                  <label className="ic-label">Unit</label>
+                  <input className="ic-input" style={{ marginBottom: 0 }} type="text" maxLength={50} placeholder="e.g. pcs, G, ML"
+                    value={procForm.unit} disabled={procSaving}
+                    onChange={(e) => { const v = e.target.value; setProcForm((f) => ({ ...f, unit: v })); setProcFormErr(''); }} />
+                </div>
+                <div style={{ flex: '1 1 170px' }}>
+                  <label className="ic-label">Lab</label>
+                  <select className="ic-select" style={{ width: '100%' }} value={procForm.lab_id} disabled={procSaving}
+                    onChange={(e) => { const v = e.target.value; setProcForm((f) => ({ ...f, lab_id: v })); setProcFormErr(''); }}>
+                    <option value="">No lab</option>
+                    {procLabs.map((l) => <option key={l.lab_id} value={String(l.lab_id)}>{l.lab_name}</option>)}
+                  </select>
+                </div>
+                <button className="ic-btn ic-btn-primary" disabled={procSaving} onClick={addProcurement}>
+                  {procSaving ? 'Adding…' : 'Add'}
+                </button>
+              </div>
+              {procFormErr && <div style={{ marginTop: 10, fontSize: 12.5, color: 'var(--ic-red)', fontWeight: 800 }}>{procFormErr}</div>}
+            </div>
+            {!procLoading && procurement.length > 0 && (
+              <div className="ic-toolbar">
+                <input className="ic-search" value={procSearch}
+                  onChange={(e) => setProcSearch(e.target.value)}
+                  placeholder="Search by item, unit, lab, person or date…" />
+                <button className="ic-btn ic-btn-outline" disabled={procExporting || procShown.length === 0}
+                  onClick={() => exportProcurement(procShown)} title="Downloads the rows currently shown">
+                  {procExporting ? 'Preparing…' : '⬇ Download Excel'}
+                </button>
+              </div>
+            )}
+            {procMsg && <div style={{ marginBottom: 10, fontSize: 12.5, color: 'var(--ic-red)', fontWeight: 800 }}>{procMsg}</div>}
+            {procLoading ? (
+              <div className="ic-spinner" />
+            ) : procurement.length === 0 ? (
+              <div className="ic-empty">No lab procurement entries yet.</div>
+            ) : procShown.length === 0 ? (
+              <div className="ic-empty">No matching entries.</div>
+            ) : (
+              <>
+                <div className="ic-count">
+                  {procQuery
+                    ? `${procShown.length} of ${procurement.length} entr${procurement.length !== 1 ? 'ies' : 'y'}`
+                    : `${procurement.length} entr${procurement.length !== 1 ? 'ies' : 'y'} (all labs)`}
+                </div>
+                {procShown.map((p) => (
+                <div className="ic-req" key={p.procurement_id}>
+                  <div className="ic-req-top">
+                    <div>
+                      <div className="ic-req-name">{p.item_name}
+                        <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--ic-text3)', marginLeft: 8 }}>{p.lab_name || 'No lab'}</span>
+                      </div>
+                      <div className="ic-req-meta">{p.entered_by_name || '—'} · {fmtDateTime(p.created_at)}</div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span className="ic-pill type">{money(p.quantity)} {p.unit || ''}</span>
+                      <button className="ic-btn ic-btn-outline ic-btn-sm" disabled={procDelBusy === p.procurement_id}
+                        title="Delete this entry" aria-label={`Delete ${p.item_name}`} onClick={() => deleteProcurement(p)}>
+                        {procDelBusy === p.procurement_id ? '…' : '🗑'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                ))}
+              </>
+            )}
+          </>
+        )}
+        {/* ══ LAB PROCUREMENT — REMOVABLE (end) ══ */}
 
         {/* ══ RETURNABLE ITEMS — REMOVABLE (start) ══ */}
         {tab === 'returnables' && (() => {

@@ -502,6 +502,30 @@ export const testConnection = async () => {
                   PRIMARY KEY (setting_key)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
             `);
+            // ══ LAB PROCUREMENT — REMOVABLE (start) ══
+            // What a lab needs to buy from OUTSIDE. A record only: no stock,
+            // no stock txn, no obligation, no approval. TiDB-safe: no FKs —
+            // lab_id / user_id are FKs by convention and every read LEFT JOINs.
+            // Live DBs get the same table from
+            // server/migrations/2026-10-31_lab_procurement.sql.
+            // To remove: delete this block and DROP TABLE lab_procurement.
+            await connection.execute(`
+                CREATE TABLE IF NOT EXISTS lab_procurement (
+                  procurement_id bigint NOT NULL AUTO_INCREMENT,
+                  user_id bigint NOT NULL,
+                  lab_id bigint NULL DEFAULT NULL,
+                  item_name varchar(255) NOT NULL,
+                  quantity decimal(12,2) NOT NULL,
+                  unit varchar(50) NOT NULL,
+                  created_at timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+                  updated_at timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                  PRIMARY KEY (procurement_id),
+                  KEY idx_lab_proc_lab (lab_id),
+                  KEY idx_lab_proc_user (user_id)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+            `);
+            console.log(chalk.green('  ✓ lab_procurement table ready.'));
+            // ══ LAB PROCUREMENT — REMOVABLE (end) ══
             console.log(chalk.green('  ✓ inventory schema is ready.'));
         } catch (migErr) {
             console.error(chalk.red('  ✗ Migration/Check for inventory failed:'), migErr.message);
