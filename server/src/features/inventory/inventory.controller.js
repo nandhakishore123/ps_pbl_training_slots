@@ -5,6 +5,8 @@ import {
   internalServerErrorResponse,
 } from '../../utils/response.js';
 import * as service from './inventory.services.js';
+// ══ LAB PROCUREMENT — REMOVABLE: reuse the Activity Points CSV cell escaper ══
+import { csvCell } from '../activitypoints/activitypoints.controller.js';
 
 // ── Catalog reads (any authenticated user can browse items) ──
 export const getCategories = async (req, res) => {
@@ -542,3 +544,86 @@ export const getReturnableFeed = async (req, res) => {
   }
 };
 // ═══ RETURNABLE FEED — REMOVABLE BLOCK (end) ═══
+
+// ══ LAB PROCUREMENT — REMOVABLE (start) ══
+export const getLabProcurement = async (req, res) => {
+  try {
+    const data = await service.listLabProcurement();
+    return successResponse(res, 'Lab procurement fetched', { items: data });
+  } catch (error) {
+    if (error?.status) return errorResponse(res, error.message, error.status);
+    console.error('Error in getLabProcurement:', error);
+    return internalServerErrorResponse(res, error.message || 'Failed to fetch lab procurement');
+  }
+};
+
+export const createLabProcurement = async (req, res) => {
+  try {
+    const data = await service.createLabProcurement(req.user?.user_id, req.body || {});
+    return createdResponse(res, 'Entry added', data);
+  } catch (error) {
+    if (error?.status) return errorResponse(res, error.message, error.status);
+    console.error('Error in createLabProcurement:', error);
+    return internalServerErrorResponse(res, error.message || 'Failed to add entry');
+  }
+};
+
+export const deleteLabProcurement = async (req, res) => {
+  try {
+    const data = await service.deleteLabProcurement(req.user?.user_id, req.user?.role_id, req.params.id);
+    return successResponse(res, 'Entry deleted', data);
+  } catch (error) {
+    if (error?.status) return errorResponse(res, error.message, error.status);
+    console.error('Error in deleteLabProcurement:', error);
+    return internalServerErrorResponse(res, error.message || 'Failed to delete entry');
+  }
+};
+
+// CSV export of exactly the rows the page is showing (body: { ids } in screen
+// order). Built with the Activity Points `csvCell` escaper and the same
+// Content-Type / Content-Disposition / CRLF shape as its adminExportCsv —
+// one CSV implementation, not two.
+const IST_PARTS = new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric',
+  hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+});
+const fmtIstStamp = (d) => {   // dd-MMM-yyyy HH:mm, IST
+  const dt = d ? new Date(d) : null;
+  if (!dt || Number.isNaN(dt.getTime())) return '';
+  const p = Object.fromEntries(IST_PARTS.formatToParts(dt).map((x) => [x.type, x.value]));
+  return `${p.day}-${p.month}-${p.year} ${p.hour}:${p.minute}`;
+};
+const istToday = () => {       // yyyy-mm-dd, IST
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(new Date()).map((x) => [x.type, x.value]));
+  return `${p.year}-${p.month}-${p.day}`;
+};
+
+export const exportLabProcurement = async (req, res) => {
+  try {
+    const rows = await service.getLabProcurementForExport(req.body?.ids);
+    const lines = [['#', 'Item Name', 'Quantity', 'Unit', 'Lab', 'Entered By', 'Date'].join(',')];
+    rows.forEach((r, i) => {
+      lines.push([
+        csvCell(i + 1),
+        csvCell(r.item_name),
+        csvCell(Number(r.quantity)),
+        csvCell(r.unit),
+        csvCell(r.lab_name || 'No lab'),
+        csvCell(r.entered_by_name || ''),
+        csvCell(fmtIstStamp(r.created_at)),
+      ].join(','));
+    });
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="lab-procurement-${istToday()}.csv"`);
+    // UTF-8 BOM so Excel decodes accents/dashes/symbols correctly. THIS export
+    // only — the Activity Points CSV is untouched (csvCell is the only thing shared).
+    return res.status(200).send('﻿' + lines.join('\r\n'));
+  } catch (error) {
+    if (error?.status) return errorResponse(res, error.message, error.status);
+    console.error('Error in exportLabProcurement:', error);
+    return internalServerErrorResponse(res, error.message || 'Failed to export');
+  }
+};
+// ══ LAB PROCUREMENT — REMOVABLE (end) ══

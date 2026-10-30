@@ -834,3 +834,61 @@ export const completeLabPurchase = async (userId, { purchase_id } = {}) => {
 // is one query pair with no arguments to validate and no caller-supplied scope.
 export const listReturnableFeedReadOnly = async () => model.listReturnableFeed();
 // ═══ RETURNABLE FEED — REMOVABLE BLOCK (end) ═══
+
+// ══ LAB PROCUREMENT — REMOVABLE (start) ══
+// Record-only "what this lab needs to buy from outside". No stock, no stock
+// txn, no obligation, no approval — nothing here calls any of those paths.
+export const listLabProcurement = async () => model.listLabProcurement();
+
+export const createLabProcurement = async (userId, { item_name, quantity, unit, lab_id } = {}) => {
+  const itemName = String(item_name ?? '').trim();
+  if (!itemName) throw badRequest('Item name is required');
+  if (itemName.length > 255) throw badRequest('Item name must be 255 characters or fewer');
+
+  // Normalise first: the body may carry "12.5" as a string.
+  const qty = Number(quantity);
+  if (quantity === null || quantity === '' || !Number.isFinite(qty) || qty <= 0) {
+    throw badRequest('Quantity must be a positive number');
+  }
+
+  const cleanUnit = String(unit ?? '').trim();
+  if (!cleanUnit) throw badRequest('Unit is required');
+  if (cleanUnit.length > 50) throw badRequest('Unit must be 50 characters or fewer');
+
+  // lab_id is optional; '' / null / undefined all mean "No lab".
+  let labId = null;
+  if (lab_id !== undefined && lab_id !== null && lab_id !== '') {
+    labId = Number(lab_id);
+    if (!Number.isInteger(labId) || labId <= 0) throw badRequest('Invalid lab');
+    const lab = await model.getLabById(labId);
+    if (!lab) throw badRequest('Selected lab not found');
+  }
+
+  // user_id is ALWAYS the caller's, from the JWT — never from the body.
+  return model.createLabProcurement({ userId, labId, itemName, quantity: qty, unit: cleanUnit });
+};
+
+// Roles 3/4 may delete any row; role 5 only its own.
+export const deleteLabProcurement = async (userId, roleId, id) => {
+  const pid = Number(id);
+  if (!Number.isInteger(pid) || pid <= 0) throw badRequest('Invalid procurement id');
+  const row = await model.getLabProcurementById(pid);
+  if (!row) throw notFound('Entry not found');
+  if (Number(roleId) === 5 && Number(row.user_id) !== Number(userId)) {
+    throw forbidden('You can only delete your own entries');
+  }
+  await model.deleteLabProcurement(pid);
+  return { procurement_id: pid, deleted: true };
+};
+
+// Rows for the CSV export, in the SAME order as `ids` (= the order on screen).
+export const getLabProcurementForExport = async (ids) => {
+  if (!Array.isArray(ids) || ids.length === 0) throw badRequest('Nothing to export');
+  if (ids.length > 10000) throw badRequest('Too many rows to export');
+  const clean = ids.map(Number);
+  if (clean.some((n) => !Number.isInteger(n) || n <= 0)) throw badRequest('Invalid procurement id');
+  const rows = await model.listLabProcurement({ ids: clean });
+  const byId = new Map(rows.map((r) => [Number(r.procurement_id), r]));
+  return clean.map((id) => byId.get(id)).filter(Boolean);
+};
+// ══ LAB PROCUREMENT — REMOVABLE (end) ══

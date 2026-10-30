@@ -1,4 +1,6 @@
 import { api } from '../core/apiMethods';
+// ══ LAB PROCUREMENT — REMOVABLE: raw client for the CSV blob download ══
+import { apiClient } from '../core/apiClient';
 
 // Inventory Request system — student-facing API (Stage 2: browse + BUY).
 export const inventoryService = {
@@ -204,6 +206,28 @@ export const inventoryService = {
   getReturnableFeed() {
     return api.get('/inventory/returnable-feed');
   },
+
+  // ══ LAB PROCUREMENT — REMOVABLE (start) ══
+  // Record-only list of what labs need to buy from outside. No stock effect.
+  getLabProcurement() {
+    return api.get('/inventory/procurement');
+  },
+
+  createLabProcurement(payload) {       // { item_name, quantity, unit, lab_id? }
+    return api.post('/inventory/procurement', payload);
+  },
+
+  deleteLabProcurement(id) {
+    return api.delete(`/inventory/procurement/${id}`);
+  },
+
+  // Admin/incharge: CSV of exactly the given ids, in that order. Same raw-blob
+  // call shape as adminService.exportActivityPointsCsv (apiClient, not `api`,
+  // because the caller needs the Blob and the filename header).
+  exportLabProcurementCsv(ids) {
+    return apiClient.post('/inventory/procurement/export', { ids }, { responseType: 'blob' });
+  },
+  // ══ LAB PROCUREMENT — REMOVABLE (end) ══
 
   // Consumption report (admin + incharge): approved student buys + intern lab
   // purchases in a date range. Dates are plain 'YYYY-MM-DD' strings.

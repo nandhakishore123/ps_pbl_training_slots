@@ -50,6 +50,11 @@ import {
   // ── REQUEST ITEM EDIT AUDIT — REMOVABLE ──
   editRequestItem,
   deleteRequestItem,
+  // ── LAB PROCUREMENT — REMOVABLE ──
+  getLabProcurement,
+  createLabProcurement,
+  deleteLabProcurement,
+  exportLabProcurement,
 } from './inventory.controller.js';
 
 const router = express.Router();
@@ -180,5 +185,19 @@ router.get('/returnable-feed', authMiddleware, requireRole(3, 4), getReturnableF
 router.patch('/requests/:requestId/items/:lineId', authMiddleware, requireRole(3, 4), editRequestItem);    // { quantity }
 router.delete('/requests/:requestId/items/:lineId', authMiddleware, requireRole(3, 4), deleteRequestItem);
 // ═══ REQUEST ITEM EDIT AUDIT — REMOVABLE BLOCK (end) ═══
+
+// ══ LAB PROCUREMENT — REMOVABLE (start) ══
+// What a lab needs to buy from outside — a record only (no stock, no approval).
+// Lab members (5), admin (3) and incharge (4) add — the entry is owned by
+// whoever added it (user_id from the token). 3/4/5 all read EVERY row (role 5
+// deliberately sees other members' entries too). Delete: 3/4 any row, 5 only
+// their own (service check).
+// Export is admin/incharge only and takes the ids currently on screen, so the
+// file matches the searched list. Roles 1 and 2 are on none of these.
+router.get('/procurement', authMiddleware, requireRole(3, 4, 5), getLabProcurement);
+router.post('/procurement', authMiddleware, requireRole(3, 4, 5), createLabProcurement);       // { item_name, quantity, unit, lab_id? }
+router.post('/procurement/export', authMiddleware, requireRole(3, 4), exportLabProcurement);   // { ids:[...] } → CSV
+router.delete('/procurement/:id', authMiddleware, requireRole(3, 4, 5), deleteLabProcurement);
+// ══ LAB PROCUREMENT — REMOVABLE (end) ══
 
 export default router;

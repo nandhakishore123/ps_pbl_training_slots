@@ -216,6 +216,17 @@ export default function InternDashboard() {
   const [retBusy, setRetBusy] = useState(null);            // purchase_id of the in-flight return
   const [toast, setToast] = useState('');
 
+  // ══ LAB PROCUREMENT — REMOVABLE (start) ══ Lab Procurement tab state
+  const EMPTY_PROC = { item_name: '', quantity: '', unit: '', lab_id: '' };
+  const [procItems, setProcItems] = useState([]);          // every entry, from everyone
+  const [procLoading, setProcLoading] = useState(false);
+  const [procError, setProcError] = useState('');
+  const [procForm, setProcForm] = useState(EMPTY_PROC);
+  const [procFieldErr, setProcFieldErr] = useState({});    // { item_name?, quantity?, unit?, form? }
+  const [procSaving, setProcSaving] = useState(false);
+  const [procDelBusy, setProcDelBusy] = useState(null);    // procurement_id being deleted
+  // ══ LAB PROCUREMENT — REMOVABLE (end) ══
+
   useEffect(() => {
     document.body.classList.toggle('dark-mode', darkMode);
     localStorage.setItem('pt-dark', darkMode ? '1' : '0');
@@ -245,6 +256,68 @@ export default function InternDashboard() {
   }, []);
 
   useEffect(() => { if (tab === 'returns') loadReturnables(); }, [tab, loadReturnables]);
+
+  // ══ LAB PROCUREMENT — REMOVABLE (start) ══
+  // Record-only: what a lab needs to buy from outside. Never touches stock.
+  // Re-fetched on every entry to the tab so other members' entries show up.
+  const loadProcurement = useCallback(async () => {
+    setProcLoading(true); setProcError('');
+    try {
+      const res = await inventoryService.getLabProcurement();
+      setProcItems(res?.data?.items || []);
+    } catch {
+      setProcError('Failed to load lab procurement.'); setProcItems([]);
+    } finally { setProcLoading(false); }
+  }, []);
+
+  useEffect(() => { if (tab === 'procurement') loadProcurement(); }, [tab, loadProcurement]);
+
+  const setProcField = (key, value) => {
+    setProcForm((f) => ({ ...f, [key]: value }));
+    setProcFieldErr((m) => ({ ...m, [key]: '', form: '' }));
+  };
+
+  // Client checks mirror the server's; the server stays the real guard.
+  const addProcurement = async () => {
+    const itemName = procForm.item_name.trim();
+    const unit = procForm.unit.trim();
+    const qty = Number(procForm.quantity);
+    const errs = {};
+    if (!itemName) errs.item_name = 'Enter an item name.';
+    else if (itemName.length > 255) errs.item_name = 'Item name must be 255 characters or fewer.';
+    if (procForm.quantity === '' || !Number.isFinite(qty) || qty <= 0) errs.quantity = 'Enter a quantity greater than 0.';
+    if (!unit) errs.unit = 'Enter a unit.';
+    else if (unit.length > 50) errs.unit = 'Unit must be 50 characters or fewer.';
+    if (Object.keys(errs).length) { setProcFieldErr(errs); return; }
+
+    setProcSaving(true); setProcFieldErr({});
+    try {
+      await inventoryService.createLabProcurement({
+        item_name: itemName,
+        quantity: qty,
+        unit,
+        lab_id: procForm.lab_id ? Number(procForm.lab_id) : null,
+      });
+      setProcForm(EMPTY_PROC);
+      setToast(`Added ${itemName} to lab procurement`);
+      await loadProcurement();
+    } catch (err) {
+      setProcFieldErr({ form: err?.response?.data?.message || 'Failed to add the entry. Please try again.' });
+    } finally { setProcSaving(false); }
+  };
+
+  const deleteProcurement = async (p) => {
+    if (!window.confirm(`Delete "${p.item_name}" from lab procurement?`)) return;
+    setProcDelBusy(p.procurement_id);
+    try {
+      await inventoryService.deleteLabProcurement(p.procurement_id);
+      setToast(`Deleted ${p.item_name}`);
+      await loadProcurement();
+    } catch (err) {
+      setToast(err?.response?.data?.message || 'Failed to delete the entry.');
+    } finally { setProcDelBusy(null); }
+  };
+  // ══ LAB PROCUREMENT — REMOVABLE (end) ══
 
   // Return some/all of ONE past purchase. The client cap below is only a guard
   // rail for typos — the server re-checks ownership and the remaining quantity
@@ -500,9 +573,12 @@ export default function InternDashboard() {
           </div>
           <div style={{ minWidth: 0 }}>
             {/* Title follows the active tab (INTERN LAB RETURNS — removable). */}
-            <div className="in-title">{tab === 'returns' ? 'Returns' : 'Lab Purchases'}</div>
+            {/* LAB PROCUREMENT — REMOVABLE: the `tab === 'procurement'` branch was
+                added in front of each original ternary; the rest is unchanged. */}
+            <div className="in-title">{tab === 'procurement' ? 'Lab Procurement' : tab === 'returns' ? 'Returns' : 'Lab Purchases'}</div>
             <div className="in-sub">
-              {tab === 'returns' ? 'Return items from your past purchases' : 'Buy items directly for your lab'}
+              {tab === 'procurement' ? 'Record what your lab needs to buy from outside'
+                : tab === 'returns' ? 'Return items from your past purchases' : 'Buy items directly for your lab'}
             </div>
           </div>
         </div>
@@ -529,6 +605,10 @@ export default function InternDashboard() {
           </button>
           <button className={`in-tab${tab === 'returns' ? ' active' : ''}`} onClick={() => setTab('returns')}>
             Returns
+          </button>
+          {/* ══ LAB PROCUREMENT — REMOVABLE ══ */}
+          <button className={`in-tab${tab === 'procurement' ? ' active' : ''}`} onClick={() => setTab('procurement')}>
+            Lab Procurement
           </button>
         </div>
 
@@ -824,6 +904,90 @@ export default function InternDashboard() {
             )}
           </motion.div>
         )}
+
+        {/* ══ LAB PROCUREMENT — REMOVABLE (start) ══
+            Record-only: what a lab needs to buy from outside. Never touches stock,
+            no approval. Form on top; below it EVERY member's entries, newest
+            first. 🗑 only on the viewer's own rows — the server enforces it too. */}
+        {tab === 'procurement' && (
+          <motion.div {...viewFade}>
+            <div className="in-page-title">Lab procurement</div>
+            <div className="in-page-sub">
+              Note items your lab needs to buy from outside. This is a record only — it does not change inventory stock.
+            </div>
+
+            <div className="in-card" style={{ marginBottom: 20 }}>
+              <div className="in-card-title">Add an entry</div>
+              <div className="in-card-sub">Item, quantity and unit are required. Lab is optional.</div>
+
+              <label className="in-field-label">Item name</label>
+              <input className="in-input" type="text" maxLength={255} placeholder="e.g. Arduino Uno R3"
+                value={procForm.item_name} disabled={procSaving}
+                onChange={(e) => setProcField('item_name', e.target.value)} />
+              {procFieldErr.item_name && <div className="in-hint">{procFieldErr.item_name}</div>}
+
+              <div className="in-row2" style={{ marginTop: 14 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <label className="in-field-label">Quantity</label>
+                  <input className="in-input" type="number" min="0" step="any" placeholder="e.g. 5"
+                    value={procForm.quantity} disabled={procSaving}
+                    onChange={(e) => setProcField('quantity', e.target.value)} />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <label className="in-field-label">Unit</label>
+                  <input className="in-input" type="text" maxLength={50} placeholder="e.g. pcs, G, ML"
+                    value={procForm.unit} disabled={procSaving}
+                    onChange={(e) => setProcField('unit', e.target.value)} />
+                </div>
+              </div>
+              {procFieldErr.quantity && <div className="in-hint">{procFieldErr.quantity}</div>}
+              {procFieldErr.unit && <div className="in-hint">{procFieldErr.unit}</div>}
+
+              <label className="in-field-label" style={{ marginTop: 14 }}>Lab</label>
+              <select className="in-select" value={procForm.lab_id} disabled={procSaving}
+                onChange={(e) => setProcField('lab_id', e.target.value)}>
+                <option value="">No lab</option>
+                {labs.map((l) => <option key={l.lab_id} value={String(l.lab_id)}>{l.lab_name}</option>)}
+              </select>
+
+              {procFieldErr.form && <div className="in-hint">{procFieldErr.form}</div>}
+              <button className="in-btn in-btn-primary" style={{ marginTop: 14 }} disabled={procSaving} onClick={addProcurement}>
+                {procSaving ? 'Adding…' : 'Add'}
+              </button>
+            </div>
+
+            {procError && <div className="in-empty" style={{ color: 'var(--in-red)' }}>{procError}</div>}
+            {procLoading ? <div className="in-spinner" /> : procItems.length === 0 ? (
+              <div className="in-empty">No procurement entries yet.</div>
+            ) : (
+              <motion.div className="in-rets" variants={gridStagger} initial="hidden" animate="show">
+                {procItems.map((p) => {
+                  const mine = Number(p.user_id) === Number(user?.user_id);
+                  return (
+                    <motion.div className="in-card" key={p.procurement_id} variants={cardRise} whileHover={retHover}>
+                      <div className="in-ret-hd" style={{ marginBottom: mine ? 10 : 0 }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div className="in-card-title">{p.item_name}</div>
+                          <div className="in-ret-meta">
+                            {p.lab_name || 'No lab'} · {p.entered_by_name || '—'} · {fmtDateTime(p.created_at)}
+                          </div>
+                        </div>
+                        <span className="in-labchip">{money(p.quantity)} {p.unit || ''}</span>
+                      </div>
+                      {mine && (
+                        <button className="in-log-link" disabled={procDelBusy === p.procurement_id}
+                          title="Delete this entry" onClick={() => deleteProcurement(p)}>
+                          {procDelBusy === p.procurement_id ? 'Deleting…' : '🗑 Delete'}
+                        </button>
+                      )}
+                    </motion.div>
+                  );
+                })}
+              </motion.div>
+            )}
+          </motion.div>
+        )}
+        {/* ══ LAB PROCUREMENT — REMOVABLE (end) ══ */}
       </div>
 
       {/* ══ RETURN TOAST (INTERN LAB RETURNS — removable) ══ */}

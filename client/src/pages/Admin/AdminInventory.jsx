@@ -327,7 +327,8 @@ export default function AdminInventory() {
   // below keys off `tab`, so it fires on mount with the restored value and that
   // tab's data loads as usual.
   const [searchParams, setSearchParams] = useSearchParams();
-  const TAB_KEYS = ['overview', 'buying', 'returns', 'stock', 'settings', 'labs', 'labpurchases', 'returnables'];
+  // LAB PROCUREMENT — REMOVABLE: 'procurement' appended to the list.
+  const TAB_KEYS = ['overview', 'buying', 'returns', 'stock', 'settings', 'labs', 'labpurchases', 'returnables', 'procurement'];
   const tabParam = searchParams.get('tab');
   const tab = TAB_KEYS.includes(tabParam) ? tabParam : 'overview';
   const setTab = useCallback((val) => {
@@ -346,6 +347,8 @@ export default function AdminInventory() {
     if (val !== 'returnables') setPersonTypeFilter('all');
     /* ══ HELD-FOR FILTER — REMOVABLE: same rule ══ */
     if (val !== 'returnables') setHeldForFilter('any');
+    /* ══ LAB PROCUREMENT — REMOVABLE: same rule for the Lab Procurement tab ══ */
+    if (val !== 'procurement') setProcSearch('');
     setSearchParams((prev) => { const p = new URLSearchParams(prev); p.set('tab', val); return p; });
   }, [setSearchParams]);
 
@@ -385,6 +388,17 @@ export default function AdminInventory() {
      already lives in `labPurchases`, so typing never refetches and the array
      itself is never mutated. */
   const [labpSearch, setLabpSearch] = useState('');
+  // ══ LAB PROCUREMENT — REMOVABLE (start) ══
+  const [procurement, setProcurement] = useState([]);
+  const [procLoading, setProcLoading] = useState(false);
+  const [procLoaded, setProcLoaded] = useState(false);
+  const [procSearch, setProcSearch] = useState('');
+  const [procDelBusy, setProcDelBusy] = useState(null);   // procurement_id being deleted
+  const [procExporting, setProcExporting] = useState(false);
+  const [procLabs, setProcLabs] = useState([]);            // active labs for the Add form
+  const [procForm, setProcForm] = useState({ item_name: '', quantity: '', unit: '', lab_id: '' });
+  const [procSaving, setProcSaving] = useState(false);
+  // ══ LAB PROCUREMENT — REMOVABLE (end) ══
   /* ══ LAB PURCHASES SEARCH — REMOVABLE (end) ══ */
 
   // ── RETURNABLE ITEMS (read-only feed) — REMOVABLE ──
@@ -614,6 +628,65 @@ export default function AdminInventory() {
   };
   // ═══ LABS (Stage 4) — REMOVABLE BLOCK (end) ═══
 
+  // ══ LAB PROCUREMENT — REMOVABLE (start) ══
+  // What labs need to buy from outside — a record only, no stock effect.
+  // Admin may delete any row; the export takes exactly the rows on screen.
+  const loadProcurement = useCallback(async () => {
+    setProcLoading(true);
+    try { const res = await inventoryService.getLabProcurement(); setProcurement(res?.data?.items || []); setProcLoaded(true); }
+    catch { setProcurement([]); setProcLoaded(true); }
+    finally { setProcLoading(false); }
+    // Active labs for the Add form's dropdown; a failure just leaves "No lab".
+    try { const res = await inventoryService.getLabs(1); setProcLabs(res?.data?.items || []); } catch { setProcLabs([]); }
+  }, []);
+  // Same Add form as role 5. Admin's error style is the toast; the server
+  // re-validates everything and takes user_id from the token.
+  const addProcurement = async () => {
+    const itemName = procForm.item_name.trim();
+    const unit = procForm.unit.trim();
+    const qty = Number(procForm.quantity);
+    if (!itemName) { showToast('Enter an item name.', true); return; }
+    if (itemName.length > 255) { showToast('Item name must be 255 characters or fewer.', true); return; }
+    if (procForm.quantity === '' || !Number.isFinite(qty) || qty <= 0) { showToast('Enter a quantity greater than 0.', true); return; }
+    if (!unit) { showToast('Enter a unit.', true); return; }
+    if (unit.length > 50) { showToast('Unit must be 50 characters or fewer.', true); return; }
+    setProcSaving(true);
+    try {
+      await inventoryService.createLabProcurement({ item_name: itemName, quantity: qty, unit, lab_id: procForm.lab_id ? Number(procForm.lab_id) : null });
+      setProcForm({ item_name: '', quantity: '', unit: '', lab_id: '' });
+      showToast(`Added ${itemName} to lab procurement`, false);
+      await loadProcurement();
+    } catch (err) { showToast(err?.response?.data?.message || 'Failed to add entry.', true); }
+    finally { setProcSaving(false); }
+  };
+  const deleteProcurement = async (p) => {
+    if (!window.confirm(`Delete "${p.item_name}" (entered by ${p.entered_by_name || 'unknown'}) from lab procurement?`)) return;
+    setProcDelBusy(p.procurement_id);
+    try { await inventoryService.deleteLabProcurement(p.procurement_id); showToast('Entry deleted', false); await loadProcurement(); }
+    catch (err) { showToast(err?.response?.data?.message || 'Failed to delete entry.', true); }
+    finally { setProcDelBusy(null); }
+  };
+  // Download: same Blob + temporary <a> steps as exportActivityPointsCsv
+  // (DataContext.jsx). The CSV itself is built server-side by the Activity
+  // Points csvCell helper; `rows` is whatever the search is showing.
+  const exportProcurement = async (rows) => {
+    if (!rows.length) return;
+    setProcExporting(true);
+    try {
+      const res = await inventoryService.exportLabProcurementCsv(rows.map((p) => p.procurement_id));
+      const url = window.URL.createObjectURL(new Blob([res.data], { type: 'text/csv' }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `lab-procurement-${new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' })}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) { showToast(err?.response?.data?.message || 'Failed to export CSV', true); }
+    finally { setProcExporting(false); }
+  };
+  // ══ LAB PROCUREMENT — REMOVABLE (end) ══
+
   // ── LAB PURCHASES — read-only view, REMOVABLE ──
   // Same cross-lab feed the incharge dashboard shows; the endpoint already
   // allows role 3, so this is a view-only mirror with no backend change.
@@ -665,6 +738,7 @@ export default function AdminInventory() {
     if (tab === 'labs' && !labsLoaded) loadLabs();   // Stage 4 labs — removable
     if (tab === 'labpurchases' && !labPurchasesLoaded) loadLabPurchases();   // removable
     if (tab === 'returnables' && !returnablesLoaded) loadReturnables();      // removable
+    if (tab === 'procurement' && !procLoaded) loadProcurement();             // LAB PROCUREMENT — removable
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
 
@@ -1010,6 +1084,22 @@ export default function AdminInventory() {
     : labPurchases;
   /* ══ LAB PURCHASES SEARCH — REMOVABLE (end) ══ */
 
+  /* ══ LAB PROCUREMENT — REMOVABLE (start) ══
+     Same haystack idiom as `labpShown`. Matches item, unit, lab, person and
+     the date AS DISPLAYED (fmtDateTime). The CSV export sends `procShown`,
+     so the file always matches what is on screen. */
+  const procQuery = procSearch.trim().toLowerCase();
+  const procShown = procQuery
+    ? procurement.filter((p) => [
+        p.item_name || '',
+        p.unit || '',
+        p.lab_name || 'No lab',
+        p.entered_by_name || '',
+        fmtDateTime(p.created_at) || '',
+      ].join(' ').toLowerCase().includes(procQuery))
+    : procurement;
+  /* ══ LAB PROCUREMENT — REMOVABLE (end) ══ */
+
   const renderReturn = (r) => {
     const isPending = String(r.status).toUpperCase() === 'PENDING';
     return (
@@ -1067,6 +1157,8 @@ export default function AdminInventory() {
           <button className={`ad-tab${tab === 'labpurchases' ? ' active' : ''}`} onClick={() => setTab('labpurchases')}>Lab Purchases</button>
           {/* RETURNABLE ITEMS — removable */}
           <button className={`ad-tab${tab === 'returnables' ? ' active' : ''}`} onClick={() => setTab('returnables')}>Returnable Items</button>
+          {/* LAB PROCUREMENT — removable */}
+          <button className={`ad-tab${tab === 'procurement' ? ' active' : ''}`} onClick={() => setTab('procurement')}>Lab Procurement</button>
         </div>
 
         {/* OVERVIEW */}
@@ -1363,6 +1455,95 @@ export default function AdminInventory() {
           </>
         )}
         {/* ══ LAB PURCHASES — REMOVABLE (end) ══ */}
+
+        {/* ══ LAB PROCUREMENT — REMOVABLE (start) ══ */}
+        {tab === 'procurement' && (
+          <>
+            <div className="ad-note">
+              <span>ⓘ</span> What labs need to buy from outside, entered by lab members and inventory staff. A record only — it never changes stock.
+            </div>
+            {/* Add form — same fields as the role-5 page; the entry is owned by the admin who adds it. */}
+            <div className="ad-req" style={{ marginBottom: 16 }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-end' }}>
+                <div style={{ flex: '2 1 220px' }}>
+                  <label className="ad-label">Item name</label>
+                  <input className="ad-input" style={{ marginBottom: 0 }} type="text" maxLength={255} placeholder="e.g. Arduino Uno R3"
+                    value={procForm.item_name} disabled={procSaving}
+                    onChange={(e) => setProcForm((f) => ({ ...f, item_name: e.target.value }))} />
+                </div>
+                <div style={{ flex: '1 1 110px' }}>
+                  <label className="ad-label">Quantity</label>
+                  <input className="ad-input" style={{ marginBottom: 0 }} type="number" min="0" step="any" placeholder="e.g. 5"
+                    value={procForm.quantity} disabled={procSaving}
+                    onChange={(e) => setProcForm((f) => ({ ...f, quantity: e.target.value }))} />
+                </div>
+                <div style={{ flex: '1 1 110px' }}>
+                  <label className="ad-label">Unit</label>
+                  <input className="ad-input" style={{ marginBottom: 0 }} type="text" maxLength={50} placeholder="e.g. pcs, G, ML"
+                    value={procForm.unit} disabled={procSaving}
+                    onChange={(e) => setProcForm((f) => ({ ...f, unit: e.target.value }))} />
+                </div>
+                <div style={{ flex: '1 1 170px' }}>
+                  <label className="ad-label">Lab</label>
+                  <select className="ad-select" style={{ width: '100%' }} value={procForm.lab_id} disabled={procSaving}
+                    onChange={(e) => setProcForm((f) => ({ ...f, lab_id: e.target.value }))}>
+                    <option value="">No lab</option>
+                    {procLabs.map((l) => <option key={l.lab_id} value={String(l.lab_id)}>{l.lab_name}</option>)}
+                  </select>
+                </div>
+                <button className="ad-btn ad-btn-primary" disabled={procSaving} onClick={addProcurement}>
+                  {procSaving ? 'Adding…' : 'Add'}
+                </button>
+              </div>
+            </div>
+            {!procLoading && procurement.length > 0 && (
+              <div className="ad-toolbar">
+                <input className="ad-search" value={procSearch}
+                  onChange={(e) => setProcSearch(e.target.value)}
+                  placeholder="Search by item, unit, lab, person or date…" />
+                <button className="ad-btn ad-btn-outline" disabled={procExporting || procShown.length === 0}
+                  onClick={() => exportProcurement(procShown)} title="Downloads the rows currently shown">
+                  {procExporting ? 'Preparing…' : '⬇ Download Excel'}
+                </button>
+              </div>
+            )}
+            {procLoading ? (
+              <div className="ad-spinner" />
+            ) : procurement.length === 0 ? (
+              <div className="ad-empty">No lab procurement entries yet.</div>
+            ) : procShown.length === 0 ? (
+              <div className="ad-empty">No matching entries.</div>
+            ) : (
+              <>
+                <div className="ad-count">
+                  {procQuery
+                    ? `${procShown.length} of ${procurement.length} entr${procurement.length !== 1 ? 'ies' : 'y'}`
+                    : `${procurement.length} entr${procurement.length !== 1 ? 'ies' : 'y'} (all labs)`}
+                </div>
+                {procShown.map((p) => (
+                  <div className="ad-req" key={p.procurement_id}>
+                    <div className="ad-req-top">
+                      <div style={{ minWidth: 0 }}>
+                        <div className="ad-req-name">{p.item_name}
+                          <span className="ad-req-reg">{p.lab_name || 'No lab'}</span>
+                        </div>
+                        <div className="ad-req-meta">{p.entered_by_name || '—'} · {fmtDateTime(p.created_at)}</div>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span className="ad-pill type">{money(p.quantity)} {p.unit || ''}</span>
+                        <button className="ad-btn ad-btn-outline ad-btn-sm" disabled={procDelBusy === p.procurement_id}
+                          title="Delete this entry" aria-label={`Delete ${p.item_name}`} onClick={() => deleteProcurement(p)}>
+                          {procDelBusy === p.procurement_id ? '…' : '🗑'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </>
+            )}
+          </>
+        )}
+        {/* ══ LAB PROCUREMENT — REMOVABLE (end) ══ */}
 
         {/* ══ RETURNABLE ITEMS — REMOVABLE (start) ══ */}
         {tab === 'returnables' && (() => {

@@ -92,7 +92,9 @@ export const facultyDisapprove = async (req, res, next) => {
 };
 
 // ── CSV helpers ──────────────────────────────────────────────────────────────
-function csvCell(v) {
+// LAB PROCUREMENT — REMOVABLE: `export` added so the lab-procurement CSV reuses
+// this escaper instead of a second copy. Behaviour here is unchanged.
+export function csvCell(v) {
   if (v == null) return '';
   const s = String(v);
   return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;

@@ -2082,3 +2082,58 @@ export const listReturnableFeed = async () => {
   return [...students, ...interns].sort((a, b) => new Date(b.date) - new Date(a.date));
 };
 // ═══ RETURNABLE FEED — REMOVABLE BLOCK (end) ════════════════════════════════
+
+// ══ LAB PROCUREMENT — REMOVABLE (start) ══════════════════════════════════════
+// What a lab needs to buy from OUTSIDE. A plain record: nothing here reads or
+// writes inventory_items, inventory_stock_txns or inventory_obligations.
+//
+// The entering person's name is resolved per row with scalar subqueries rather
+// than JOINs, so a user with more than one faculties/students row can never
+// duplicate an entry. Precedence: user_profiles (roles 3/4/5) → faculties →
+// students → the login email.
+const LAB_PROC_SELECT = `
+  SELECT p.procurement_id, p.user_id, p.lab_id, l.lab_name,
+         p.item_name, p.quantity, p.unit, p.created_at,
+         COALESCE(
+           (SELECT up.name FROM user_profiles up WHERE up.user_id = p.user_id LIMIT 1),
+           (SELECT f.name FROM faculties f WHERE f.user_id = p.user_id LIMIT 1),
+           (SELECT s.name FROM students s WHERE s.user_id = p.user_id LIMIT 1),
+           (SELECT u.email FROM users u WHERE u.user_id = p.user_id LIMIT 1)
+         ) AS entered_by_name
+    FROM lab_procurement p
+    LEFT JOIN labs l ON l.lab_id = p.lab_id`;
+
+// Every row, newest first. `ids` (optional) narrows to exactly those rows —
+// used by the CSV export so it matches what the search is showing.
+export const listLabProcurement = async ({ ids = null } = {}) => {
+  if (Array.isArray(ids)) {
+    if (!ids.length) return [];
+    const ph = ids.map(() => '?').join(',');
+    const [rows] = await db.execute(
+      `${LAB_PROC_SELECT} WHERE p.procurement_id IN (${ph}) ORDER BY p.created_at DESC, p.procurement_id DESC`,
+      ids.map(Number)
+    );
+    return rows ?? [];
+  }
+  const [rows] = await db.execute(`${LAB_PROC_SELECT} ORDER BY p.created_at DESC, p.procurement_id DESC`);
+  return rows ?? [];
+};
+
+export const getLabProcurementById = async (id) => {
+  const [rows] = await db.execute(`${LAB_PROC_SELECT} WHERE p.procurement_id = ? LIMIT 1`, [Number(id)]);
+  return rows?.[0] ?? null;
+};
+
+export const createLabProcurement = async ({ userId, labId, itemName, quantity, unit }) => {
+  const [res] = await db.execute(
+    `INSERT INTO lab_procurement (user_id, lab_id, item_name, quantity, unit) VALUES (?, ?, ?, ?, ?)`,
+    [Number(userId), labId != null ? Number(labId) : null, itemName, Number(quantity), unit]
+  );
+  return getLabProcurementById(res.insertId);
+};
+
+export const deleteLabProcurement = async (id) => {
+  const [res] = await db.execute(`DELETE FROM lab_procurement WHERE procurement_id = ?`, [Number(id)]);
+  return res.affectedRows;
+};
+// ══ LAB PROCUREMENT — REMOVABLE (end) ════════════════════════════════════════
