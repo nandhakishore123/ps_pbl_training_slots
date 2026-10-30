@@ -1343,8 +1343,14 @@ export default function InventoryRequest() {
                   <StatusPill status={r.status} />
                 </div>
                 <div className="inv-req-items">
-                  {(r.items || []).map((it) => `${it.item_name} (${money(it.quantity)} ${it.unit || ''})`).join(' · ') || '—'}
+                  {/* REQUEST ITEM EDIT AUDIT (removable): ` · edited by inventory staff` appended
+                      when an approver changed this line's quantity. Who/when is not shown here. */}
+                  {(r.items || []).map((it) => `${it.item_name} (${money(it.quantity)} ${it.unit || ''}${it.edited_at ? ' · ✎ edited by inventory staff' : ''})`).join(' · ') || '—'}
                 </div>
+                {/* ═══ CANCELLED-REQUEST REMARK — REMOVABLE: REJECTED + zero items only ═══ */}
+                {String(r.status).toUpperCase() === 'REJECTED' && (r.items || []).length === 0 && r.remarks && (
+                  <div className="inv-req-meta" style={{ marginTop: 6, fontWeight: 800 }}>{r.remarks}</div>
+                )}
                 {/* SELECT LAB — BUY requests only; a RETURN genuinely has no lab.
                     '—' covers requests created before lab_id existed. */}
                 {r.request_type !== 'RETURN' && (
@@ -1384,6 +1390,13 @@ export default function InventoryRequest() {
               <div style={{ fontSize: 22, fontWeight: 900, marginTop: 6 }}>{name}</div>
               <div style={{ fontSize: 12.5, fontWeight: 700, opacity: 0.85, letterSpacing: 0.5 }}>{roll}</div>
               <div style={{ marginTop: 12 }}><StatusPill status={passRequest.status} /></div>
+              {/* ═══ CANCELLED-REQUEST REMARK — REMOVABLE (start) ═══
+                  Only a REJECTED request with ZERO items (auto-cancelled when staff
+                  removed every line). Normal rejections still show no remark. */}
+              {String(passRequest.status).toUpperCase() === 'REJECTED' && (passRequest.items || []).length === 0 && passRequest.remarks && (
+                <div style={{ marginTop: 8, fontSize: 12.5, fontWeight: 700, opacity: 0.9 }}>{passRequest.remarks}</div>
+              )}
+              {/* ═══ CANCELLED-REQUEST REMARK — REMOVABLE (end) ═══ */}
             </div>
             <div className="inv-pass-body">
               <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.8, textTransform: 'uppercase', color: 'var(--iv-text2)', marginBottom: 8 }}>Items</div>
@@ -1393,7 +1406,10 @@ export default function InventoryRequest() {
                 (passRequest.items || []).map((it) => (
                   <div className="inv-pass-item" key={it.line_id || it.item_id}>
                     <span style={{ fontWeight: 700 }}>{it.item_name}</span>
-                    <span style={{ fontWeight: 800, color: 'var(--iv-purple)' }}>{money(it.quantity)} {it.unit || ''}</span>
+                    <span style={{ fontWeight: 800, color: 'var(--iv-purple)' }}>{money(it.quantity)} {it.unit || ''}
+                      {/* REQUEST ITEM EDIT AUDIT (removable) */}
+                      {it.edited_at && <span style={{ marginLeft: 6, fontSize: 10.5, fontWeight: 800, color: '#b45309' }}>✎ edited by inventory staff</span>}
+                    </span>
                   </div>
                 ))
               )}

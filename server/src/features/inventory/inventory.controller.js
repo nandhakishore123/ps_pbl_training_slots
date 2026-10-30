@@ -184,6 +184,37 @@ export const rejectBuying = async (req, res) => {
   }
 };
 
+// ═══ REQUEST ITEM EDIT AUDIT — REMOVABLE BLOCK (start) ═══
+// PATCH  /requests/:requestId/items/:lineId  { quantity }
+// DELETE /requests/:requestId/items/:lineId
+// Errors carry .status (400 bad qty / over stock, 404 missing, 409 not pending).
+export const editRequestItem = async (req, res) => {
+  try {
+    const data = await service.editRequestLine(
+      req.user?.user_id, req.params.requestId, req.params.lineId, req.body?.quantity
+    );
+    return successResponse(res, 'Quantity updated', data);
+  } catch (error) {
+    if (error?.status) return errorResponse(res, error.message, error.status);
+    console.error('Error in editRequestItem:', error);
+    return internalServerErrorResponse(res, error.message || 'Failed to update quantity');
+  }
+};
+
+export const deleteRequestItem = async (req, res) => {
+  try {
+    const data = await service.deleteRequestLine(
+      req.user?.user_id, req.user?.role_id, req.params.requestId, req.params.lineId
+    );
+    return successResponse(res, data.cancelled ? 'Last item removed — request cancelled' : 'Item removed', data);
+  } catch (error) {
+    if (error?.status) return errorResponse(res, error.message, error.status);
+    console.error('Error in deleteRequestItem:', error);
+    return internalServerErrorResponse(res, error.message || 'Failed to remove item');
+  }
+};
+// ═══ REQUEST ITEM EDIT AUDIT — REMOVABLE BLOCK (end) ═══
+
 // ── Student return flow (Stage 5) ────────────────────────────
 export const getMyObligations = async (req, res) => {
   try {
