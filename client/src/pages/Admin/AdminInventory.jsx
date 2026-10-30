@@ -11,6 +11,8 @@ import { inventoryService } from '../../services/features/inventoryService';
 import ConsumptionReportBar from '../../components/ConsumptionReportBar';
 // STOCK REPORT (removable): printable Current Stock Report for the Stock tab.
 import { openStockReport } from '../../utils/stockReport';
+// ══ PROCUREMENT PDF — REMOVABLE ══ printable Lab Procurement list.
+import { openProcurementReport } from '../../utils/procurementReport';
 
 const CSS = `
   .ad-root {
@@ -1505,6 +1507,14 @@ export default function AdminInventory() {
                   onClick={() => exportProcurement(procShown)} title="Downloads the rows currently shown">
                   {procExporting ? 'Preparing…' : '⬇ Download Excel'}
                 </button>
+                {/* ══ PROCUREMENT PDF — REMOVABLE (start) ══ same rows as the Excel
+                    export: procShown is the full filtered list (no render cap). */}
+                <button className="ad-btn ad-btn-outline" disabled={procShown.length === 0}
+                  onClick={() => openProcurementReport({ items: procShown, search: procSearch })}
+                  title="Prints the rows currently shown, grouped by lab">
+                  ⬇ Download PDF
+                </button>
+                {/* ══ PROCUREMENT PDF — REMOVABLE (end) ══ */}
               </div>
             )}
             {procLoading ? (

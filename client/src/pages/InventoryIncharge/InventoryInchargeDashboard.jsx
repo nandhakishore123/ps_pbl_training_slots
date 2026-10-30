@@ -16,6 +16,8 @@ import WelcomeIntro from '../../components/WelcomeIntro';
 import ConsumptionReportBar from '../../components/ConsumptionReportBar';
 // STOCK REPORT (removable): printable Current Stock Report for the Stock tab.
 import { openStockReport } from '../../utils/stockReport';
+// ══ PROCUREMENT PDF — REMOVABLE ══ printable Lab Procurement list.
+import { openProcurementReport } from '../../utils/procurementReport';
 
 const money = (n) => Number(n ?? 0).toLocaleString();
 
@@ -1212,6 +1214,14 @@ export default function InventoryInchargeDashboard() {
                   onClick={() => exportProcurement(procShown)} title="Downloads the rows currently shown">
                   {procExporting ? 'Preparing…' : '⬇ Download Excel'}
                 </button>
+                {/* ══ PROCUREMENT PDF — REMOVABLE (start) ══ same rows as the Excel
+                    export: procShown is the full filtered list (no render cap). */}
+                <button className="ic-btn ic-btn-outline" disabled={procShown.length === 0}
+                  onClick={() => openProcurementReport({ items: procShown, search: procSearch })}
+                  title="Prints the rows currently shown, grouped by lab">
+                  ⬇ Download PDF
+                </button>
+                {/* ══ PROCUREMENT PDF — REMOVABLE (end) ══ */}
               </div>
             )}
             {procMsg && <div style={{ marginBottom: 10, fontSize: 12.5, color: 'var(--ic-red)', fontWeight: 800 }}>{procMsg}</div>}
