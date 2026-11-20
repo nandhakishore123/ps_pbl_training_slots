@@ -881,7 +881,7 @@ export default function InventoryInchargeDashboard() {
         {/* Tabs */}
         <div className="ic-tabs">
           <button className={`ic-tab${tab === 'stock' ? ' active' : ''}`} onClick={() => setTab('stock')}>Stock Management</button>
-          <button className={`ic-tab${tab === 'buying' ? ' active' : ''}`} onClick={() => setTab('buying')}>Consumables Requests</button>
+          <button className={`ic-tab${tab === 'buying' ? ' active' : ''}`} onClick={() => setTab('buying')}>Item Requests</button>
           <button className={`ic-tab${tab === 'returns' ? ' active' : ''}`} onClick={() => setTab('returns')}>Return Approvals</button>
           {/* LAB PURCHASES (intern role 5) — removable */}
           <button className={`ic-tab${tab === 'labpurchases' ? ' active' : ''}`} onClick={() => setTab('labpurchases')}>Lab Purchases</button>
@@ -993,7 +993,7 @@ export default function InventoryInchargeDashboard() {
             {/* CONSUMPTION REPORT (removable) */}
             <ConsumptionReportBar prefix="ic" />
             <div className="ic-note">
-              <span>ⓘ</span> Read-only — buying requests are approved by <strong>Faculty</strong>. You cannot approve or reject them here.
+              <span>ⓘ</span> Read-only — item requests are approved by <strong>Faculty</strong>. You cannot approve or reject them here.
               {/* REQUEST ITEM EDIT AUDIT (removable) */}
               {' '}While a request is pending you can adjust or remove its items.
             </div>
@@ -1012,19 +1012,19 @@ export default function InventoryInchargeDashboard() {
             {buyingLoading ? (
               <div className="ic-spinner" />
             ) : buying.length === 0 ? (
-              <div className="ic-empty">No buying requests yet.</div>
+              <div className="ic-empty">No item requests yet.</div>
             ) : buyShown.length === 0 ? (
               /* ══ BUYING SEARCH — REMOVABLE: no-match branch, so a query that
                  hits nothing explains itself instead of leaving a blank tab ══ */
-              <div className="ic-empty">No matching buying requests.</div>
+              <div className="ic-empty">No matching item requests.</div>
             ) : (
               <>
                 {/* ══ BUYING SEARCH — REMOVABLE: count line (new on this page,
                     matching the Admin page's wording) ══ */}
                 <div className="ic-count">
                   {buyQuery
-                    ? `${buyShown.length} of ${buying.length} buying request${buying.length !== 1 ? 's' : ''}`
-                    : `${buying.length} buying request${buying.length !== 1 ? 's' : ''} (all purposes & statuses)`}
+                    ? `${buyShown.length} of ${buying.length} item request${buying.length !== 1 ? 's' : ''}`
+                    : `${buying.length} item request${buying.length !== 1 ? 's' : ''} (all purposes & statuses)`}
                 </div>
                 {buyShown.map((r) => (
                 <div className="ic-req" key={r.request_id}>

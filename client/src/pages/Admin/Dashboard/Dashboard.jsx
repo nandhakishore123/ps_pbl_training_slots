@@ -246,7 +246,7 @@ export default function Dashboard() {
                 </svg>
               }
               label="Inventory Management"
-              desc="All stock, buying & return requests, approvals — full control"
+              desc="All stock, item & return requests, approvals — full control"
               onClick={() => navigate('/admin-inventory')}
             />
           </div>

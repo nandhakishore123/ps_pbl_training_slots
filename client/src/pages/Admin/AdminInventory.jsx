@@ -810,7 +810,7 @@ export default function AdminInventory() {
   // ── Approve / reject (buying + returns) ──
   const approveBuy = async (id) => {
     setBusyId(id); setRowErr((m) => ({ ...m, [id]: '' }));
-    try { await inventoryService.approveBuying(id); showToast('Buying approved — stock reduced', false); await loadBuying(); loadOverview(); }
+    try { await inventoryService.approveBuying(id); showToast('Item request approved — stock reduced', false); await loadBuying(); loadOverview(); }
     catch (err) { const msg = err?.response?.data?.message || 'Failed to approve.'; setRowErr((m) => ({ ...m, [id]: msg })); showToast(msg, true); }
     finally { setBusyId(null); }
   };
@@ -1202,7 +1202,7 @@ export default function AdminInventory() {
       <div className="ad-wrap">
         <div className="ad-tabs">
           <button className={`ad-tab${tab === 'overview' ? ' active' : ''}`} onClick={() => setTab('overview')}>Overview</button>
-          <button className={`ad-tab${tab === 'buying' ? ' active' : ''}`} onClick={() => setTab('buying')}>Buying</button>
+          <button className={`ad-tab${tab === 'buying' ? ' active' : ''}`} onClick={() => setTab('buying')}>Item Requests</button>
           <button className={`ad-tab${tab === 'returns' ? ' active' : ''}`} onClick={() => setTab('returns')}>Returns</button>
           <button className={`ad-tab${tab === 'stock' ? ' active' : ''}`} onClick={() => setTab('stock')}>Stock</button>
           <button className={`ad-tab${tab === 'settings' ? ' active' : ''}`} onClick={() => setTab('settings')}>Approvers</button>
@@ -1221,7 +1221,7 @@ export default function AdminInventory() {
           ovLoading ? <div className="ad-spinner" /> : !overview ? <div className="ad-empty">Failed to load overview.</div> : (
             <div className="ad-stats">
               <div className="ad-stat"><div className="ad-stat-val">{money(overview.total_items)}</div><div className="ad-stat-label">Total Items</div><div className="ad-stat-sub">Active catalog</div></div>
-              <div className="ad-stat warn"><div className="ad-stat-val">{money(overview.pending_buying)}</div><div className="ad-stat-label">Pending Buying</div><div className="ad-stat-sub">Awaiting approval</div></div>
+              <div className="ad-stat warn"><div className="ad-stat-val">{money(overview.pending_buying)}</div><div className="ad-stat-label">Pending Item Requests</div><div className="ad-stat-sub">Awaiting approval</div></div>
               <div className="ad-stat warn"><div className="ad-stat-val">{money(overview.pending_returns)}</div><div className="ad-stat-label">Pending Returns</div><div className="ad-stat-sub">Awaiting incharge/admin</div></div>
               <div className="ad-stat"><div className="ad-stat-val">{money(overview.open_obligations)}</div><div className="ad-stat-label">Open Obligations</div><div className="ad-stat-sub">Items not yet cleared</div></div>
               <div className="ad-stat danger"><div className="ad-stat-val">{money(overview.low_stock)}</div><div className="ad-stat-label">Low Stock</div><div className="ad-stat-sub">≤ {overview.low_stock_threshold} in stock</div></div>
@@ -1247,18 +1247,18 @@ export default function AdminInventory() {
               </div>
             )}
             {/* ══ BUYING SEARCH — REMOVABLE (end) ══ */}
-            {buyingLoading ? <div className="ad-spinner" /> : buying.length === 0 ? <div className="ad-empty">No buying requests.</div> : buyShown.length === 0 ? (
+            {buyingLoading ? <div className="ad-spinner" /> : buying.length === 0 ? <div className="ad-empty">No item requests.</div> : buyShown.length === 0 ? (
               /* ══ BUYING SEARCH — REMOVABLE: no-match branch, so a query that
                  hits nothing explains itself instead of leaving a blank tab ══ */
-              <div className="ad-empty">No matching buying requests.</div>
+              <div className="ad-empty">No matching item requests.</div>
             ) : (
               <>
                 <div className="ad-count">
                   {/* BUYING SEARCH — REMOVABLE: the X-of-Y form. With no query
                       the wording is character-for-character what it was. */}
                   {buyQuery
-                    ? `${buyShown.length} of ${buying.length} buying request${buying.length !== 1 ? 's' : ''}`
-                    : `${buying.length} buying request${buying.length !== 1 ? 's' : ''} (all purposes & statuses)`}
+                    ? `${buyShown.length} of ${buying.length} item request${buying.length !== 1 ? 's' : ''}`
+                    : `${buying.length} item request${buying.length !== 1 ? 's' : ''} (all purposes & statuses)`}
                 </div>
                 {buyShown.map(renderBuying)}
               </>
@@ -1391,8 +1391,8 @@ export default function AdminInventory() {
           approverFaculty.length === 0 ? <div className="ad-empty">No active faculty found to assign as approvers.</div> : (
             <div className="ad-approvers">
               <div className="ad-appr-head">
-                <div className="ad-appr-title">Buying Approvers</div>
-                <div className="ad-appr-sub">Choose which faculty approves student buying requests for each purpose. Project requests route to the Project approver; Training requests to the Training approver.</div>
+                <div className="ad-appr-title">Item Request Approvers</div>
+                <div className="ad-appr-sub">Choose which faculty approves student item requests for each purpose. Project requests route to the Project approver; Training requests to the Training approver.</div>
               </div>
 
               <div className="ad-appr-grid">
@@ -1997,7 +1997,7 @@ export default function AdminInventory() {
         <div className="ad-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget && busyId == null) setRejectModal(null); }}>
           <div className="ad-modal">
             <div className="ad-modal-hd">
-              <div className="ad-modal-title">Reject {rejectModal.kind === 'BUY' ? 'Buying' : 'Return'} #{rejectModal.id}</div>
+              <div className="ad-modal-title">Reject {rejectModal.kind === 'BUY' ? 'Item Request' : 'Return'} #{rejectModal.id}</div>
               <button className="ad-modal-x" onClick={() => busyId == null && setRejectModal(null)}>×</button>
             </div>
             <div className="ad-modal-bd">

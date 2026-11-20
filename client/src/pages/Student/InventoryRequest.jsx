@@ -1051,7 +1051,7 @@ export default function InventoryRequest() {
         {/* Tabs: Buying (active) | Returning (coming soon) */}
         <div className="inv-tabs">
           <button className={`inv-tab${tab === 'buying' ? ' active' : ''}`} onClick={() => setTab('buying')}>
-            Buying
+            Item Requests
           </button>
           <button className={`inv-tab${tab === 'returning' ? ' active' : ''}`} onClick={() => setTab('returning')}>
             Returning
