@@ -2181,10 +2181,25 @@ export const deleteLabProcurement = async (id) => {
 // and every one that applies is reported, not just the first.
 // To remove: delete this block, the service/controller/route entries, the
 // `deleted_at IS NULL` filters, and DROP both columns.
-const fmtQty = (n) => {
-  const v = Number(n);
-  return Number.isInteger(v) ? String(v) : String(Number(v.toFixed(2)));
+// Thousand separators, matching the stock list ("10,000,000"); at most 2 decimals.
+// en-US is fixed so the server's locale can never change the grouping.
+const fmtQty = (n) => Number(Number(n).toFixed(2)).toLocaleString('en-US', { maximumFractionDigits: 2 });
+
+// Blocked-delete name lists: at most this many names per reason, then "+N more".
+const BLOCKER_NAME_CAP = 5;
+const listNames = (labels, total) => {
+  const extra = Number(total) - labels.length;
+  return labels.join(', ') + (extra > 0 ? ` +${extra} more` : '');
 };
+const qtyLabel = (q, unit) => `${fmtQty(q)}${unit ? ` ${unit}` : ''}`;
+
+// A student's display name: students.name → user_profiles.name → login email →
+// "Student #id", so a label is never blank. `s` = students, `sid` = student_id SQL.
+const studentNameSql = (sid) => `COALESCE(
+         NULLIF(TRIM(s.name), ''),
+         NULLIF(TRIM((SELECT up.name FROM user_profiles up WHERE up.user_id = s.user_id LIMIT 1)), ''),
+         (SELECT u.email FROM users u WHERE u.user_id = s.user_id LIMIT 1),
+         CONCAT('Student #', ${sid}))`;
 
 export const softDeleteItem = async (itemId, actorUserId) => {
   const id = Number(itemId);
@@ -2217,7 +2232,23 @@ export const softDeleteItem = async (itemId, actorUserId) => {
       [id]
     );
     const owe = Number(obl?.n || 0);
-    if (owe > 0) reasons.push(`${owe} student(s) still owe this item.`);
+    if (owe > 0) {
+      // Same WHERE as the count above; aggregated per student in a derived table
+      // first, so the outer name lookups never meet a GROUP BY.
+      const [who] = await conn.execute(
+        `SELECT ${studentNameSql('o.student_id')} AS name, s.reg_num, o.owed
+         FROM (SELECT student_id, SUM(taken_quantity - COALESCE(returned_quantity, 0)) AS owed
+               FROM inventory_obligations
+               WHERE item_id = ? AND status <> 'CLEARED'
+               GROUP BY student_id) o
+         LEFT JOIN students s ON s.student_id = o.student_id
+         ORDER BY name ASC, o.student_id ASC
+         LIMIT ${BLOCKER_NAME_CAP}`,
+        [id]
+      );
+      const labels = who.map((w) => `${w.name} (${w.reg_num ? `${w.reg_num}, ` : ''}${qtyLabel(w.owed, item.unit)})`);
+      reasons.push(`${owe} student(s) still owe this item: ${listNames(labels, owe)}`);
+    }
 
     // c. lab purchases with a balance left and not marked completed
     const [[lp]] = await conn.execute(
@@ -2229,7 +2260,35 @@ export const softDeleteItem = async (itemId, actorUserId) => {
       [id]
     );
     const openLp = Number(lp?.n || 0);
-    if (openLp > 0) reasons.push(`${openLp} lab purchase(s) still open on this item.`);
+    if (openLp > 0) {
+      // Buyer name: user_profiles → faculties → students → the purchase's own
+      // buyer_name snapshot → login email → "User #id" / "Unknown buyer".
+      // The snapshot sits ahead of the email so a real name is never replaced
+      // by an address.
+      const [who] = await conn.execute(
+        `SELECT t.remaining,
+                COALESCE(
+                  NULLIF(TRIM((SELECT up.name FROM user_profiles up WHERE up.user_id = t.buyer_user_id LIMIT 1)), ''),
+                  NULLIF(TRIM((SELECT f.name FROM faculties f WHERE f.user_id = t.buyer_user_id LIMIT 1)), ''),
+                  NULLIF(TRIM((SELECT s.name FROM students s WHERE s.user_id = t.buyer_user_id LIMIT 1)), ''),
+                  NULLIF(TRIM(t.buyer_name), ''),
+                  (SELECT u.email FROM users u WHERE u.user_id = t.buyer_user_id LIMIT 1),
+                  CONCAT('User #', t.buyer_user_id),
+                  'Unknown buyer') AS name,
+                (SELECT s.reg_num FROM students s WHERE s.user_id = t.buyer_user_id LIMIT 1) AS reg_num
+         FROM (SELECT lp.purchase_id, lp.buyer_user_id, lp.buyer_name, lp.created_at,
+                      lp.quantity - COALESCE((SELECT SUM(lr.quantity) FROM lab_returns lr
+                                              WHERE lr.purchase_id = lp.purchase_id), 0) AS remaining
+               FROM lab_purchases lp
+               WHERE lp.item_id = ? AND lp.completed_at IS NULL) t
+         WHERE t.remaining > 0
+         ORDER BY t.created_at ASC, t.purchase_id ASC
+         LIMIT ${BLOCKER_NAME_CAP}`,
+        [id]
+      );
+      const labels = who.map((w) => `${w.name} (${w.reg_num ? `${w.reg_num}, ` : ''}${qtyLabel(w.remaining, item.unit)})`);
+      reasons.push(`${openLp} lab purchase(s) still open on this item: ${listNames(labels, openLp)}`);
+    }
 
     // d. pending requests (BUY or RETURN) that include it
     const [[pend]] = await conn.execute(
@@ -2240,7 +2299,20 @@ export const softDeleteItem = async (itemId, actorUserId) => {
       [id]
     );
     const pending = Number(pend?.n || 0);
-    if (pending > 0) reasons.push(`${pending} pending request(s) include this item.`);
+    if (pending > 0) {
+      const [who] = await conn.execute(
+        `SELECT r.request_id, ${studentNameSql('r.student_id')} AS name, s.reg_num
+         FROM inventory_requests r
+         LEFT JOIN students s ON s.student_id = r.student_id
+         WHERE r.status = 'PENDING'
+           AND r.request_id IN (SELECT ri.request_id FROM inventory_request_items ri WHERE ri.item_id = ?)
+         ORDER BY r.request_id ASC
+         LIMIT ${BLOCKER_NAME_CAP}`,
+        [id]
+      );
+      const labels = who.map((w) => `#${w.request_id} ${w.name}${w.reg_num ? ` (${w.reg_num})` : ''}`);
+      reasons.push(`${pending} pending request(s) include this item: ${listNames(labels, pending)}`);
+    }
 
     if (reasons.length) {
       const e = new Error(`Cannot remove "${item.item_name}": ${reasons.join(' ')}`);

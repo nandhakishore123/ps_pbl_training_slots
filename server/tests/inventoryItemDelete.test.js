@@ -53,7 +53,7 @@ const INCHARGE = { user_id: BASE + 4, role_id: 4, name: 'ZZ Del Incharge' };
 const MEMBER = { user_id: BASE + 5, role_id: 5, name: 'ZZ Del Member' };
 const PAST_DAY = '2026-01-15';
 
-const created = { items: [], requests: [], labs: [], studentId: null, userRow: false };
+const created = { items: [], requests: [], labs: [], studentId: null, userRow: false, extraStudents: [], extraUsers: [] };
 let pass = 0;
 let fail = 0;
 const check = (name, cond, detail = '') => {
@@ -74,29 +74,44 @@ const addItem = async (name, qty) => {
   created.items.push(r.insertId);
   return r.insertId;
 };
-const addRequest = async (itemId, name, status, decidedAt = null) => {
+const addRequest = async (itemId, name, status, decidedAt = null, studentId = created.studentId) => {
   const [r] = await db.execute(
     `INSERT INTO inventory_requests (student_id, request_type, purpose_type, purpose, status, decided_at, created_at)
      VALUES (?, 'BUY', 'PROJECT', 'item-delete test fixture', ?, ?, COALESCE(?, NOW()))`,
-    [created.studentId, status, decidedAt, decidedAt]);
+    [studentId, status, decidedAt, decidedAt]);
   created.requests.push(r.insertId);
   const [li] = await db.execute(
     `INSERT INTO inventory_request_items (request_id, item_id, item_name, quantity, requested_quantity, unit)
      VALUES (?, ?, ?, 2, 2, 'pcs')`, [r.insertId, itemId, name]);
   return { rid: r.insertId, lineId: li.insertId };
 };
-const addObligation = async (itemId, name, rid, lineId, status) => {
+const addObligation = async (itemId, name, rid, lineId, status, studentId = created.studentId, taken = 2) => {
   await db.execute(
     `INSERT INTO inventory_obligations (student_id, buy_request_id, buy_line_id, item_id, item_name, category, unit,
                                        taken_quantity, returned_quantity, is_returnable, status)
-     VALUES (?, ?, ?, ?, ?, ?, 'pcs', 2, ?, 0, ?)`,
-    [created.studentId, rid, lineId, itemId, name, CAT, status === 'CLEARED' ? 2 : 0, status]);
+     VALUES (?, ?, ?, ?, ?, ?, 'pcs', ?, ?, 0, ?)`,
+    [studentId, rid, lineId, itemId, name, CAT, taken, status === 'CLEARED' ? taken : 0, status]);
 };
-const addLabPurchase = async (itemId, name, labId, { completed = false, createdAt = null } = {}) => {
+const addLabPurchase = async (itemId, name, labId, { completed = false, createdAt = null,
+  buyerUserId = MEMBER.user_id, buyerName = 'ZZ Del Member', qty = 1 } = {}) => {
   await db.execute(
     `INSERT INTO lab_purchases (lab_id, item_id, item_name, quantity, unit, buyer_user_id, buyer_name, created_at, completed_at)
-     VALUES (?, ?, ?, 1, 'pcs', ?, 'ZZ Del Member', COALESCE(?, NOW()), ${completed ? 'NOW()' : 'NULL'})`,
-    [labId, itemId, name, MEMBER.user_id, createdAt]);
+     VALUES (?, ?, ?, ?, 'pcs', ?, ?, COALESCE(?, NOW()), ${completed ? 'NOW()' : 'NULL'})`,
+    [labId, itemId, name, qty, buyerUserId, buyerName, createdAt]);
+};
+const addPerson = async (n, roleId, studentName) => {
+  const userId = BASE + 100 + n;
+  await db.execute(`INSERT INTO users (user_id, role_id, email, is_active) VALUES (?, ?, ?, 1)`,
+    [userId, roleId, `zz-itemdel-${n}@test.invalid`]);
+  created.extraUsers.push(userId);
+  let studentId = null;
+  if (studentName != null) {
+    const [st] = await db.execute(`INSERT INTO students (user_id, reg_num, name, is_active) VALUES (?, ?, ?, 1)`,
+      [userId, `ZZDEL${String(100 + n)}`, studentName]);
+    studentId = st.insertId;
+    created.extraStudents.push(studentId);
+  }
+  return { userId, studentId, email: `zz-itemdel-${n}@test.invalid`, reg: `ZZDEL${String(100 + n)}` };
 };
 const itemRow = async (id) => (await db.execute(`SELECT * FROM inventory_items WHERE item_id = ?`, [id]))[0][0];
 const snapshot = async (id) => {
@@ -115,6 +130,8 @@ const cleanup = async () => {
   await del(`DELETE FROM inventory_items WHERE item_id IN (?)`, created.items);
   await del(`DELETE FROM labs WHERE lab_id IN (?)`, created.labs);
   if (created.studentId) await db.execute(`DELETE FROM students WHERE student_id = ?`, [created.studentId]);
+  await del(`DELETE FROM students WHERE student_id IN (?)`, created.extraStudents);
+  await del(`DELETE FROM users WHERE user_id IN (?)`, created.extraUsers);
   if (created.userRow) await db.execute(`DELETE FROM users WHERE user_id = ?`, [STUDENT.user_id]);
 };
 
@@ -213,17 +230,17 @@ try {
   {
     const r = await call('DELETE', `/items/${iOwed}`, ADMIN);
     check('T3 owed item → 409', r.status === 409, `got ${r.status}`);
-    check('T3 message names the count', (r.json?.message || '').includes('1 student(s) still owe this item.'), r.json?.message);
+    check('T3 message names the count', (r.json?.message || '').includes('1 student(s) still owe this item: ZZ Del Student (ZZDEL0001, 2 pcs)'), r.json?.message);
     check('T3 still active', (await itemRow(iOwed)).deleted_at == null);
   }
 
   // T4 — on a PENDING request → 409 ; open lab purchase → 409
   {
     const r = await call('DELETE', `/items/${iPend}`, INCHARGE);
-    check('T4 pending-request item → 409', r.status === 409 && (r.json?.message || '').includes('1 pending request(s) include this item.'), `${r.status} ${r.json?.message}`);
+    check('T4 pending-request item → 409', r.status === 409 && (r.json?.message || '').includes('1 pending request(s) include this item: #'), `${r.status} ${r.json?.message}`);
     check('T4 still active', (await itemRow(iPend)).deleted_at == null);
     const r2 = await call('DELETE', `/items/${iLab}`, ADMIN);
-    check('T4b open lab purchase → 409', r2.status === 409 && (r2.json?.message || '').includes('1 lab purchase(s) still open on this item.'), `${r2.status} ${r2.json?.message}`);
+    check('T4b open lab purchase → 409', r2.status === 409 && (r2.json?.message || '').includes('1 lab purchase(s) still open on this item: ZZ Del Member (1 pcs)'), `${r2.status} ${r2.json?.message}`);
   }
 
   // T5 — two failing checks → both reasons
@@ -231,7 +248,7 @@ try {
     const r = await call('DELETE', `/items/${iTwo}`, ADMIN);
     const reasons = r.json?.reasons || [];
     check('T5 two-reason item → 409', r.status === 409, `got ${r.status}`);
-    check('T5 both reasons in the message', (r.json?.message || '').includes('Still has 3 pcs in stock') && (r.json?.message || '').includes('1 student(s) still owe this item.'), r.json?.message);
+    check('T5 both reasons in the message', (r.json?.message || '').includes('Still has 3 pcs in stock') && (r.json?.message || '').includes('1 student(s) still owe this item: ZZ Del Student'), r.json?.message);
     check('T5 reasons[] has exactly 2 entries', reasons.length === 2, JSON.stringify(reasons));
   }
 
@@ -415,6 +432,96 @@ try {
       r.status === 200 && Number(r.json?.data?.current_quantity) === 9 && Number((await itemRow(iRem)).current_quantity) === 9,
       `${r.status} ${r.json?.message || ''}`);
     check('T16 one STOCK_EDIT txn logged', (await txnCount(iRem)) === tBefore + 1);
+  }
+
+  // ── Named blockers (T17–T21) ──
+  const pA = await addPerson(1, 1, 'ZZ Alpha');
+  const pB = await addPerson(2, 1, 'ZZ Beta');
+  const owe = async (itemId, name, person, taken) => {
+    const { rid, lineId } = await addRequest(itemId, name, 'APPROVED', `${PAST_DAY} 09:00:00`, person.studentId);
+    await addObligation(itemId, name, rid, lineId, 'OPEN', person.studentId, taken);
+  };
+  const blockedMsg = async (itemId) => {
+    const r = await call('DELETE', `/items/${itemId}`, ADMIN);
+    return { status: r.status, msg: r.json?.message || '', reasons: r.json?.reasons || [] };
+  };
+
+  // T17 — two students owe → both names + reg numbers
+  {
+    const it = await addItem('ZZDEL two owers', '0.00');
+    await owe(it, 'ZZDEL two owers', pA, 5);
+    await owe(it, 'ZZDEL two owers', pB, 2);
+    const r = await blockedMsg(it);
+    check('T17 → 409', r.status === 409, `got ${r.status}`);
+    check('T17 both names, reg numbers and amounts listed',
+      r.msg.includes(`2 student(s) still owe this item: ZZ Alpha (${pA.reg}, 5 pcs), ZZ Beta (${pB.reg}, 2 pcs)`), r.msg);
+  }
+
+  // T18 — six students owe → 5 names + "+1 more"
+  {
+    const it = await addItem('ZZDEL six owers', '0.00');
+    for (let i = 1; i <= 6; i += 1) await owe(it, 'ZZDEL six owers', await addPerson(2 + i, 1, `ZZ Six ${i}`), 1);
+    const r = await blockedMsg(it);
+    const owedReason = r.reasons.find((x) => x.startsWith('6 student(s) still owe this item:')) || '';
+    const listed = [1, 2, 3, 4, 5].every((i) => owedReason.includes(`ZZ Six ${i} (`));
+    check('T18 → 409 with count 6', r.status === 409 && !!owedReason, r.msg);
+    check('T18 five names listed', listed, owedReason);
+    check('T18 sixth name NOT listed, "+1 more" appended', !owedReason.includes('ZZ Six 6') && owedReason.endsWith(' +1 more'), owedReason);
+  }
+
+  // T19 — no name row → email, never blank
+  {
+    const it = await addItem('ZZDEL nameless', '0.00');
+    const member = await addPerson(9, 5, null);           // users row only: no profile/faculty/student
+    await addLabPurchase(it, 'ZZDEL nameless', LAB_ID, { buyerUserId: member.userId, buyerName: null, qty: 3 });
+    const blank = await addPerson(10, 1, '');             // student row with an empty name
+    await owe(it, 'ZZDEL nameless', blank, 1);
+    const r = await blockedMsg(it);
+    check('T19 → 409', r.status === 409, `got ${r.status}`);
+    check('T19 lab buyer with no name row shown by email',
+      r.msg.includes(`1 lab purchase(s) still open on this item: ${member.email} (3 pcs)`), r.msg);
+    check('T19 student with blank name shown by email', r.msg.includes(`${blank.email} (${blank.reg}, 1 pcs)`), r.msg);
+    check('T19 no blank label', !/: \(|, \(|:\s*$/.test(r.msg), r.msg);
+  }
+
+  // T20 — pending request → request id + student name
+  {
+    const it = await addItem('ZZDEL pending named', '0.00');
+    const { rid } = await addRequest(it, 'ZZDEL pending named', 'PENDING', null, pA.studentId);
+    const r = await blockedMsg(it);
+    check('T20 → 409', r.status === 409, `got ${r.status}`);
+    check('T20 request id + name + reg listed',
+      r.msg.includes(`1 pending request(s) include this item: #${rid} ZZ Alpha (${pA.reg})`), r.msg);
+  }
+
+  // T21 — thousand separators on the stock reason
+  {
+    const it = await addItem('ZZDEL big stock', '10000000.00');
+    const r = await blockedMsg(it);
+    check('T21 → 409', r.status === 409, `got ${r.status}`);
+    check('T21 "Still has 10,000,000 pcs in stock"', r.msg.includes('Still has 10,000,000 pcs in stock. Clear the stock first.'), r.msg);
+    check('T21 stock reason otherwise unchanged (no names appended)', r.reasons.length === 1, JSON.stringify(r.reasons));
+  }
+
+  // T22 — role-5 buyer: no profile/faculty/student row, but a stored buyer_name → that name, not the email
+  {
+    const it = await addItem('ZZDEL snapshot buyer', '0.00');
+    const member = await addPerson(11, 5, null);          // users row only
+    await addLabPurchase(it, 'ZZDEL snapshot buyer', LAB_ID, { buyerUserId: member.userId, buyerName: 'ZZ Snapshot Selva', qty: 10 });
+    const r = await blockedMsg(it);
+    check('T22 → 409', r.status === 409, `got ${r.status}`);
+    check('T22 stored buyer_name shown', r.msg.includes('1 lab purchase(s) still open on this item: ZZ Snapshot Selva (10 pcs)'), r.msg);
+    check('T22 email NOT shown', !r.msg.includes(member.email), r.msg);
+  }
+
+  // T23 — buyer with no name anywhere → email, as before
+  {
+    const it = await addItem('ZZDEL no-name buyer', '0.00');
+    const member = await addPerson(12, 5, null);
+    await addLabPurchase(it, 'ZZDEL no-name buyer', LAB_ID, { buyerUserId: member.userId, buyerName: '  ', qty: 2 });
+    const r = await blockedMsg(it);
+    check('T23 → 409', r.status === 409, `got ${r.status}`);
+    check('T23 email shown', r.msg.includes(`1 lab purchase(s) still open on this item: ${member.email} (2 pcs)`), r.msg);
   }
 } catch (err) {
   fail += 1;

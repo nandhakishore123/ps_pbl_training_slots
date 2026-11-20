@@ -549,7 +549,9 @@ export default function AdminInventory() {
       const d = err?.response?.data;
       const reasons = Array.isArray(d?.reasons) && d.reasons.length ? d.reasons : [d?.message || 'Failed to remove item.'];
       setItemErr((m) => ({ ...m, [it.item_id]: reasons }));
-      showToast(reasons.join(' '), true);
+      // A blocked delete (409) is shown only inline under its own row — a toast
+      // duplicated it and floated over an unrelated row. Other failures still toast.
+      if (err?.response?.status !== 409) showToast(reasons.join(' '), true);
     } finally { setItemBusy(null); }
   };
   const restoreItem = async (it) => {
