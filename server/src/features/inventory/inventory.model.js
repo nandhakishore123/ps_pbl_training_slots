@@ -9,6 +9,7 @@ export const getCategories = async () => {
     `SELECT DISTINCT category
      FROM inventory_items
      WHERE is_active = 1
+       AND deleted_at IS NULL -- ══ ITEM DELETE — REMOVABLE ══
      ORDER BY category`
   );
   return rows ?? [];
@@ -21,6 +22,7 @@ export const getItemsByCategory = async (category) => {
             current_quantity, rack_location, is_returnable
      FROM inventory_items
      WHERE is_active = 1 AND category = ?
+       AND deleted_at IS NULL -- ══ ITEM DELETE — REMOVABLE ══
      ORDER BY item_name`,
     [category]
   );
@@ -147,16 +149,26 @@ export const listRequestsForStudent = async (studentId) => {
 // ── Stock management (Inventory Incharge role 4; Admin role 3) ──
 
 // Full catalog with optional category + item_name-search filters.
-export const listAllItems = async ({ category, search } = {}) => {
+export const listAllItems = async ({ category, search, includeDeleted = false } = {}) => {
   const where = [];
   const params = [];
   if (category) { where.push('category = ?'); params.push(category); }
   if (search) { where.push('item_name LIKE ?'); params.push(`%${search}%`); }
+  // ══ ITEM DELETE — REMOVABLE (start) ══
+  // Default: removed items are hidden. includeDeleted (roles 3/4 only, gated in
+  // the controller) returns them too, with the extra columns the UI flags on.
+  // Without it the SELECT list is exactly the pre-feature one.
+  if (!includeDeleted) where.push('deleted_at IS NULL');
+  const deletedCols = includeDeleted
+    ? `,
+            deleted_at, deleted_by_user_id, (deleted_at IS NOT NULL) AS is_deleted`
+    : '';
+  // ══ ITEM DELETE — REMOVABLE (end) ══
   const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
   const [rows] = await db.execute(
     `SELECT item_id, category, subcategory, item_name, sub_name, unit,
             current_quantity, rack_location, is_returnable, is_active,
-            created_at, updated_at
+            created_at, updated_at${deletedCols}
      FROM inventory_items
      ${clause}
      ORDER BY category ASC, item_name ASC`,
@@ -170,11 +182,16 @@ export const adjustStock = async (itemId, newQuantity, actorUserId, reason) => {
   const conn = await db.getConnection();
   try {
     await conn.beginTransaction();
+    // ══ ITEM DELETE — REMOVABLE (start) ══
+    // Was: SELECT current_quantity ... LIMIT 1. Same read + deleted_at + row lock,
+    // exactly as addStock / updateItem. ITEM_REMOVED_MSG is defined just below.
     const [rows] = await conn.execute(
-      `SELECT current_quantity FROM inventory_items WHERE item_id = ? LIMIT 1`,
+      `SELECT current_quantity, deleted_at FROM inventory_items WHERE item_id = ? LIMIT 1 FOR UPDATE`,
       [Number(itemId)]
     );
     if (!rows.length) { const e = new Error('Item not found'); e.status = 404; throw e; }
+    if (rows[0].deleted_at != null) { const e = new Error(ITEM_REMOVED_MSG); e.status = 409; throw e; }
+    // ══ ITEM DELETE — REMOVABLE (end) ══
     const oldQty = Number(rows[0].current_quantity);
     const changeQty = Number(newQuantity) - oldQty;
     await conn.execute(
@@ -196,16 +213,25 @@ export const adjustStock = async (itemId, newQuantity, actorUserId, reason) => {
   }
 };
 
+// ══ ITEM DELETE — REMOVABLE: write guard message for addStock / updateItem ══
+export const ITEM_REMOVED_MSG = 'This item has been removed from the inventory. Restore it first.';
+
 // Add to an item's quantity (new arrivals); log +addQty as a STOCK_ADD txn.
 export const addStock = async (itemId, addQty, actorUserId) => {
   const conn = await db.getConnection();
   try {
     await conn.beginTransaction();
+    // ══ ITEM DELETE — REMOVABLE (start) ══
+    // Was: SELECT current_quantity ... LIMIT 1. Same read, now also fetching
+    // deleted_at and taking the row lock (FOR UPDATE) softDeleteItem also takes,
+    // so a delete cannot commit between this check and the write below.
     const [rows] = await conn.execute(
-      `SELECT current_quantity FROM inventory_items WHERE item_id = ? LIMIT 1`,
+      `SELECT current_quantity, deleted_at FROM inventory_items WHERE item_id = ? LIMIT 1 FOR UPDATE`,
       [Number(itemId)]
     );
     if (!rows.length) { const e = new Error('Item not found'); e.status = 404; throw e; }
+    if (rows[0].deleted_at != null) { const e = new Error(ITEM_REMOVED_MSG); e.status = 409; throw e; }
+    // ══ ITEM DELETE — REMOVABLE (end) ══
     const newQty = Number(rows[0].current_quantity) + Number(addQty);
     await conn.execute(
       `UPDATE inventory_items SET current_quantity = ? WHERE item_id = ?`,
@@ -272,11 +298,15 @@ export const updateItem = async (itemId, fields, actorUserId) => {
   const conn = await db.getConnection();
   try {
     await conn.beginTransaction();
+    // ══ ITEM DELETE — REMOVABLE (start) ══
+    // Was: SELECT current_quantity ... LIMIT 1. Same read + deleted_at + row lock.
     const [rows] = await conn.execute(
-      `SELECT current_quantity FROM inventory_items WHERE item_id = ? LIMIT 1`,
+      `SELECT current_quantity, deleted_at FROM inventory_items WHERE item_id = ? LIMIT 1 FOR UPDATE`,
       [Number(itemId)]
     );
     if (!rows.length) { const e = new Error('Item not found'); e.status = 404; throw e; }
+    if (rows[0].deleted_at != null) { const e = new Error(ITEM_REMOVED_MSG); e.status = 409; throw e; }
+    // ══ ITEM DELETE — REMOVABLE (end) ══
 
     const sets = [];
     const params = [];
@@ -368,12 +398,13 @@ export const listAllBuyingRequests = async ({ withEditor = false } = {}) => {
 // ── Admin overview counts (Stage 6) ──────────────────────────
 export const LOW_STOCK_THRESHOLD = 10;
 export const getInventoryCounts = async () => {
-  const [[items]] = await db.execute(`SELECT COUNT(*) AS n FROM inventory_items WHERE is_active = 1`);
+  // ══ ITEM DELETE — REMOVABLE: `AND deleted_at IS NULL` added to both item counts ══
+  const [[items]] = await db.execute(`SELECT COUNT(*) AS n FROM inventory_items WHERE is_active = 1 AND deleted_at IS NULL`);
   const [[pb]] = await db.execute(`SELECT COUNT(*) AS n FROM inventory_requests WHERE request_type = 'BUY' AND status = 'PENDING'`);
   const [[pr]] = await db.execute(`SELECT COUNT(*) AS n FROM inventory_requests WHERE request_type = 'RETURN' AND status = 'PENDING'`);
   const [[obl]] = await db.execute(`SELECT COUNT(*) AS n FROM inventory_obligations WHERE status IN ('OPEN','RETURN_PENDING')`);
   const [[low]] = await db.execute(
-    `SELECT COUNT(*) AS n FROM inventory_items WHERE is_active = 1 AND current_quantity <= ?`,
+    `SELECT COUNT(*) AS n FROM inventory_items WHERE is_active = 1 AND deleted_at IS NULL AND current_quantity <= ?`,
     [LOW_STOCK_THRESHOLD]
   );
   return {
@@ -2137,3 +2168,201 @@ export const deleteLabProcurement = async (id) => {
   return res.affectedRows;
 };
 // ══ LAB PROCUREMENT — REMOVABLE (end) ════════════════════════════════════════
+
+// ══ ITEM DELETE — REMOVABLE (start) ══════════════════════════════════════════
+// Soft delete of a catalog item that no longer physically exists. The row is
+// NEVER removed: every history table (request items, obligations, lab
+// purchases, stock txns) keeps its item_id and its own item_name snapshot, so
+// reports are unchanged. Only deleted_at / deleted_by_user_id are written —
+// stock, obligations, purchases and txns are never touched.
+//
+// The item row is locked FOR UPDATE first so a concurrent Add stock / approval
+// cannot slip between the checks and the write. ALL four blockers are checked
+// and every one that applies is reported, not just the first.
+// To remove: delete this block, the service/controller/route entries, the
+// `deleted_at IS NULL` filters, and DROP both columns.
+// Thousand separators, matching the stock list ("10,000,000"); at most 2 decimals.
+// en-US is fixed so the server's locale can never change the grouping.
+const fmtQty = (n) => Number(Number(n).toFixed(2)).toLocaleString('en-US', { maximumFractionDigits: 2 });
+
+// Blocked-delete name lists: at most this many names per reason, then "+N more".
+const BLOCKER_NAME_CAP = 5;
+const listNames = (labels, total) => {
+  const extra = Number(total) - labels.length;
+  return labels.join(', ') + (extra > 0 ? ` +${extra} more` : '');
+};
+const qtyLabel = (q, unit) => `${fmtQty(q)}${unit ? ` ${unit}` : ''}`;
+
+// A student's display name: students.name → user_profiles.name → login email →
+// "Student #id", so a label is never blank. `s` = students, `sid` = student_id SQL.
+const studentNameSql = (sid) => `COALESCE(
+         NULLIF(TRIM(s.name), ''),
+         NULLIF(TRIM((SELECT up.name FROM user_profiles up WHERE up.user_id = s.user_id LIMIT 1)), ''),
+         (SELECT u.email FROM users u WHERE u.user_id = s.user_id LIMIT 1),
+         CONCAT('Student #', ${sid}))`;
+
+export const softDeleteItem = async (itemId, actorUserId) => {
+  const id = Number(itemId);
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [rows] = await conn.execute(
+      `SELECT item_id, item_name, unit, current_quantity, deleted_at
+       FROM inventory_items WHERE item_id = ? LIMIT 1 FOR UPDATE`,
+      [id]
+    );
+    const item = rows?.[0];
+    if (!item) { const e = new Error('Item not found'); e.status = 404; throw e; }
+    if (item.deleted_at != null) {
+      const e = new Error(`"${item.item_name}" is already removed`); e.status = 409; e.reasons = [e.message]; throw e;
+    }
+
+    const reasons = [];
+
+    // a. stock still on the shelf
+    const qty = Number(item.current_quantity);
+    if (qty > 0) {
+      reasons.push(`Still has ${fmtQty(qty)}${item.unit ? ` ${item.unit}` : ''} in stock. Clear the stock first.`);
+    }
+
+    // b. students who still owe it (anything not CLEARED)
+    const [[obl]] = await conn.execute(
+      `SELECT COUNT(DISTINCT student_id) AS n FROM inventory_obligations
+       WHERE item_id = ? AND status <> 'CLEARED'`,
+      [id]
+    );
+    const owe = Number(obl?.n || 0);
+    if (owe > 0) {
+      // Same WHERE as the count above; aggregated per student in a derived table
+      // first, so the outer name lookups never meet a GROUP BY.
+      const [who] = await conn.execute(
+        `SELECT ${studentNameSql('o.student_id')} AS name, s.reg_num, o.owed
+         FROM (SELECT student_id, SUM(taken_quantity - COALESCE(returned_quantity, 0)) AS owed
+               FROM inventory_obligations
+               WHERE item_id = ? AND status <> 'CLEARED'
+               GROUP BY student_id) o
+         LEFT JOIN students s ON s.student_id = o.student_id
+         ORDER BY name ASC, o.student_id ASC
+         LIMIT ${BLOCKER_NAME_CAP}`,
+        [id]
+      );
+      const labels = who.map((w) => `${w.name} (${w.reg_num ? `${w.reg_num}, ` : ''}${qtyLabel(w.owed, item.unit)})`);
+      reasons.push(`${owe} student(s) still owe this item: ${listNames(labels, owe)}`);
+    }
+
+    // c. lab purchases with a balance left and not marked completed
+    const [[lp]] = await conn.execute(
+      `SELECT COUNT(*) AS n FROM lab_purchases lp
+       WHERE lp.item_id = ?
+         AND lp.completed_at IS NULL
+         AND lp.quantity - COALESCE((SELECT SUM(lr.quantity) FROM lab_returns lr
+                                     WHERE lr.purchase_id = lp.purchase_id), 0) > 0`,
+      [id]
+    );
+    const openLp = Number(lp?.n || 0);
+    if (openLp > 0) {
+      // Buyer name: user_profiles → faculties → students → the purchase's own
+      // buyer_name snapshot → login email → "User #id" / "Unknown buyer".
+      // The snapshot sits ahead of the email so a real name is never replaced
+      // by an address.
+      const [who] = await conn.execute(
+        `SELECT t.remaining,
+                COALESCE(
+                  NULLIF(TRIM((SELECT up.name FROM user_profiles up WHERE up.user_id = t.buyer_user_id LIMIT 1)), ''),
+                  NULLIF(TRIM((SELECT f.name FROM faculties f WHERE f.user_id = t.buyer_user_id LIMIT 1)), ''),
+                  NULLIF(TRIM((SELECT s.name FROM students s WHERE s.user_id = t.buyer_user_id LIMIT 1)), ''),
+                  NULLIF(TRIM(t.buyer_name), ''),
+                  (SELECT u.email FROM users u WHERE u.user_id = t.buyer_user_id LIMIT 1),
+                  CONCAT('User #', t.buyer_user_id),
+                  'Unknown buyer') AS name,
+                (SELECT s.reg_num FROM students s WHERE s.user_id = t.buyer_user_id LIMIT 1) AS reg_num
+         FROM (SELECT lp.purchase_id, lp.buyer_user_id, lp.buyer_name, lp.created_at,
+                      lp.quantity - COALESCE((SELECT SUM(lr.quantity) FROM lab_returns lr
+                                              WHERE lr.purchase_id = lp.purchase_id), 0) AS remaining
+               FROM lab_purchases lp
+               WHERE lp.item_id = ? AND lp.completed_at IS NULL) t
+         WHERE t.remaining > 0
+         ORDER BY t.created_at ASC, t.purchase_id ASC
+         LIMIT ${BLOCKER_NAME_CAP}`,
+        [id]
+      );
+      const labels = who.map((w) => `${w.name} (${w.reg_num ? `${w.reg_num}, ` : ''}${qtyLabel(w.remaining, item.unit)})`);
+      reasons.push(`${openLp} lab purchase(s) still open on this item: ${listNames(labels, openLp)}`);
+    }
+
+    // d. pending requests (BUY or RETURN) that include it
+    const [[pend]] = await conn.execute(
+      `SELECT COUNT(DISTINCT r.request_id) AS n
+       FROM inventory_request_items ri
+       JOIN inventory_requests r ON r.request_id = ri.request_id
+       WHERE ri.item_id = ? AND r.status = 'PENDING'`,
+      [id]
+    );
+    const pending = Number(pend?.n || 0);
+    if (pending > 0) {
+      const [who] = await conn.execute(
+        `SELECT r.request_id, ${studentNameSql('r.student_id')} AS name, s.reg_num
+         FROM inventory_requests r
+         LEFT JOIN students s ON s.student_id = r.student_id
+         WHERE r.status = 'PENDING'
+           AND r.request_id IN (SELECT ri.request_id FROM inventory_request_items ri WHERE ri.item_id = ?)
+         ORDER BY r.request_id ASC
+         LIMIT ${BLOCKER_NAME_CAP}`,
+        [id]
+      );
+      const labels = who.map((w) => `#${w.request_id} ${w.name}${w.reg_num ? ` (${w.reg_num})` : ''}`);
+      reasons.push(`${pending} pending request(s) include this item: ${listNames(labels, pending)}`);
+    }
+
+    if (reasons.length) {
+      const e = new Error(`Cannot remove "${item.item_name}": ${reasons.join(' ')}`);
+      e.status = 409; e.reasons = reasons;
+      throw e;
+    }
+
+    await conn.execute(
+      `UPDATE inventory_items SET deleted_at = NOW(), deleted_by_user_id = ? WHERE item_id = ?`,
+      [actorUserId != null ? Number(actorUserId) : null, id]
+    );
+    const [out] = await conn.execute(
+      `SELECT item_id, item_name, deleted_at, deleted_by_user_id FROM inventory_items WHERE item_id = ? LIMIT 1`,
+      [id]
+    );
+    await conn.commit();
+    return out[0];
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+};
+
+export const restoreItem = async (itemId) => {
+  const id = Number(itemId);
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [rows] = await conn.execute(
+      `SELECT item_id, item_name, deleted_at FROM inventory_items WHERE item_id = ? LIMIT 1 FOR UPDATE`,
+      [id]
+    );
+    const item = rows?.[0];
+    if (!item) { const e = new Error('Item not found'); e.status = 404; throw e; }
+    if (item.deleted_at == null) {
+      const e = new Error(`"${item.item_name}" is not removed`); e.status = 409; e.reasons = [e.message]; throw e;
+    }
+    await conn.execute(
+      `UPDATE inventory_items SET deleted_at = NULL, deleted_by_user_id = NULL WHERE item_id = ?`,
+      [id]
+    );
+    await conn.commit();
+    return { item_id: id, item_name: item.item_name, deleted_at: null, deleted_by_user_id: null };
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+};
+// ══ ITEM DELETE — REMOVABLE (end) ════════════════════════════════════════════

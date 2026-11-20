@@ -196,6 +196,11 @@ export default function InventoryInchargeDashboard() {
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
   const [categories, setCategories] = useState([]);
+  // ══ ITEM DELETE — REMOVABLE (start) ══
+  const [showRemoved, setShowRemoved] = useState(false);   // unticked = today's list
+  const [itemBusy, setItemBusy] = useState(null);          // item_id being deleted/restored
+  const [itemErr, setItemErr] = useState({});              // { [item_id]: string[] } — every 409 reason
+  // ══ ITEM DELETE — REMOVABLE (end) ══
 
   // Buying (read-only)
   const [buying, setBuying] = useState([]);
@@ -308,6 +313,7 @@ export default function InventoryInchargeDashboard() {
       const res = await inventoryService.getStock({
         category: opts.category ?? categoryFilter,
         search: opts.search ?? search,
+        includeDeleted: opts.showRemoved ?? showRemoved,   // ══ ITEM DELETE — REMOVABLE ══
       });
       setStock(res?.data?.items || []);
     } catch {
@@ -316,7 +322,36 @@ export default function InventoryInchargeDashboard() {
     } finally {
       setStockLoading(false);
     }
-  }, [categoryFilter, search]);
+  }, [categoryFilter, search, showRemoved]);
+
+  // ══ ITEM DELETE — REMOVABLE (start) ══
+  // Soft delete / restore one catalog item. This page has no toast host, so a
+  // blocked delete's `reasons` (all of them) are shown inline under the row.
+  const toggleShowRemoved = (checked) => { setShowRemoved(checked); setItemErr({}); loadStock({ showRemoved: checked }); };
+  const deleteItem = async (it) => {
+    if (!window.confirm(`Remove "${it.item_name}" from the stock list?\n\nIt will no longer appear in Stock or in item search. Past requests and reports keep showing it, and it can be restored.`)) return;
+    setItemBusy(it.item_id); setItemErr((m) => ({ ...m, [it.item_id]: null }));
+    try {
+      await inventoryService.deleteItem(it.item_id);
+      await loadStock();
+    } catch (err) {
+      const d = err?.response?.data;
+      const reasons = Array.isArray(d?.reasons) && d.reasons.length ? d.reasons : [d?.message || 'Failed to remove item.'];
+      setItemErr((m) => ({ ...m, [it.item_id]: reasons }));
+    } finally { setItemBusy(null); }
+  };
+  const restoreItem = async (it) => {
+    setItemBusy(it.item_id); setItemErr((m) => ({ ...m, [it.item_id]: null }));
+    try {
+      await inventoryService.restoreItem(it.item_id);
+      await loadStock();
+    } catch (err) {
+      const d = err?.response?.data;
+      const reasons = Array.isArray(d?.reasons) && d.reasons.length ? d.reasons : [d?.message || 'Failed to restore item.'];
+      setItemErr((m) => ({ ...m, [it.item_id]: reasons }));
+    } finally { setItemBusy(null); }
+  };
+  // ══ ITEM DELETE — REMOVABLE (end) ══
 
   const loadBuying = useCallback(async () => {
     setBuyingLoading(true);
@@ -670,7 +705,9 @@ export default function InventoryInchargeDashboard() {
   // is always the complete returnable list.
   const openReturnable = async () => {
     setRetOpen(true); setRetError(''); setRetSearch('');
-    if (!categoryFilter && !search && !stockLoading && stock.length > 0) {
+    // ITEM DELETE — REMOVABLE: `&& !showRemoved` — with removed rows loaded into
+    // `stock`, re-fetch instead so the popup never lists a removed item.
+    if (!categoryFilter && !search && !stockLoading && stock.length > 0 && !showRemoved) {
       setRetItems(stock.filter(isReturnableItem)); return;
     }
     setRetLoading(true);
@@ -880,6 +917,10 @@ export default function InventoryInchargeDashboard() {
                 title="Print the current stock list (category + search applied)"
               >{stockRepBusy ? 'Preparing…' : 'Stock Report'}</button>
               {/* ═══ STOCK REPORT — REMOVABLE BLOCK (end) ═══ */}
+              {/* ══ ITEM DELETE — REMOVABLE ══ */}
+              <label className="ic-show-removed" title="Also list items that were removed (they can be restored)">
+                <input type="checkbox" checked={showRemoved} onChange={(e) => toggleShowRemoved(e.target.checked)} /> Show removed items
+              </label>
               <button className="ic-btn ic-btn-primary" onClick={openNew}>+ Add New Item</button>
             </div>
 
@@ -894,27 +935,53 @@ export default function InventoryInchargeDashboard() {
                 <div className="ic-count">
                   Showing {shown.length} of {stock.length} item{stock.length !== 1 ? 's' : ''}
                   {stock.length > RENDER_CAP ? ' · refine your search/category to narrow the list' : ''}
+                  {/* ══ ITEM DELETE — REMOVABLE: only rendered while "Show removed items" is ticked ══ */}
+                  {showRemoved ? ` · ${stock.filter((s) => Number(s.is_deleted) === 1).length} removed` : ''}
                 </div>
                 <div className="ic-card">
-                  {shown.map((it) => (
-                    <div className="ic-item" key={it.item_id}>
+                  {shown.map((it) => {
+                    const removed = Number(it.is_deleted) === 1;   // ══ ITEM DELETE — REMOVABLE ══
+                    return (
+                    <div className={`ic-item${removed ? ' ic-item-removed' : ''}`} key={it.item_id}>
                       <div style={{ minWidth: 0 }}>
                         <div className="ic-item-name">{it.item_name}</div>
                         <div className="ic-item-meta">
                           {it.category}{it.subcategory ? ` · ${it.subcategory}` : ''}{it.sub_name ? ` · ${it.sub_name}` : ''}
                         </div>
                         {Number(it.is_returnable) === 1 && <span className="ic-tag ret">Returnable</span>}
+                        {removed && <span className="ic-tag ic-tag-removed">Removed</span>}
                       </div>
                       <div className="ic-item-col-hide">
                         <span className="ic-qty">{money(it.current_quantity)}</span> <span className="ic-qty-unit">{it.unit || ''}</span>
                       </div>
                       <div className="ic-item-col-hide ic-rack">{it.rack_location || '—'}</div>
                       <div className="ic-actions">
-                        <button className="ic-btn ic-btn-outline ic-btn-sm" onClick={() => openEditItem(it)}>Edit</button>
-                        <button className="ic-btn ic-btn-ghost ic-btn-sm" onClick={() => openAdd(it)}>Add stock</button>
+                        {/* ══ ITEM DELETE — REMOVABLE (start) ══ */}
+                        {removed ? (
+                          <button className="ic-btn ic-btn-ghost ic-btn-sm" disabled={itemBusy === it.item_id} onClick={() => restoreItem(it)}>
+                            {itemBusy === it.item_id ? 'Restoring…' : 'Restore'}
+                          </button>
+                        ) : (
+                          <>
+                            <button className="ic-btn ic-btn-outline ic-btn-sm" onClick={() => openEditItem(it)}>Edit</button>
+                            <button className="ic-btn ic-btn-ghost ic-btn-sm" onClick={() => openAdd(it)}>Add stock</button>
+                            <button className="ic-btn ic-btn-del ic-btn-sm" disabled={itemBusy === it.item_id} onClick={() => deleteItem(it)}>
+                              {itemBusy === it.item_id ? 'Removing…' : 'Delete'}
+                            </button>
+                          </>
+                        )}
+                        {/* ══ ITEM DELETE — REMOVABLE (end) ══ */}
                       </div>
+                      {/* ══ ITEM DELETE — REMOVABLE: every 409 reason, in full ══ */}
+                      {itemErr[it.item_id] && (
+                        <div className="ic-del-err">
+                          {removed ? 'Could not restore:' : `Cannot remove "${it.item_name}":`}
+                          <ul>{itemErr[it.item_id].map((r, i) => <li key={i}>{r}</li>)}</ul>
+                        </div>
+                      )}
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </>
             )}

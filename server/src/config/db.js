@@ -456,6 +456,23 @@ export const testConnection = async () => {
                 console.log(chalk.green('  Added inventory_request_items.edited_at.'));
             }
             // ═══ REQUEST ITEM EDIT AUDIT — REMOVABLE BLOCK (end) ═══
+            // ══ ITEM DELETE — REMOVABLE (start) ══
+            // Soft delete for catalog items that no longer physically exist.
+            // NULL = active; set = removed (hidden from live lists, kept for history).
+            // Live DBs get the same two columns from
+            // server/migrations/2026-11-20_inventory_item_delete.sql.
+            // To remove: delete this block and DROP both columns.
+            const [invItemCols] = await connection.execute('DESCRIBE inventory_items');
+            const invItemHas = (f) => invItemCols.some((c) => c.Field === f);
+            if (!invItemHas('deleted_at')) {
+                await connection.execute('ALTER TABLE inventory_items ADD COLUMN deleted_at datetime NULL DEFAULT NULL');
+                console.log(chalk.green('  Added inventory_items.deleted_at.'));
+            }
+            if (!invItemHas('deleted_by_user_id')) {
+                await connection.execute('ALTER TABLE inventory_items ADD COLUMN deleted_by_user_id bigint NULL DEFAULT NULL');
+                console.log(chalk.green('  Added inventory_items.deleted_by_user_id.'));
+            }
+            // ══ ITEM DELETE — REMOVABLE (end) ══
             // Additive: the lab a student's BUY request is for. NULLABLE by design —
             // requests created before this column existed keep NULL, and RETURN
             // requests never set it. Required-ness is enforced in the service for
