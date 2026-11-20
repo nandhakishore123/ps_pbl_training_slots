@@ -69,7 +69,10 @@ export const getMyRequests = async (req, res) => {
 // ── Inventory Incharge (role 4) / Admin (role 3) — stock mgmt ─
 export const getStock = async (req, res) => {
   try {
-    const data = await service.getStock({ category: req.query.category, search: req.query.search });
+    // ══ ITEM DELETE — REMOVABLE: include_deleted=1 honoured for roles 3/4 only ══
+    const includeDeleted = String(req.query.include_deleted ?? '') === '1'
+      && [3, 4].includes(Number(req.user?.role_id));
+    const data = await service.getStock({ category: req.query.category, search: req.query.search, includeDeleted });
     return successResponse(res, 'Stock fetched', { items: data });
   } catch (error) {
     if (error?.status) return errorResponse(res, error.message, error.status);
@@ -77,6 +80,38 @@ export const getStock = async (req, res) => {
     return internalServerErrorResponse(res, error.message || 'Failed to fetch stock');
   }
 };
+
+// ══ ITEM DELETE — REMOVABLE (start) ══
+// DELETE /items/:itemId and POST /items/:itemId/restore (roles 3/4).
+// A 409 carries `reasons` — every blocker that applied — alongside the joined
+// message, so the UI can show them all.
+const itemDeleteError = (res, error, label) => {
+  if (error?.status === 409) {
+    return res.status(409).json({ success: false, message: error.message, reasons: error.reasons || [error.message] });
+  }
+  if (error?.status) return errorResponse(res, error.message, error.status);
+  console.error(`Error in ${label}:`, error);
+  return internalServerErrorResponse(res, error.message || 'Failed to update item');
+};
+
+export const deleteItem = async (req, res) => {
+  try {
+    const data = await service.deleteItem(req.user?.user_id, req.params.itemId);
+    return successResponse(res, 'Item removed', data);
+  } catch (error) {
+    return itemDeleteError(res, error, 'deleteItem');
+  }
+};
+
+export const restoreItem = async (req, res) => {
+  try {
+    const data = await service.restoreItem(req.params.itemId);
+    return successResponse(res, 'Item restored', data);
+  } catch (error) {
+    return itemDeleteError(res, error, 'restoreItem');
+  }
+};
+// ══ ITEM DELETE — REMOVABLE (end) ══
 
 export const editStock = async (req, res) => {
   try {

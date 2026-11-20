@@ -28,9 +28,23 @@ export const inventoryService = {
   },
 
   // ── Inventory Incharge (role 4) / Admin — stock management ──
-  getStock({ category, search } = {}) {
-    return api.get('/inventory/stock', { params: { category, search } });
+  // ══ ITEM DELETE — REMOVABLE: includeDeleted adds include_deleted=1. When it
+  // is falsy the param is undefined, which axios omits — the request is unchanged.
+  getStock({ category, search, includeDeleted } = {}) {
+    return api.get('/inventory/stock', { params: { category, search, include_deleted: includeDeleted ? 1 : undefined } });
   },
+
+  // ══ ITEM DELETE — REMOVABLE (start) ══
+  // Soft delete / restore a catalog item. A blocked delete rejects with 409 and
+  // response.data.reasons = [every reason that applied].
+  deleteItem(itemId) {
+    return api.delete(`/inventory/items/${itemId}`);
+  },
+
+  restoreItem(itemId) {
+    return api.post(`/inventory/items/${itemId}/restore`);
+  },
+  // ══ ITEM DELETE — REMOVABLE (end) ══
 
   editStock(itemId, quantity) {
     return api.post(`/inventory/stock/${itemId}/edit`, { quantity });

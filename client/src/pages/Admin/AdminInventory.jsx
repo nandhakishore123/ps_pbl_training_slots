@@ -95,6 +95,16 @@ const CSS = `
   .ad-rack { font-size:12px; color:var(--ad-text2); font-weight:700; }
   .ad-tag { display:inline-block; font-size:9.5px; font-weight:800; letter-spacing:0.4px; text-transform:uppercase; padding:2px 8px; border-radius:20px; margin-top:4px; background:rgba(16,185,129,0.12); color:#047857; border:1px solid rgba(16,185,129,0.4); }
   .ad-actions { display:flex; gap:7px; justify-content:flex-end; }
+  /* ══ ITEM DELETE — REMOVABLE (start) ══ */
+  .ad-item.ad-item-removed { background:var(--ad-bg); }
+  .ad-item.ad-item-removed > div:not(.ad-actions):not(.ad-del-err) { opacity:0.5; }
+  .ad-tag.ad-tag-removed { background:rgba(100,116,139,0.12); color:var(--ad-text2); border-color:rgba(100,116,139,0.4); margin-left:4px; }
+  .ad-btn-del { background:transparent; border:1.5px solid rgba(239,68,68,0.45); color:var(--ad-red); }
+  .ad-del-err { grid-column:1 / -1; font-size:12px; color:var(--ad-red); font-weight:700; background:rgba(239,68,68,0.06);
+    border:1px solid rgba(239,68,68,0.3); border-radius:10px; padding:8px 12px; }
+  .ad-del-err ul { margin:4px 0 0 18px; padding:0; }
+  .ad-show-removed { display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:700; color:var(--ad-text2); cursor:pointer; }
+  /* ══ ITEM DELETE — REMOVABLE (end) ══ */
 
   .ad-req { border:1px solid var(--ad-border); border-radius:14px; padding:15px 17px; margin-bottom:11px; background:var(--ad-white); }
   .ad-req-top { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; margin-bottom:8px; }
@@ -427,6 +437,11 @@ export default function AdminInventory() {
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
   const [categories, setCategories] = useState([]);
+  // ══ ITEM DELETE — REMOVABLE (start) ══
+  const [showRemoved, setShowRemoved] = useState(false);   // unticked = today's list
+  const [itemBusy, setItemBusy] = useState(null);          // item_id being deleted/restored
+  const [itemErr, setItemErr] = useState({});              // { [item_id]: string[] } — every 409 reason
+  // ══ ITEM DELETE — REMOVABLE (end) ══
 
   // Approvers settings tab (admin-configurable buying approvers)
   const [approverFaculty, setApproverFaculty] = useState([]);
@@ -512,11 +527,45 @@ export default function AdminInventory() {
   const loadStock = useCallback(async (opts = {}) => {
     setStockLoading(true); setStockError('');
     try {
-      const res = await inventoryService.getStock({ category: opts.category ?? categoryFilter, search: opts.search ?? search });
+      const res = await inventoryService.getStock({ category: opts.category ?? categoryFilter, search: opts.search ?? search,
+        includeDeleted: opts.showRemoved ?? showRemoved });   // ══ ITEM DELETE — REMOVABLE ══
       setStock(res?.data?.items || []); setStockLoaded(true);
     } catch { setStockError('Failed to load stock.'); setStock([]); setStockLoaded(true); }
     finally { setStockLoading(false); }
-  }, [categoryFilter, search]);
+  }, [categoryFilter, search, showRemoved]);
+
+  // ══ ITEM DELETE — REMOVABLE (start) ══
+  // Soft delete / restore one catalog item. A blocked delete comes back 409 with
+  // `reasons` — all of them are kept and shown under the row, never swallowed.
+  const toggleShowRemoved = (checked) => { setShowRemoved(checked); setItemErr({}); loadStock({ showRemoved: checked }); };
+  const deleteItem = async (it) => {
+    if (!window.confirm(`Remove "${it.item_name}" from the stock list?\n\nIt will no longer appear in Stock or in item search. Past requests and reports keep showing it, and it can be restored.`)) return;
+    setItemBusy(it.item_id); setItemErr((m) => ({ ...m, [it.item_id]: null }));
+    try {
+      await inventoryService.deleteItem(it.item_id);
+      showToast(`"${it.item_name}" removed`, false);
+      await loadStock(); loadOverview();
+    } catch (err) {
+      const d = err?.response?.data;
+      const reasons = Array.isArray(d?.reasons) && d.reasons.length ? d.reasons : [d?.message || 'Failed to remove item.'];
+      setItemErr((m) => ({ ...m, [it.item_id]: reasons }));
+      showToast(reasons.join(' '), true);
+    } finally { setItemBusy(null); }
+  };
+  const restoreItem = async (it) => {
+    setItemBusy(it.item_id); setItemErr((m) => ({ ...m, [it.item_id]: null }));
+    try {
+      await inventoryService.restoreItem(it.item_id);
+      showToast(`"${it.item_name}" restored`, false);
+      await loadStock(); loadOverview();
+    } catch (err) {
+      const d = err?.response?.data;
+      const reasons = Array.isArray(d?.reasons) && d.reasons.length ? d.reasons : [d?.message || 'Failed to restore item.'];
+      setItemErr((m) => ({ ...m, [it.item_id]: reasons }));
+      showToast(reasons.join(' '), true);
+    } finally { setItemBusy(null); }
+  };
+  // ══ ITEM DELETE — REMOVABLE (end) ══
 
   const loadApprovers = useCallback(async () => {
     setApproverLoading(true); setApproverError('');
@@ -900,7 +949,9 @@ export default function AdminInventory() {
   // is always the complete returnable list.
   const openReturnable = async () => {
     setRetOpen(true); setRetError(''); setRetSearch('');
-    if (!categoryFilter && !search && stockLoaded) { setRetItems(stock.filter(isReturnableItem)); return; }
+    // ITEM DELETE — REMOVABLE: `&& !showRemoved` — with removed rows loaded into
+    // `stock`, re-fetch instead so the popup never lists a removed item.
+    if (!categoryFilter && !search && stockLoaded && !showRemoved) { setRetItems(stock.filter(isReturnableItem)); return; }
     setRetLoading(true);
     try {
       const res = await inventoryService.getStock({ category: '', search: '' });
@@ -1272,28 +1323,56 @@ export default function AdminInventory() {
                 title="Print the current stock list (category + search applied)"
               >{stockRepBusy ? 'Preparing…' : 'Stock Report'}</button>
               {/* ═══ STOCK REPORT — REMOVABLE BLOCK (end) ═══ */}
+              {/* ══ ITEM DELETE — REMOVABLE ══ */}
+              <label className="ad-show-removed" title="Also list items that were removed (they can be restored)">
+                <input type="checkbox" checked={showRemoved} onChange={(e) => toggleShowRemoved(e.target.checked)} /> Show removed items
+              </label>
               <button className="ad-btn ad-btn-primary" onClick={openNew}>+ Add New Item</button>
             </div>
             {stockError && <div className="ad-empty" style={{ color: 'var(--ad-red)' }}>{stockError}</div>}
             {stockLoading ? <div className="ad-spinner" /> : stock.length === 0 ? <div className="ad-empty">No items found.</div> : (
               <>
-                <div className="ad-count">Showing {shownStock.length} of {stock.length} item{stock.length !== 1 ? 's' : ''}{stock.length > RENDER_CAP ? ' · refine to narrow the list' : ''}</div>
+                <div className="ad-count">Showing {shownStock.length} of {stock.length} item{stock.length !== 1 ? 's' : ''}{stock.length > RENDER_CAP ? ' · refine to narrow the list' : ''}
+                  {/* ══ ITEM DELETE — REMOVABLE: only rendered while "Show removed items" is ticked ══ */}
+                  {showRemoved ? ` · ${stock.filter((s) => Number(s.is_deleted) === 1).length} removed` : ''}</div>
                 <div className="ad-card">
                   {shownStock.map((it) => {
                     const low = Number(it.current_quantity) <= lowThreshold;
+                    const removed = Number(it.is_deleted) === 1;   // ══ ITEM DELETE — REMOVABLE ══
                     return (
-                      <div className="ad-item" key={it.item_id}>
+                      <div className={`ad-item${removed ? ' ad-item-removed' : ''}`} key={it.item_id}>
                         <div style={{ minWidth: 0 }}>
                           <div className="ad-item-name">{it.item_name}</div>
                           <div className="ad-item-meta">{it.category}{it.subcategory ? ` · ${it.subcategory}` : ''}</div>
                           {Number(it.is_returnable) === 1 && <span className="ad-tag">Returnable</span>}
+                          {removed && <span className="ad-tag ad-tag-removed">Removed</span>}
                         </div>
                         <div className="ad-item-hide"><span className={`ad-qty${low ? ' low' : ''}`}>{money(it.current_quantity)}</span> <span className="ad-qty-unit">{it.unit || ''}</span></div>
                         <div className="ad-item-hide ad-rack">{it.rack_location || '—'}</div>
                         <div className="ad-actions">
-                          <button className="ad-btn ad-btn-outline ad-btn-sm" onClick={() => openEditItem(it)}>Edit</button>
-                          <button className="ad-btn ad-btn-ghost ad-btn-sm" onClick={() => openAdd(it)}>Add stock</button>
+                          {/* ══ ITEM DELETE — REMOVABLE (start) ══ */}
+                          {removed ? (
+                            <button className="ad-btn ad-btn-ghost ad-btn-sm" disabled={itemBusy === it.item_id} onClick={() => restoreItem(it)}>
+                              {itemBusy === it.item_id ? 'Restoring…' : 'Restore'}
+                            </button>
+                          ) : (
+                            <>
+                              <button className="ad-btn ad-btn-outline ad-btn-sm" onClick={() => openEditItem(it)}>Edit</button>
+                              <button className="ad-btn ad-btn-ghost ad-btn-sm" onClick={() => openAdd(it)}>Add stock</button>
+                              <button className="ad-btn ad-btn-del ad-btn-sm" disabled={itemBusy === it.item_id} onClick={() => deleteItem(it)}>
+                                {itemBusy === it.item_id ? 'Removing…' : 'Delete'}
+                              </button>
+                            </>
+                          )}
+                          {/* ══ ITEM DELETE — REMOVABLE (end) ══ */}
                         </div>
+                        {/* ══ ITEM DELETE — REMOVABLE: every 409 reason, in full ══ */}
+                        {itemErr[it.item_id] && (
+                          <div className="ad-del-err">
+                            {removed ? 'Could not restore:' : `Cannot remove "${it.item_name}":`}
+                            <ul>{itemErr[it.item_id].map((r, i) => <li key={i}>{r}</li>)}</ul>
+                          </div>
+                        )}
                       </div>
                     );
                   })}

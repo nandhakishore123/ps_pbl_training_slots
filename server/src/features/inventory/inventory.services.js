@@ -229,12 +229,29 @@ export const listMyRequests = async (userId) => {
 };
 
 // ── Inventory Incharge (role 4) / Admin (role 3) — stock mgmt ─
-export const getStock = async ({ category, search } = {}) => {
+export const getStock = async ({ category, search, includeDeleted = false } = {}) => {
   return model.listAllItems({
     category: category ? String(category).trim() : undefined,
     search: search ? String(search).trim() : undefined,
+    includeDeleted: includeDeleted === true, // ══ ITEM DELETE — REMOVABLE ══
   });
 };
+
+// ══ ITEM DELETE — REMOVABLE (start) ══
+// Soft delete / restore a catalog item (Admin 3 / Incharge 4). All blocking
+// checks and the row lock live in the model.
+export const deleteItem = async (userId, itemId) => {
+  const id = Number(itemId);
+  if (!Number.isInteger(id) || id <= 0) throw badRequest('Invalid item id');
+  return model.softDeleteItem(id, userId);
+};
+
+export const restoreItem = async (itemId) => {
+  const id = Number(itemId);
+  if (!Number.isInteger(id) || id <= 0) throw badRequest('Invalid item id');
+  return model.restoreItem(id);
+};
+// ══ ITEM DELETE — REMOVABLE (end) ══
 
 // Set an item's quantity to an absolute value (STOCK_EDIT).
 export const editStock = async (userId, itemId, newQuantity) => {

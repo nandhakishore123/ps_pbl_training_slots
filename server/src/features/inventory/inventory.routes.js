@@ -55,6 +55,9 @@ import {
   createLabProcurement,
   deleteLabProcurement,
   exportLabProcurement,
+  // ══ ITEM DELETE — REMOVABLE ══
+  deleteItem,
+  restoreItem,
 } from './inventory.controller.js';
 
 const router = express.Router();
@@ -77,6 +80,11 @@ router.post('/items', authMiddleware, requireRole(3, 4), addItem);             /
 // (a quantity change is logged as a STOCK_EDIT txn). ADDITIVE; does not affect
 // the GET /items/:id read above, which stays open to any authenticated user.
 router.put('/items/:id', authMiddleware, requireRole(3, 4), updateItem);
+// ══ ITEM DELETE — REMOVABLE (start) ══
+// Soft delete (sets deleted_at) / restore. 409 + reasons when blocked.
+router.delete('/items/:itemId', authMiddleware, requireRole(3, 4), deleteItem);
+router.post('/items/:itemId/restore', authMiddleware, requireRole(3, 4), restoreItem);
+// ══ ITEM DELETE — REMOVABLE (end) ══
 router.get('/buying', authMiddleware, requireRole(3, 4), getBuying);           // read-only buying list
 
 // ── Faculty buying approval (role 2 by purpose; Admin role 3) ─
