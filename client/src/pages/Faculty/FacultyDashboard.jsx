@@ -219,8 +219,8 @@ export default function FacultyDashboard() {
                     }
                     label="Inventory Approval"
                     desc={canApprove
-                      ? 'Review & approve student buying requests for your purpose'
-                      : 'Not assigned — only the designated approvers can review buying requests'}
+                      ? 'Review & approve student item requests for your purpose'
+                      : 'Not assigned — only the designated approvers can review item requests'}
                     chips={canApprove ? [{ label: 'Approver', color: 'purple' }] : []}
                     onClick={canApprove ? () => navigate('/faculty-inventory-approval') : undefined}
                   />

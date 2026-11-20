@@ -146,8 +146,8 @@ function StatusPill({ status }) {
 }
 
 const SCOPE_TITLE = {
-  PROJECT: 'Project Buying Requests',
-  TRAINING: 'Training Buying Requests',
+  PROJECT: 'Project Item Requests',
+  TRAINING: 'Training Item Requests',
 };
 
 // Short label for the tab strip.
@@ -204,7 +204,7 @@ export default function FacultyInventoryApproval() {
       // only fall back to the first scope when the current one is gone.
       setTab((t) => (sc.includes(t) ? t : sc[0] || ''));
     } catch (err) {
-      setError(err?.response?.data?.message || 'Failed to load buying requests.');
+      setError(err?.response?.data?.message || 'Failed to load item requests.');
       setScopes([]);
       setByPurpose({ PROJECT: [], TRAINING: [] });
     } finally {
@@ -445,7 +445,7 @@ export default function FacultyInventoryApproval() {
           <button className="fa-back" onClick={() => navigate('/faculty-dashboard')}>← Dashboard</button>
           <div style={{ minWidth: 0 }}>
             <div className="fa-title">Inventory Approval</div>
-            <div className="fa-sub">Review student buying requests</div>
+            <div className="fa-sub">Review student item requests</div>
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -475,7 +475,7 @@ export default function FacultyInventoryApproval() {
           </div>
         )}
 
-        <div className="fa-scope">{SCOPE_TITLE[tab] || 'Buying Requests'}</div>
+        <div className="fa-scope">{SCOPE_TITLE[tab] || 'Item Requests'}</div>
         <div className="fa-scope-sub">
           {tab
             ? `You approve ${SCOPE_TAB[tab] || tab} purpose requests. Approving reduces stock.`
